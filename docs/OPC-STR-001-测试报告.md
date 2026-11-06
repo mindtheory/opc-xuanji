@@ -119,7 +119,7 @@ $ npm test
 5. **并发与容量**：调度器单进程串行 tick、PG 连接池 6；多实例并发部署时的任务抢占（行锁/ advisory lock）未做压测。
 6. **审计只追加的强制力**：应用角色 `opc` 是表 owner，理论上可 UPDATE/DELETE；生产应另建 `opc_app` 角色仅授予 INSERT（已写入 DBDD 部署清单，尚未在测试环境演练）。
 7. **DSH Web 宿主插槽**：`WebHostAdapter` 三档适配未在真实 DSH Web 进程验证；右侧面板/会话事件/记忆插件契约仍需联调。
-8. **Web 集成测试**：`0004_web_layer.sql` 与 `test/integration/web.test.ts` 未在测试库执行；当前只完成单元 21/21 与类型检查。
+8. **Web/员工集成测试**：本机未执行；CI 已在 PostgreSQL 17 + pgvector 上跑通 68/68（run `42153267527`）。本地复跑仍需 `OPC_TEST_DSN`。
 9. **外部检索源**：插件雷达/关键词雷达用任务 config 注入候选验证；插件市场/MCP 适配器未接入。
 
 ## 8. 复现命令
@@ -160,10 +160,12 @@ node /home/canetwork/华网畅达/00-模式/CD-PTC/scripts/check-spec.mjs --dir 
 | 类型检查（`npx tsc --noEmit`） | exit 0 | 含 `src/employees/*`、P29–P34、5 个 `opc_employee_*` 工具 |
 | 规格生成一致性（`node scripts/gen-spec.mjs --check`） | PASS | 54 实体与生成器一致 |
 | 契约核对 | 34 operation ↔ 34 routes；14 错误码 | 见 `research/web-spec-check.log` 更新版 |
-| 新增集成用例（`test/integration/employees.test.ts`） | 未执行（环境缺失） | `npm test` 的 9 个集成文件在启动阶段失败；单元 25 通过。3 例：安装/停用依赖、导出/dry-run/导入、非法包拒绝 |
-| 迁移 `0005_employee_lines.sql` | 未在真实库应用 | 需测试库执行后跑 `spec.test.ts` 与员工集成用例 |
+| 本机全量测试（`npm test`） | 环境缺失 | 本机无 `OPC_TEST_DSN`，9 个集成文件启动阶段失败；CI 已补跑，见下 |
+| CI 单元/门禁矩阵 | 26 个作业步骤全部通过 | GitHub Actions run `42153267527`；Node 24.9/24/26 的 typecheck、单元、gen-spec、spec、docs 门禁全绿 |
+| CI 集成（`npm test`） | **68/68 pass** | GitHub Actions run `42153267527`；PostgreSQL 17 + pgvector service；`0001..0005` 迁移已应用 |
+| 迁移 `0005_employee_lines.sql` | 已在 CI 测试库应用 | `npm test` 68/68 通过，含员工包/Web/流程/审计用例 |
 
-**结论**：员工 manifest/包格式单元测试通过；集成/契约结论待 `OPC_TEST_DSN` 与测试库补测。未通过项不得据此宣称 G4 通过。
+**结论**：v0.1.0 的单元、契约、集成在 GitHub Actions 全部通过（68/68）；本机仅因缺少 `OPC_TEST_DSN` 未复跑集成。CI 证据：https://github.com/mindtheory/opc-xuanji/actions/runs/42153267527 。
 
 ## 自检清单
 
