@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known Limitations
 
-- Integration tests require `OPC_TEST_DSN`; they are not executed in the local release environment described in `OPC-STR-001`.
+- Integration tests run in CI against PostgreSQL 17 + pgvector; a local run still requires `OPC_TEST_DSN` and a reachable test database.
 - DSH Web host slot/session-event/memory-plugin contracts still need end-to-end verification against the real DSH runtime.
 - Domain tables/tools/workflows for most employee lines are requirements/manifest placeholders; Phase 2 implements them.
 - Employee package files are manifest-only today; workflow/config file export and signature verification are planned.
