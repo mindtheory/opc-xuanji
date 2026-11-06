@@ -1,0 +1,97 @@
+%% 标题：OPC-玄机 流程注册 → 实例 → 幂等节点 → 评判的时序图
+%% 来源：src/workflow/registry.ts guard.ts instances.ts verifier.ts + src/platform/audit.ts
+%% 时序口径：注册失败拒绝写库不静默降级；幂等键 instance_id + node_id；
+%% 审计对每条受理路径都写一条，成功与拒绝都要留痕。
+sequenceDiagram
+  autonumber
+  participant B as 老板或中枢
+  participant A as api/http.ts
+  participant R as WorkflowRegistry
+  participant G as guard 纯函数
+  participant D as PostgreSQL
+  participant U as AuditService
+  participant N as WorkflowRunner
+  participant V as Verifier
+
+  B->>A: POST /api/v1/workflows<br/>workflowId version ownerPlugin meta code testedCodeHash
+  A->>A: requireString 校验必填字段
+  A->>R: register 入参
+  R->>D: SELECT plugin_id scope tools write_targets enabled<br/>FROM ref.employee_plugin
+  alt 员工插件未注册
+    R->>U: audit.record action=workflow.register result=denied
+    R-->>A: OpcError ERR-WF-001 status 422 failures=isolation
+    A-->>B: 422 逐项失败原因
+  else 员工插件已注册
+    R->>R: 校验 meta.id 与 workflowId 一致
+    R->>G: evaluateGuard meta code testedCodeHash employee knownViews
+    G->>G: 六项守卫 meta_schema views idempotency tools isolation code_hash
+    G->>G: computeRisk 硬规则 high medium low
+    alt 守卫失败 failures 非空
+      R->>U: audit.record result=denied failures 全量
+      R-->>A: OpcError ERR-WF-001 status 422
+      A-->>B: 422 拒绝注册 不静默降级
+    else 守卫通过
+      R->>D: INSERT ref.workflow_registry ON CONFLICT DO NOTHING
+      alt 同版本已存在 rowCount 0
+        R-->>A: OpcError ERR-WF-002 status 409 版本不可变
+        A-->>B: 409 请递增 version
+      else 写入成功
+        R->>U: audit.record result=ok riskLevel riskReasons codeHash
+        R-->>A: riskLevel riskReasons status=registered
+        A-->>B: 201 注册结果
+      end
+    end
+  end
+
+  B->>A: POST /api/v1/workflows/workflowId/instances
+  A->>N: start workflowId version context
+  N->>R: get workflowId version
+  R->>D: SELECT 最新或指定版本
+  R-->>N: meta 与 version
+  N->>D: INSERT audit.workflow_instance status=running deadline_impact
+  N->>U: audit.record action=workflow.instance.start
+  N-->>A: instanceId version status deadlineImpact
+  A-->>B: 201 实例号
+
+  B->>A: POST /api/v1/instances/instanceId/nodes/nodeId/complete
+  A->>N: completeNode payload
+  N->>N: payloadHash = sha256 canonicalJson payload
+  N->>N: idempotencyKey = instanceId + nodeId
+  N->>D: BEGIN SELECT instance FOR UPDATE
+  N->>D: INSERT workflow_node_run ON CONFLICT instance_id node_id DO NOTHING
+  alt 首次执行 rowCount 1
+    N->>U: audit.record action=workflow.node.done
+    N-->>A: status done idempotentHit false
+  else 幂等键已存在
+    N->>D: SELECT payload_hash output 既有记录
+    alt 入参哈希相同
+      N-->>A: idempotentHit true 返回既有 output 不重复入库
+    else 入参哈希不同
+      N->>U: audit.record action=workflow.node.reject result=denied
+      N-->>A: OpcError ERR-WF-004 status 409
+    end
+  end
+  A-->>B: 200 节点结果或 409
+
+  B->>A: POST /api/v1/instances/instanceId/nodes/nodeId/verdict
+  A->>V: judge samples evidence highImpact threshold
+  V->>V: evidenceHash = sha256 canonicalJson evidence
+  V->>D: SELECT verifier_verdict WHERE evidence_hash 与 node_id
+  alt evidence 命中
+    V->>U: audit.record action=verifier.judge cacheHit true
+    V-->>A: 首次 verdict confidence escalated 缓存只省调用不改结论
+  else 未命中
+    V->>V: aggregateSamples 多数票 + 置信度取四位
+    V->>D: INSERT verifier_verdict verdict sampling confidence escalated
+    V->>U: audit.record action=verifier.judge 含 samples 与 confidence
+    V-->>A: verdictId finalVerdict confidence escalated sampling
+  end
+  A-->>B: 200 评判结果
+
+  opt 流程结束
+    B->>A: 由中枢调用 runner.finish
+    A->>N: finish instanceId completed
+    N->>D: UPDATE workflow_instance SET status ended_at WHERE status=running
+    N->>U: audit.record action=workflow.instance.finish
+    N-->>A: instanceId status
+  end

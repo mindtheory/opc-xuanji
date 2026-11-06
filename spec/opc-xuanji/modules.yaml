@@ -1,0 +1,143 @@
+package: OPC-玄机 · 一人公司中枢
+baselineTag: v2.11-20261106
+
+modules:
+  - name: platform
+    package: opc.platform
+    responsibility: 中枢平台能力——公司档案、视图级授权、一次性令牌、冲突冻结队列、审计统一写入口、向量记忆
+    dependsOn: []
+    writeDomains:
+      - src/platform
+
+  - name: db
+    package: opc.db
+    responsibility: PostgreSQL 连接池、迁移链与事务边界（pgvector 由 DBA 预装）
+    dependsOn: [platform]
+    writeDomains:
+      - src/db
+
+  - name: finance
+    package: opc.domains.finance
+    responsibility: 财税管家——台账、税负监控、申报日历、应收应付
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/finance
+
+  - name: legal
+    package: opc.domains.legal
+    responsibility: 法务官——合同台账、风险规则、签约前扫描
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/legal
+
+  - name: admin
+    package: opc.domains.admin
+    responsibility: 行政总管——日程、会议闭环、行动项
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/admin
+
+  - name: strategy
+    package: opc.domains.strategy
+    responsibility: 战略参谋——目标拆解、复盘、决策留痕
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/strategy
+
+  - name: project
+    package: opc.domains.project
+    responsibility: 项目监理——阶段跟踪、阻塞、验收—开票—回款联动
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/project
+
+  - name: crm
+    package: opc.domains.crm
+    responsibility: 客户管家——客户记忆卡、承诺追踪、敏感字段私有存储
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/crm
+
+  - name: inventory
+    package: opc.domains.inventory
+    responsibility: 货栈总管——SKU、出入库、缺票积压
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/inventory
+
+  - name: vehicle
+    package: opc.domains.vehicle
+    responsibility: 车务官——用车台账、私车公用补贴标准库
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/vehicle
+
+  - name: intel
+    package: opc.domains.intel
+    responsibility: 情报官——线索、尽调报告与覆盖度声明
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/intel
+
+  - name: wbs
+    package: opc.domains.wbs
+    responsibility: WBS 员工——工作分解、基线、变更、进度与项目/成本联动
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/wbs
+
+  - name: publicity
+    package: opc.domains.publicity
+    responsibility: 外宣员工——外宣计划、内容草稿、审批、发布与效果回收
+    dependsOn: [platform]
+    writeDomains:
+      - src/domains/publicity
+
+  - name: employees
+    package: opc.employees
+    responsibility: 员工插件目录、manifest 校验、安装/启用/停用、员工包导入导出
+    dependsOn: [platform, audit]
+    writeDomains:
+      - src/employees
+
+  - name: audit
+    package: opc.audit
+    responsibility: 审计统一写入口——哈希链、JSONL+CSV 导出、链头持久化与恢复校验
+    dependsOn: [platform]
+    writeDomains:
+      - src/audit
+
+  - name: workflow
+    package: opc.workflow
+    responsibility: TS 流程固化——Workflow Registry、准入守卫、风险硬规则、幂等实例、Verifier 封装、诊断
+    dependsOn: [platform]
+    writeDomains:
+      - src/workflow
+
+  - name: scheduler
+    package: opc.scheduler
+    responsibility: 定时自动化任务——cron 调度、任务注册、幂等执行、晨报与预警产出
+    dependsOn: [platform, workflow]
+    writeDomains:
+      - src/scheduler
+
+  - name: web
+    package: opc.web
+    responsibility: 网页表现层——插件栏入口、右栏驾驶舱、会话/记忆桥、上传归置、插件与关键词雷达
+    dependsOn: [platform, audit, scheduler]
+    writeDomains:
+      - src/web
+
+  - name: api
+    package: opc.api
+    responsibility: HTTP /api/v1 契约层与 DSH 工具适配
+    dependsOn: [platform, finance, legal, admin, strategy, project, crm, inventory, vehicle, intel, wbs, publicity, employees, workflow, scheduler, web]
+    writeDomains:
+      - src/api
+
+  - name: plugin
+    package: opc.plugin
+    responsibility: DSH cordis 插件入口——工具注册、系统提示词与定时器挂载
+    dependsOn: [api, employees]
+    writeDomains:
+      - src/plugin

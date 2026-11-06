@@ -1,0 +1,148 @@
+%% 标题：OPC-玄机 组件架构图（组件 / 四层机制）
+%% 来源：src/ 实际文件 + migrations/0001-0005 + spec/opc-xuanji/modules.yaml
+%% 组件架构图：四层机制 + 已落地模块 + Phase 2 占位
+%% 实线 = 已实现且被测试覆盖的调用路径；虚线 = Phase 2 占位或未落地能力
+flowchart TB
+
+  subgraph L0["老板侧与宿主（DSH ≥ 0.2.1，Node ≥ 24.9）"]
+    BOSS["老板（对话即办公）"]
+    WEB["dsh web 交互进程"]
+    HEAD["headless 常驻进程"]
+  end
+
+  subgraph L1["① 中枢层 opc_hub：装配与协议适配"]
+    PLUG["src/plugin/index.ts<br/>cordis 入口<br/>31 个 opc_* 工具"]
+    API["src/api/http.ts<br/>HTTP /api/v1<br/>28 条路由"]
+    SERVE["scripts/serve.ts<br/>独立服务进程 + 调度 tick"]
+  end
+
+  subgraph L2["② 平台能力层 src/platform"]
+    CFG["config.ts<br/>5 个环境变量"]
+    ERR["errors.ts<br/>14 个错误码"]
+    AUD["audit.ts<br/>AuditService<br/>哈希链 + JSONL 导出"]
+    VW["views.ts<br/>ViewService<br/>8 个共享视图"]
+    TK["token.ts<br/>TokenService<br/>≤300 秒一次性令牌"]
+    CFL["conflict.ts<br/>ConflictService<br/>4 类冻结单元"]
+    JSN["json.ts<br/>canonicalJson 稳定序列化"]
+    DBM["src/db/migrate.ts<br/>迁移链 _opc_migrations"]
+  end
+
+  subgraph L3["③ TS 流程层 src/workflow + src/scheduler + src/web"]
+    REG["registry.ts<br/>WorkflowRegistry 注册"]
+    GRD["guard.ts<br/>六项准入守卫 + 风险硬规则"]
+    RUN["instances.ts<br/>WorkflowRunner 实例与幂等节点"]
+    VER["verifier.ts<br/>Verifier 聚合与 evidence 去重"]
+    DIA["diagnose.ts<br/>诊断卡 4 条分流"]
+    CRON["scheduler/cron.ts<br/>5 字段 cron 解析"]
+    ENG["scheduler/engine.ts<br/>Scheduler 幂等执行 + tick"]
+    TASKS["scheduler/tasks/index.ts<br/>10 个默认任务"]
+    WEBM["src/web/*<br/>归置 / 会话 / 记忆 / 驾驶舱 / 雷达"]
+  end
+
+  subgraph L4["④ 共享数据层 PostgreSQL 17.11 + pgvector 0.8.0"]
+    subgraph SB["schema biz（21 表）"]
+      T_LEDGER["ledger / contract<br/>conflict_frozen 标记"]
+      T_CUST["customer<br/>customer_sensitive 私有"]
+      T_MISC["project / tax_calendar / ar_ap<br/>sku / stock_txn / vehicle_log"]
+    end
+    subgraph SR["schema ref（6 表）"]
+      T_GRANT["view_grant / employee_plugin"]
+      T_TOKEN["token（token_code 唯一）"]
+      T_WF["workflow_registry<br/>唯一 workflow_id + version"]
+      T_SGRANT["web_session_grant<br/>会话授权 + TTL"]
+    end
+    subgraph SA["schema audit（6 表）"]
+      T_ALOG["audit_log<br/>复合主键 id + created_at"]
+      T_INST["workflow_instance<br/>workflow_node_run"]
+      T_VER["verifier_verdict<br/>evidence_hash 索引"]
+      T_EXP["audit_chain_head<br/>audit_export"]
+    end
+    subgraph SS["schema stat（11 表）"]
+      T_SCHED["task_schedule / task_run<br/>唯一 task_id + scheduled_at"]
+      T_REPORT["notification / daily_report"]
+      T_WEBT["web_ingest_item / web_session_message<br/>web_memory_card / web_memory_proposal<br/>dashboard_snapshot / brief_item / radar_item"]
+    end
+    subgraph SV["schema vec（1 表）"]
+      T_EMB["embedding vector(1024)<br/>HNSW m=16 ef_construction=64"]
+    end
+  end
+
+  subgraph L5["Phase 2 占位（接口已定，实现未落地）"]
+    P_DOM["11 个业务域模块<br/>finance / legal / admin / strategy<br/>project / crm / inventory / vehicle / intel<br/>wbs / publicity"]
+    P_LLM["真实 LLM 裁判调用<br/>Verifier.judge 现由调用方给 samples"]
+    P_TIMER["DSH 运行时内嵌定时器<br/>apply 内 ctx.setInterval 契约待核对"]
+    P_BOARD["流程看板 / 裁决卡渲染"]
+    P_SNAP["Registry 只读快照导出"]
+    P_VEC["向量写入与检索接口<br/>表已建，写读代码未落地"]
+  end
+
+  BOSS --> WEB
+  BOSS --> HEAD
+  WEB --> PLUG
+  HEAD --> SERVE
+  HEAD --> PLUG
+  PLUG --> API
+  SERVE --> API
+  PLUG --> AUD
+  PLUG --> VW
+  PLUG --> TK
+  PLUG --> CFL
+  PLUG --> REG
+  PLUG --> RUN
+  PLUG --> VER
+  PLUG --> ENG
+  PLUG --> WEBM
+  API --> WEBM
+  API --> AUD
+  API --> VW
+  API --> TK
+  API --> CFL
+  API --> REG
+  API --> RUN
+  API --> VER
+  API --> ENG
+  REG --> GRD
+  REG --> AUD
+  REG --> VW
+  RUN --> REG
+  RUN --> AUD
+  RUN --> JSN
+  VER --> AUD
+  VER --> JSN
+  VW --> AUD
+  TK --> AUD
+  TK --> VW
+  CFL --> AUD
+  CFG --> AUD
+  CFG --> ENG
+  ENG --> CRON
+  ENG --> AUD
+  ENG --> TASKS
+  TASKS --> AUD
+  WEBM --> AUD
+  WEBM --> T_WEBT
+  WEBM --> T_SGRANT
+  DBM --> L4
+  AUD --> T_ALOG
+  AUD --> T_EXP
+  VW --> T_GRANT
+  VW --> T_LEDGER
+  TK --> T_TOKEN
+  TK --> T_CUST
+  CFL --> T_LEDGER
+  REG --> T_WF
+  REG --> T_GRANT
+  RUN --> T_INST
+  VER --> T_VER
+  ENG --> T_SCHED
+  TASKS --> T_REPORT
+  L5 -.-> L1
+  P_DOM -.-> API
+  P_LLM -.-> VER
+  P_TIMER -.-> ENG
+  P_BOARD -.-> API
+  P_SNAP -.-> REG
+  P_VEC -.-> T_EMB
+
+  classDef phase2 fill:#f7f7f7,stroke:#999,stroke-dasharray: 5 4,color:#555;
+  class P_DOM,P_LLM,P_TIMER,P_BOARD,P_SNAP,P_VEC phase2;

@@ -1,0 +1,151 @@
+%% 标题：OPC-玄机 核心 12 张表 ER 图
+%% 来源：migrations/0001_init.sql（0002/0003/0004 增量已在 token、audit_export 与 Web 表上标注）
+%% 说明：仅画权限、流程、审计三条主链的 12 张表；其余 33 张表见 OPC-DBDD-001 第 3 章（含 v2.10 Web 层 8 表）。
+%% 表名不含 schema 前缀，schema 归属见每张表首行注释。
+erDiagram
+  employee_plugin {
+    bigint id PK "ref 自增主键"
+    varchar plugin_id UK "员工插件唯一标识"
+    varchar display_name "展示名"
+    varchar scope "single 或 cross"
+    jsonb required_views "注册时声明的视图"
+    jsonb tools "注册工具清单"
+    jsonb write_targets "写目标域 风险判定依据"
+    boolean enabled "停用即拒绝注册与查询"
+  }
+
+  view_grant {
+    bigint id PK "ref 自增主键"
+    varchar view_id "视图 id 8 个之一"
+    varchar plugin_id "被授权员工"
+    varchar granted_by "批准人"
+    timestamptz granted_at "批准时间"
+    varchar status "active 或 revoked"
+  }
+
+  token {
+    bigint id PK "ref 自增主键"
+    varchar token_code UK "0002 增量列 16 字节随机 hex"
+    varchar task_id "绑定单次任务"
+    varchar plugin_id "持有员工"
+    jsonb scope "viewId fields customerId"
+    timestamptz issued_at "签发时间"
+    timestamptz expires_at "不超过 300 秒"
+    boolean used "消费一次即置真"
+  }
+
+  customer_sensitive {
+    bigint id PK "biz 自增主键"
+    bigint customer_id FK "引用 customer"
+    varchar field "字段名 与 customer_id 联合唯一"
+    text value "敏感原文 不落任何视图"
+    varchar level "敏感级别"
+  }
+
+  ledger {
+    bigint id PK "biz 自增主键"
+    date entry_date "业务日期"
+    numeric amount "numeric 18 位 2 位小数"
+    varchar direction "in 或 out"
+    varchar category "成本科目"
+    varchar entity "company 或 personal"
+    varchar invoice_id "发票号 可空"
+    bigint project_id "无外键 项目引用"
+    text note "备注"
+    boolean conflict_frozen "冻结标记 部分索引"
+  }
+
+  contract {
+    bigint id PK "biz 自增主键"
+    varchar counterparty "相对方"
+    numeric amount "合同金额"
+    date start_date "起始日"
+    date end_date "到期日 冻结部分索引"
+    varchar status "active 等"
+    jsonb risk_flags "风险标记"
+    boolean conflict_frozen "冻结标记"
+  }
+
+  conflict_queue {
+    bigint id PK "biz 自增主键"
+    varchar conflict_type "cost customer stock_batch contract_amount"
+    varchar frozen_unit_type "ledger contract stock_txn vehicle_log"
+    bigint frozen_unit_id "冻结单元主键"
+    jsonb parties "双方证据 至少两条"
+    jsonb diff_fields "差异字段"
+    timestamptz detected_at "发现时间"
+    varchar status "open resolved cleared later"
+    bigint arbitration_id "指向 decision 主键"
+  }
+
+  decision {
+    bigint id PK "biz 自增主键"
+    date decided_on "裁决日"
+    text context "冲突摘要"
+    jsonb choices "双方依据快照"
+    text chosen "A B manual"
+    text rationale "理由"
+  }
+
+  workflow_registry {
+    bigint id PK "ref 自增主键"
+    varchar workflow_id "流程标识"
+    varchar version "版本 与 workflow_id 联合唯一"
+    varchar owner_plugin "归属员工"
+    varchar scope "single 或 cross"
+    jsonb meta "流程元数据 禁止 risk_level"
+    varchar code_hash "sha256 与测试通过时一致"
+    varchar risk_level "high medium low 硬规则算出"
+    varchar status "registered shadow active rolled_back sleeping rejected"
+    timestamptz registered_at "注册时间"
+  }
+
+  workflow_instance {
+    bigint id PK "audit 自增主键"
+    uuid instance_uuid UK "对外唯一标识"
+    varchar workflow_id "流程标识"
+    varchar version "执行版本"
+    varchar status "running blocked awaiting_decision completed failed rolled_back"
+    boolean deadline_impact "影响截止日"
+    timestamptz started_at "开始时间"
+    timestamptz ended_at "结束时间"
+  }
+
+  workflow_node_run {
+    bigint id PK "audit 自增主键"
+    bigint instance_id FK "引用 workflow_instance 级联删除"
+    varchar node_id "节点标识 与实例联合唯一"
+    varchar idempotency_key "instanceId 加 nodeId"
+    varchar status "默认 done"
+    varchar payload_hash "入参规范化 sha256"
+    jsonb output "节点产出"
+    timestamptz started_at "开始时间"
+    timestamptz ended_at "结束时间"
+  }
+
+  audit_log {
+    bigint id PK "audit 复合主键第一列"
+    timestamptz created_at PK "复合主键第二列 未来分区键"
+    bigint workflow_instance_id "非外键 便于按实例聚合"
+    varchar actor "操作者"
+    varchar action "动作 如 view.query"
+    varchar object_type "对象类型"
+    varchar object_id "对象主键"
+    varchar result "ok denied error"
+    jsonb payload "不落敏感值"
+    varchar schema_version "归档可迁移口径"
+    boolean test_mode "测试数据不计业务统计"
+    varchar prev_hash "前一条记录哈希"
+    varchar hash "本条记录哈希"
+  }
+
+  employee_plugin ||--o{ view_grant : "授权视图"
+  employee_plugin ||--o{ token : "持有令牌"
+  employee_plugin ||--o{ workflow_registry : "拥有流程版本"
+  workflow_registry ||--o{ workflow_instance : "实例化"
+  workflow_instance ||--o{ workflow_node_run : "节点执行"
+  workflow_instance ||--o{ audit_log : "生命周期留痕"
+  conflict_queue ||--o| decision : "裁决落库"
+  conflict_queue }o--o| ledger : "冻结台账事件"
+  conflict_queue }o--o| contract : "冻结合同"
+  token }o--o| customer_sensitive : "按字段范围读取"
