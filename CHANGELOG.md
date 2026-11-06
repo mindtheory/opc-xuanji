@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped GitHub Actions dependencies: `actions/checkout@v7`, `actions/setup-node@v7`.
+
 ### Planned
 
 - Real DSH Web host adapter (native slot / sandbox iframe / postMessage bridge) end-to-end verification.
