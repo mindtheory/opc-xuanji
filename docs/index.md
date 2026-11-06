@@ -1,11 +1,11 @@
 ---
 doc_id: OPC-SUM-001
 title: OPC-玄机·一人公司中枢 文档索引
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D5
 owner: 项目集成者
-upstream: [OPC-SRS-001, OPC-IRS-001, OPC-SDD-001, OPC-DBDD-001, OPC-STP-001, OPC-STD-001, OPC-STR-001]
+upstream: [OPC-SRS-001, OPC-IRS-001, OPC-SDD-001, OPC-SDD-002, OPC-DBDD-001, OPC-STP-001, OPC-STD-001, OPC-STR-001, OPC-SDP-001, OPC-SCMP-001, OPC-SQAP-001, OPC-RMP-001, OPC-RTM-001, OPC-SVD-001]
 gate: G6
 updated: 2026-11-06
 ---
@@ -30,7 +30,14 @@ updated: 2026-11-06
 | OPC-SRS-001 | 软件需求规格说明 | SRS | D1/G1 | 评审稿 | `docs/OPC-SRS-001-软件需求规格说明.md` |
 | OPC-IRS-001 | 接口需求规格说明 | IRS | D2/G2 | 评审稿 | `docs/OPC-IRS-001-接口需求规格说明.md` |
 | OPC-SDD-001 | 系统设计说明 | SDD | D2/G2 | 评审稿 | `docs/OPC-SDD-001-系统设计说明.md` |
+| OPC-SDD-002 | 主会话 Agent 设定与运行设计 | SDD | D2/G2 | 评审稿 | `docs/OPC-SDD-002-主会话Agent设定与运行设计.md` |
 | OPC-DBDD-001 | 数据库设计说明 | DBDD | D2/G2 | 评审稿 | `docs/OPC-DBDD-001-数据库设计说明.md` |
+| OPC-SDP-001 | 软件开发计划 | SDP | D0/G0 | 评审稿 | `docs/OPC-SDP-001-软件开发计划.md` |
+| OPC-SCMP-001 | 配置管理计划 | SCMP | D0/G0 | 评审稿 | `docs/OPC-SCMP-001-配置管理计划.md` |
+| OPC-SQAP-001 | 软件质量保证计划 | SQAP | D0/G0 | 评审稿 | `docs/OPC-SQAP-001-软件质量保证计划.md` |
+| OPC-RMP-001 | 风险管理计划 | RMP | D0/G0 | 评审稿 | `docs/OPC-RMP-001-风险管理计划.md` |
+| OPC-RTM-001 | 需求追踪矩阵 | RTM | D2/G2 | 评审稿 | `docs/OPC-RTM-001-需求追踪矩阵.md` |
+| OPC-SVD-001 | 软件版本说明（v0.1.0） | SVD | D5/Release | 评审稿 | `docs/OPC-SVD-001-软件版本说明.md` |
 | OPC-STP-001 | 测试计划 | STP | D4/G4 | 评审稿 | `docs/OPC-STP-001-测试计划.md` |
 | OPC-STD-001 | 测试设计说明 | STD | D4/G4 | 评审稿 | `docs/OPC-STD-001-测试设计说明.md` |
 | OPC-STR-001 | 测试报告 | STR | D4/G4 | 评审稿 | `docs/OPC-STR-001-测试报告.md` |
@@ -42,14 +49,14 @@ updated: 2026-11-06
 
 ## 2. 编号规则
 
-- 项目文档：`OPC-<TYPE>-<3位>`，TYPE ∈ {SRS, IRS, SDD, DBDD, STP, STD, STR, SUM, SVD, SCMP, SQAP, ICD, SyRS, RTP, TEMP, ADR, PA, RTM, LC}。
+- 项目文档：`OPC-<TYPE>-<3位>`，TYPE ∈ {SRS, IRS, SDD, DBDD, SDP, SCMP, SQAP, RMP, RTM, SVD, STP, STD, STR, SUM, ICD, SyRS, RTP, TEMP, ADR, PA, LC}。
 - 需求：`REQ-<域>-<3位>`，域与 `spec/opc-xuanji/usecases.yaml` 的 `requirement` 一致（VIEW/TOKEN/CONFLICT/WF/AUDIT/TASK 等）。
 - 用例/测试：`UC-<3位>` 与 `TC-<域>-<3位>`，与 `usecases.yaml` 双向可查。
 - 过程资产：`PA-OPC-<3位>`，一行一条登记在 `docs/过程资产/pa-index.md`。
 
 ## 3. 状态与基线
 
-状态机：`草稿 → 评审稿 → 已批准 → 基线 → 废弃`。进入 `基线` 必须打 Git tag 并在本索引登记；本次交付的 G1/G2/G4 证据见 `docs/过程资产/G*/` 下的报告；v2.10 增量见 `PA-OPC-010`，v2.11 增量见 `PA-OPC-012`，全员工需求标准化见 `PA-OPC-015`，v0.1.0 发布证据见 `PA-OPC-016`，依赖升级合并记录见 `PA-OPC-017`，`OPC-STR-001` 记录基线 51 个用例与 Web/员工层增量结果；员工分册索引见 `docs/员工需求/index.md`。交付快照：Git **初始基线**，门禁标签 **`v0.1.0`**；v2.10 Web 层与 v2.11 员工分册/员工包为工作副本增量，尚未打新门禁标签。
+状态机：`草稿 → 评审稿 → 已批准 → 基线 → 废弃`。进入 `基线` 必须打 Git tag 并在本索引登记；本次交付的 G1/G2/G4 证据见 `docs/过程资产/G*/` 下的报告；v2.10 增量见 `PA-OPC-010`，v2.11 增量见 `PA-OPC-012`，全员工需求标准化见 `PA-OPC-015`，v0.1.0 发布证据见 `PA-OPC-016`，依赖升级合并记录见 `PA-OPC-017`，主会话 Agent 设定与管理文档增补见 `PA-OPC-018`；`OPC-STR-001` 记录基线 51 个用例与 Web/员工层增量结果；员工分册索引见 `docs/员工需求/index.md`。交付快照：Git **`v0.1.0`**；v2.10 Web 层与 v2.11 员工分册/员工包为工作副本增量，尚未打新发布标签。
 
 ## 4. 过程资产索引
 
@@ -79,8 +86,10 @@ updated: 2026-11-06
 - [x] 文档-代码对账有可执行测试支撑
 - [x] 维护约定覆盖 spec→docs→code→tests 顺序
 - [x] 本文与 SRS/IRS/SDD/DBDD/STP/STD/STR 的上游关系已列
+- [x] 管理类文档（SDP/SCMP/SQAP/RMP/RTM/SVD）与主会话 Agent 设计已登记
 
 ## 与其他文档的关系
 
-- 上游：`OPC-SRS-001`（需求来源）、`OPC-IRS-001`（接口契约）、`OPC-SDD-001`（设计）、`OPC-DBDD-001`（库表）、`OPC-STP-001`/`OPC-STD-001`（测试设计）、`OPC-STR-001`（测试证据）。
+- 上游：`OPC-SRS-001`（需求来源）、`OPC-IRS-001`（接口契约）、`OPC-SDD-001`（设计）、`OPC-SDD-002`（主会话 Agent 设定）、`OPC-DBDD-001`（库表）、`OPC-STP-001`/`OPC-STD-001`（测试设计）、`OPC-STR-001`（测试证据）。
+- 管理文档：`OPC-SDP-001`（开发计划）、`OPC-SCMP-001`（配置管理）、`OPC-SQAP-001`（质量保证）、`OPC-RMP-001`（风险管理）、`OPC-RTM-001`（追踪矩阵）、`OPC-SVD-001`（版本说明）。
 - 下游：发布说明、运维手册（Phase 2）、经验卡（`docs/过程资产/LC-*.md`）。

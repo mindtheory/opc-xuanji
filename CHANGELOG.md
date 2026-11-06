@@ -7,9 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AGENTS.md`: main-session agent operating charter (five proactives, reporting rhythm, decision-card rules, boundary and compliance).
+- `OPC-SDD-002`: main-session agent persona, work loop, discovery, planning, execution, reporting, decision cards, metrics, and AC-AGT-01..10.
+- `OPC-SDP-001`: software development plan with roles, WBS, G0–G6 gates, milestones, resources, and change control.
+- `OPC-SCMP-001`: configuration management plan with configuration items, baselines, change control, backup, and audit.
+- `OPC-SQAP-001`: software quality assurance plan with quality goals, reviews, metrics, and nonconformance handling.
+- `OPC-RMP-001`: risk management plan with 18 registered risks, scoring, mitigations, and fallbacks.
+- `OPC-RTM-001`: requirements traceability matrix from REQ/UC/TC to code and tests.
+- `OPC-SVD-001`: v0.1.0 software version description, installation, compatibility, evidence, and known limitations.
+- `PA-OPC-018`: change record for the main-session agent and management documentation additions.
+
 ### Changed
 
 - Bumped GitHub Actions dependencies: `actions/checkout@v7`, `actions/setup-node@v7`.
+- `docs/index.md`: registered the new design, management, traceability, and version documents; added SDP/RMP to the document type list.
 
 ### Planned
 

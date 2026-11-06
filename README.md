@@ -6,7 +6,7 @@
 
 运行在 **DeepSeek Harness（DSH ≥ 0.2.1）** 上的 Bundle 插件：以「中枢调度 + 专业员工矩阵 + 三级沉淀 + TS 流程固化」补全一人公司在财税、法务、行政、战略、项目、情报、客户、车务、进销存上的职能短板，并把**公司日常经营中需要定期执行的事**做成配置驱动的自动化任务。
 
-- 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.10、《OPC-玄机 · 技术选型与系统架构.md》v2.10（与本仓库同目录）
+- 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.12、《OPC-玄机 · 技术选型与系统架构.md》v2.12（与本仓库同目录）
 - 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（31 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（34 个 operation）+ PostgreSQL 17 / pgvector 数据层
 - 当前阶段：**v0.1.0 已发布**。CI 在 Node 24.9/24/26 上单元与门禁全绿；PostgreSQL 17 + pgvector 集成 **68/68** 通过。本地跑集成仍需 `OPC_TEST_DSN`。
 
@@ -33,13 +33,14 @@ opc-xuanji/
 ├── scripts/         # gen-spec / migrate / serve
 ├── test/            # 单元 25 + 集成 43（新增 Web/员工用例需测试库）
 ├── docs/员工需求/   # 11 个员工需求分册（一人一份）
-├── docs/            # 软件工程文档（SRS/IRS/SDD/DBDD/STP/STD/STR + UML + PA）
+├── docs/            # 软件工程文档（SRS/IRS/SDD/DBDD/SDP/SCMP/SQAP/RMP/RTM/SVD/STP/STD/STR + UML + PA）
+├── AGENTS.md        # 主会话 Agent 运行章程（幕僚长/COO 行为约定）
 └── cordis.patch.yml # DSH bundle 装配
 ```
 
 ## 快速开始
 
-前置：Node ≥ 24.9；可访问的 PostgreSQL 17（本项目实测 `localhost:5432`），目标库已由 DBA 安装 `vector` 扩展（0.8.0）。
+前置：Node ≥ 24.9；可访问的 PostgreSQL 17（本地或私有部署），目标库已由 DBA 安装 `vector` 扩展（0.8.0）。
 
 ```bash
 npm install
@@ -154,6 +155,14 @@ npm run docs:check# check-docs：frontmatter/文末两节/编号
 
 | 文档 | 用途 |
 | :--- | :--- |
+| [AGENTS.md](AGENTS.md) | 主会话 Agent 运行章程：五个主动、汇报节奏、裁决卡规范 |
+| [OPC-SDD-002 主会话 Agent 设定](docs/OPC-SDD-002-主会话Agent设定与运行设计.md) | Agent 人格、工作循环、验收 AC-AGT-01..10 |
+| [OPC-SDP-001 软件开发计划](docs/OPC-SDP-001-软件开发计划.md) | 目标、WBS、G0–G6、里程碑、变更控制 |
+| [OPC-SCMP-001 配置管理计划](docs/OPC-SCMP-001-配置管理计划.md) | 配置项、基线、变更、备份、审计 |
+| [OPC-SQAP-001 质量保证计划](docs/OPC-SQAP-001-软件质量保证计划.md) | 质量目标、评审、度量、不符合项 |
+| [OPC-RMP-001 风险管理计划](docs/OPC-RMP-001-风险管理计划.md) | 风险登记、评分、应对与兜底 |
+| [OPC-RTM-001 需求追踪矩阵](docs/OPC-RTM-001-需求追踪矩阵.md) | 需求→用例→接口→代码→测试追踪 |
+| [OPC-SVD-001 版本说明](docs/OPC-SVD-001-软件版本说明.md) | v0.1.0 内容、安装、兼容与已知限制 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录（Keep a Changelog / SemVer） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 分支、提交、spec→docs→code→tests 流程与 PR 检查 |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 社区行为准则 |
@@ -164,8 +173,8 @@ npm run docs:check# check-docs：frontmatter/文末两节/编号
 
 当前版本：`0.1.0`。发布流程见 [docs/releases/README.md](docs/releases/README.md)；发布说明见 [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md)；发布与 CI 证据见 [PA-OPC-016](docs/过程资产/PA-OPC-016-v0.1.0发布证据.md)。
 
-## Git
+## 版本库
 
 - 仓库：Git `main` 分支，发布标签 `v0.1.0`。
-- 提交信息格式：`[模块] 动词: 说明 (需求/缺陷ID)`；门禁通过打 `v<semver>`
-- `.gitignore` 已排除 `node_modules`、`.env*`、`archive`、`coverage`、`*.log`
+- 提交信息格式：`[模块] 动词: 说明 (需求/缺陷ID)`；发布时打 `v<semver>` 标签。
+- `.gitignore` 已排除 `node_modules`、`.env*`、`archive`、`coverage`、`*.log`、`tags/`。
