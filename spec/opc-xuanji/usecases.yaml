@@ -1,0 +1,344 @@
+package: OPC-玄机 · 一人公司中枢
+baselineTag: v2.11-20261106
+
+usecases:
+  - id: UC-001
+    title: 视图级授权查询共享数据
+    requirement: REQ-VIEW-001
+    actors:
+      - 员工插件
+      - 中枢
+    goal: 员工按注册时声明的视图查询聚合数据，未授权视图一律拒绝并写审计
+    entities:
+      - ViewGrant
+      - EmployeePlugin
+      - AuditLog
+    api:
+      - queryView
+    tests:
+      - TC-VIEW-001
+    preconditions: 员工插件已注册且 required_views 覆盖目标视图
+    steps:
+      - 员工以 pluginId + viewId 发起查询
+      - 中枢从 ref.view_grant 校验授权
+      - 授权通过则执行参数化视图 SQL 并只返回聚合与索引字段
+      - 无论通过或拒绝，写 opc_hub.audit.record 一条视图访问记录
+
+  - id: UC-002
+    title: 一次性令牌签发与消费
+    requirement: REQ-TOKEN-001
+    actors:
+      - 中枢
+      - 员工插件
+      - 老板
+    goal: 跨域读取敏感字段时，仅凭单次令牌访问单字段范围，日志不落敏感值
+    entities:
+      - Token
+      - CustomerSensitive
+      - AuditLog
+    api:
+      - issueToken
+      - consumeToken
+    tests:
+      - TC-TOKEN-001
+      - TC-TOKEN-002
+    preconditions: 发起任务属于中枢已派工任务，字段范围已声明
+    steps:
+      - 中枢签发令牌，绑定 task_id / plugin_id / field_scope / expires_at 不超过 5 分钟
+      - 员工携令牌消费一次
+      - 消费成功返回授权字段值；重复消费或过期返回 409 并写审计
+      - 审计只记录 token_id、task_id、字段名与结果，不记录字段值
+
+  - id: UC-003
+    title: 冲突冻结与老板裁决
+    requirement: REQ-CONFLICT-001
+    actors:
+      - 员工插件
+      - 老板
+      - 中枢
+    goal: 两个员工对同一业务事实给出不一致写入时冻结该业务事件，报表以总额含冻结加脚注呈现
+    entities:
+      - ConflictQueue
+      - Ledger
+      - Decision
+      - AuditLog
+    api:
+      - openConflict
+      - resolveConflict
+    tests:
+      - TC-CONFLICT-001
+      - TC-CONFLICT-002
+    preconditions: 冻结单元存在（台账/合同/库存批次/客户关系期）
+    steps:
+      - 中枢登记冲突并把冻结单元冲突标记置为 true
+      - 汇总查询返回 total_including_frozen 与 frozen_items
+      - 老板在裁决卡选择 A/B/manual/later
+      - 裁决后清除冻结标记，写 arbitration_log 与受影响报表清单
+
+  - id: UC-004
+    title: 流程注册与准入守卫
+    requirement: REQ-WF-001
+    actors:
+      - 中枢
+      - Registry
+    goal: 只有通过六项守卫的流程版本才能注册，风险等级由硬规则计算且 meta 不得自述
+    entities:
+      - WorkflowRegistry
+      - EmployeePlugin
+      - AuditLog
+    api:
+      - registerWorkflow
+    tests:
+      - TC-WF-001
+      - TC-WF-002
+    preconditions: 流程脚本与 meta 已提交，测试报告哈希已产出
+    steps:
+      - 提交 workflowId / version / ownerPlugin / meta / code / testReportHash
+      - Registry 校验 meta schema、视图授权、幂等完整性、工具合法性、跨员工隔离、代码哈希
+      - 守卫通过则按硬规则计算 risk_level 并写入 ref.workflow_registry
+      - 守卫失败返回 422 与逐项失败原因，并写审计知会老板
+
+  - id: UC-005
+    title: 流程实例与幂等节点
+    requirement: REQ-WF-002
+    actors:
+      - 中枢
+      - 员工插件
+    goal: 写节点以 instance_id + node_id 幂等键执行，中断恢复不重复入库
+    entities:
+      - WorkflowInstance
+      - WorkflowNodeRun
+      - Ledger
+    api:
+      - startInstance
+      - completeNode
+    tests:
+      - TC-WF-003
+      - TC-WF-004
+    preconditions: 流程已注册且 required_views 在授权表内
+    steps:
+      - 以已注册版本启动实例，写生命周期事件
+      - 执行写节点前查询幂等记录，已执行则跳过并返回既有结果
+      - 未执行则写入并记录幂等键、节点状态与输出
+      - 同键不同入参返回 409 并写审计
+
+  - id: UC-006
+    title: Verifier 评判与低置信升级
+    requirement: REQ-WF-003
+    actors:
+      - Verifier
+      - 老板
+      - 中枢
+    goal: 高影响节点三次采样投票，置信度低于阈值升级人工，不以低分差自动通过
+    entities:
+      - VerifierVerdict
+      - WorkflowInstance
+      - AuditLog
+    api:
+      - recordVerdict
+    tests:
+      - TC-WF-005
+    preconditions: 实例处于运行中且节点属于 key_nodes
+    steps:
+      - 中枢在节点 checkpoint 提交 evidence
+      - Verifier 按 sampling 采样并给出每次 verdict 与最终置信度
+      - 置信度低于阈值且节点高影响则标记 escalated 并生成裁决卡
+      - 评判结果与 evidence_hash 写审计，evidence_hash 命中只省调用不改结论
+
+  - id: UC-007
+    title: 审计写入与哈希链导出
+    requirement: REQ-AUDIT-001
+    actors:
+      - 中枢
+      - 审计归档任务
+    goal: 审计只经中枢统一写入，导出 JSONL + SHA-256，链头持久化且可校验
+    entities:
+      - AuditLog
+      - AuditChainHead
+      - AuditExport
+    api:
+      - listAudits
+      - exportAudits
+    tests:
+      - TC-AUDIT-001
+      - TC-AUDIT-002
+    preconditions: 数据库账号对 audit_log 只有 INSERT 权限
+    steps:
+      - 派工、工具调用、视图访问、令牌、裁决、流程事件统一调用 audit.record
+      - 每日 02:00 增量导出 JSONL，计算全文 SHA-256 与 prev_hash
+      - 更新 audit_chain_head，导出目录只追加不覆盖
+      - 恢复时先校验链头与最后导出文件一致性，不一致拒绝续链
+
+  - id: UC-008
+    title: 定时自动化任务的配置与执行
+    requirement: REQ-TASK-001
+    actors:
+      - 老板
+      - 调度器
+    goal: 按公司运营需要增删改定期任务，任务以 cron + 时区 + 参数配置驱动，执行有幂等与审计
+    entities:
+      - TaskSchedule
+      - TaskRun
+      - Notification
+      - AuditLog
+    api:
+      - listTasks
+      - upsertTask
+      - runTask
+    tests:
+      - TC-TASK-001
+      - TC-TASK-002
+      - TC-TASK-003
+    preconditions: 调度器已启动，任务类型已注册
+    steps:
+      - 老板提交任务 cron、时区、enabled 与参数
+      - 调度器校验 cron 表达式与任务类型并保存
+      - 到点触发时按 scheduled_at 生成幂等键，重复触发跳过
+      - 执行结果写 task_run 与审计，异常按重试策略并写告警通知
+
+  - id: UC-009
+    title: 每日晨报聚合产出
+    requirement: REQ-TASK-002
+    actors:
+      - 调度器
+      - 老板
+    goal: 工作日 08:30 聚合当日待办、到期、冲突与预警，写入 daily_report 并可查询
+    entities:
+      - DailyReport
+      - TaskRun
+      - Notification
+      - TaxCalendar
+      - Contract
+      - ConflictQueue
+    api:
+      - getDailyReport
+      - runTask
+    tests:
+      - TC-TASK-004
+    preconditions: 财税与法务基础数据已录入
+    steps:
+      - 08:30 触发 daily_report 任务
+      - 汇总税务申报 ≤7 天、合同到期 ≤30 天、待裁决冲突、低置信升级、观察期异常
+      - 按紧急度分级：即时项单独推送，聚合项入晨报
+      - 写入 stat.daily_report 并通过通知记录投递
+
+  - id: UC-010
+    title: 上传/输入归置到九域
+    requirement: REQ-WEB-003
+    actors:
+      - 老板
+      - opc_web
+    goal: 会话或上传内容经分类、抽取与决策进入归置卡或收件箱，高风险域一律人工确认
+    entities:
+      - WebIngestItem
+      - AuditLog
+    api:
+      - ingestText
+      - listIngestInbox
+      - confirmIngest
+    tests:
+      - TC-WEB-001
+    preconditions: opc_web 已装配，归置表可写
+    steps:
+      - 老板在中间会话上传/粘贴文本
+      - opc_web 计算 content_hash 与幂等键，按规则分类并抽取字段
+      - 置信度与风险等级决定 auto_draft / confirm / inbox
+      - 老板确认或忽略后写审计；高风险域不在确认前写业务表
+
+  - id: UC-011
+    title: 会话与记忆授权读取
+    requirement: REQ-WEB-002
+    actors:
+      - 老板
+      - opc_web
+    goal: 插件仅在老板授权范围内读取会话与记忆，未授权直接拒绝，来源可追溯
+    entities:
+      - WebSessionGrant
+      - WebSessionMessage
+      - WebMemoryCard
+      - WebMemoryProposal
+      - AuditLog
+    api:
+      - grantSession
+      - revokeSession
+      - getSessionContext
+      - searchMemory
+      - proposeMemory
+      - confirmMemoryProposal
+    tests:
+      - TC-WEB-002
+    preconditions: 会话消息已存在；老板在场可授权
+    steps:
+      - 老板授予 session_id + 用途 + 有效期
+      - 插件读取最近 20 条；超出范围或已撤回返回 403
+      - 记忆检索按 scope 返回来源与置信度；敏感记忆只返回标记
+      - 记忆写入先 propose，老板确认后落库
+
+  - id: UC-012
+    title: 驾驶舱快照聚合
+    requirement: REQ-WEB-004
+    actors:
+      - 老板
+      - opc_web
+    goal: 右栏只读聚合财务/项目/客户/库存/流程/任务/雷达指标，带统一 as_of、冻结脚注与陈旧提示
+    entities:
+      - DashboardSnapshot
+      - BriefItem
+      - ConflictQueue
+      - WorkflowInstance
+      - TaskRun
+      - AuditLog
+    api:
+      - getDashboard
+    tests:
+      - TC-WEB-003
+    preconditions: 业务表已有数据或允许空数据
+    steps:
+      - 右栏请求指定 range 的驾驶舱
+      - 聚合服务在 REPEATABLE READ 只读事务内取数
+      - 生成快照并写 dashboard_snapshot；返回 as_of、stale、warnings 与冻结脚注
+      - 聚合失败保留上次快照并标注陈旧，不填充 0
+
+  - id: UC-013
+    title: 插件雷达与关键词雷达
+    requirement: REQ-WEB-005
+    actors:
+      - 老板
+      - 调度器
+    goal: 定期检索适用 DSH 插件与公司发展关键词，只推荐不自动安装，附来源与风险
+    entities:
+      - RadarItem
+      - TaskSchedule
+      - TaskRun
+      - AuditLog
+    api:
+      - listRadar
+      - runTask
+    tests:
+      - TC-WEB-004
+    preconditions: 检索源已配置（MCP/适配器）；未配置时任务标注“本次未检索”
+    steps:
+      - 调度器按 cron 触发 plugin_radar_scan / keyword_radar_scan
+      - 候选经硬过滤与评分，合格项写 radar_item
+      - 推荐卡附来源、许可证、权限、风险；不提供自动安装入口
+      - 检索失败标注“未检索”，不生成虚构条目
+
+  - id: UC-014
+    title: 插件栏入口与右栏清单
+    requirement: REQ-WEB-001
+    actors:
+      - 老板
+      - opc_web
+    goal: 安装后在 DSH 左栏显示“OPC公司管理”，点击打开右栏驾驶舱/九域/简报/任务/设置
+    entities:
+      - WebIngestItem
+      - DashboardSnapshot
+    api:
+      - getWebManifest
+    tests:
+      - TC-WEB-005
+    preconditions: DSH Web 提供插件栏与右侧面板插槽，或降级为独立页面
+    steps:
+      - 插件注册左栏入口与角标
+      - 右栏按 manifest 渲染五个页签
+      - 宿主不支持插槽时明确提示降级，不伪造已嵌入

@@ -1,0 +1,7 @@
+# Default owner for the repository
+* @mindtheory
+
+# Specifications and release artifacts
+/spec/ @mindtheory
+/docs/releases/ @mindtheory
+/CHANGELOG.md @mindtheory

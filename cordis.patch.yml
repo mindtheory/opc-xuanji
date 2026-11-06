@@ -1,0 +1,11 @@
+# OPC-玄机 · 一人公司中枢 —— DSH bundle patch
+# 名称由 profile 的 node_modules 解析（与 dsh-novel-writer 同一装配方式）。
+- insert:
+    - id: opc-xuanji
+      name: 'opc-xuanji'
+      config:
+        # 留空则使用环境变量 OPC_PG_DSN / OPC_ARCHIVE_DIR；生产必须显式注入连接串
+        dsn: ''
+        archiveDir: ''
+        timezone: 'Asia/Shanghai'
+        enableScheduler: true

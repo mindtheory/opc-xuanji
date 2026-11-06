@@ -1,0 +1,233 @@
+#!/usr/bin/env node
+/**
+ * gen-spec.mjs —— 由内嵌的规格数据生成 spec/opc-xuanji/entities.yaml（块式 YAML）。
+ *
+ * 为什么生成而不是手写：CD-PTC 的 check-spec.mjs 只接受块式 YAML（不支持流式映射），
+ * 而 45 个实体的字段表手写极易缩进/逗号出错。规格的唯一事实来源是本文件里的 ENTITIES 数据，
+ * 生成物 entities.yaml 必须与 DDL 同提交；改动实体时先改这里再 `node scripts/gen-spec.mjs`。
+ *
+ * 用法：node scripts/gen-spec.mjs [--check]   # --check 只校验生成物是否与数据一致（CI 用）
+ */
+import { readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SPEC = join(HERE, "..", "spec", "opc-xuanji", "entities.yaml");
+
+/** [name, type, nullable=false, unique=false] */
+const S = (name, type, nullable = true) => ({ name, type, nullable });
+const attr = (name, type) => [name, type];
+
+const ENTITIES = [
+  // ---------------- platform ----------------
+  ["CompanyProfile", "biz.company_profile", "platform", "entity",
+    [S("name", "varchar(128)", false), S("entity_type", "varchar(32)", false), S("tax_types", "jsonb"), S("bank_accounts", "jsonb"), S("owner_preferences", "jsonb"), S("updated_at", "timestamptz")],
+    [["employees", "EmployeePlugin", "1:N"]]],
+  ["ViewGrant", "ref.view_grant", "platform", "code-table",
+    [S("view_id", "varchar(64)", false), S("plugin_id", "varchar(64)", false), S("granted_by", "varchar(64)"), S("granted_at", "timestamptz"), S("status", "varchar(16)", false)], []],
+  ["Token", "ref.token", "platform", "entity",
+    [S("token_code", "varchar(64)", false), S("task_id", "varchar(64)", false), S("plugin_id", "varchar(64)", false), S("scope", "jsonb", false), S("issued_at", "timestamptz", false), S("expires_at", "timestamptz", false), S("used", "boolean", false)], []],
+  ["EmployeePlugin", "ref.employee_plugin", "platform", "code-table",
+    [S("plugin_id", "varchar(64)", false), S("display_name", "varchar(64)", false), S("scope", "varchar(16)", false), S("required_views", "jsonb"), S("tools", "jsonb"), S("write_targets", "jsonb"), S("enabled", "boolean", false), S("version", "varchar(16)", false), S("manifest", "jsonb"), S("installed_at", "timestamptz"), S("disabled_reason", "text"), S("package_code", "varchar(64)")], []],
+  ["ConflictQueue", "biz.conflict_queue", "platform", "entity",
+    [S("conflict_type", "varchar(32)", false), S("frozen_unit_type", "varchar(32)", false), S("frozen_unit_id", "bigint", false), S("parties", "jsonb", false), S("diff_fields", "jsonb"), S("detected_at", "timestamptz", false), S("status", "varchar(16)", false), S("arbitration_id", "bigint")],
+    [["arbitration", "Decision", "N:1"]]],
+  ["Embedding", "vec.embedding", "platform", "entity",
+    [S("source_type", "varchar(32)", false), S("source_id", "bigint", false), S("content_hash", "varchar(64)", false), S("embedding", "vector(1024)", false), S("model_id", "varchar(64)", false), S("dimension", "integer", false), S("created_at", "timestamptz")],
+    [], [["embedding", 1024, "hnsw"]]],
+  // ---------------- finance ----------------
+  ["Ledger", "biz.ledger", "finance", "entity",
+    [S("entry_date", "date", false), S("amount", "numeric(18,2)", false), S("direction", "varchar(8)", false), S("category", "varchar(32)", false), S("entity", "varchar(16)", false), S("invoice_id", "varchar(64)"), S("project_id", "bigint"), S("note", "text"), S("conflict_frozen", "boolean", false)],
+    [["project", "Project", "N:1"]]],
+  ["TaxCalendar", "biz.tax_calendar", "finance", "entity",
+    [S("tax_type", "varchar(32)", false), S("period", "varchar(16)", false), S("deadline", "date", false), S("status", "varchar(16)", false), S("source_version", "varchar(32)")], []],
+  ["ArAp", "biz.ar_ap", "finance", "entity",
+    [S("counterparty", "varchar(128)", false), S("amount", "numeric(18,2)", false), S("due", "date"), S("status", "varchar(16)", false), S("contract_id", "bigint"), S("project_id", "bigint")], []],
+  // ---------------- legal ----------------
+  ["Contract", "biz.contract", "legal", "entity",
+    [S("counterparty", "varchar(128)", false), S("amount", "numeric(18,2)"), S("start_date", "date"), S("end_date", "date"), S("status", "varchar(16)", false), S("risk_flags", "jsonb"), S("conflict_frozen", "boolean", false)], []],
+  ["RiskRule", "ref.risk_rule", "legal", "code-table",
+    [S("rule_id", "varchar(32)", false), S("trigger", "text", false), S("suggestion", "text"), S("source", "varchar(128)"), S("confirmed_by", "varchar(64)"), S("version", "varchar(16)")], []],
+  // ---------------- admin ----------------
+  ["Event", "biz.event", "admin", "entity",
+    [S("start_at", "timestamptz", false), S("participants", "jsonb"), S("related_customer", "bigint"), S("related_project", "bigint"), S("source", "varchar(16)")], []],
+  ["ActionItem", "biz.action_item", "admin", "entity",
+    [S("meeting_id", "bigint"), S("owner", "varchar(64)", false), S("due", "date"), S("status", "varchar(16)", false)], []],
+  // ---------------- strategy ----------------
+  ["Objective", "biz.objective", "strategy", "entity",
+    [S("name", "varchar(128)", false), S("key_results", "jsonb"), S("period", "varchar(16)")], []],
+  ["Decision", "biz.decision", "strategy", "entity",
+    [S("decided_on", "date", false), S("context", "text"), S("choices", "jsonb"), S("chosen", "text"), S("rationale", "text")], []],
+  // ---------------- project ----------------
+  ["Project", "biz.project", "project", "entity",
+    [S("name", "varchar(128)", false), S("project_type", "varchar(32)"), S("stage", "varchar(32)", false), S("progress", "integer", false), S("blockers", "jsonb"), S("milestones", "jsonb"), S("cost_actual", "numeric(18,2)")], []],
+  // ---------------- crm ----------------
+  ["Customer", "biz.customer", "crm", "entity",
+    [S("name", "varchar(128)", false), S("decision_makers", "jsonb"), S("preferences", "jsonb"), S("payment_habit", "varchar(32)"), S("price_floor", "numeric(18,2)"), S("sensitivity_level", "varchar(16)")],
+    [["commitments", "Commitment", "1:N"]]],
+  ["CustomerSensitive", "biz.customer_sensitive", "crm", "entity",
+    [S("customer_id", "bigint", false), S("field", "varchar(64)", false), S("value", "text"), S("level", "varchar(16)", false)], []],
+  ["Commitment", "biz.commitment", "crm", "entity",
+    [S("customer_id", "bigint", false), S("content", "text", false), S("due", "date"), S("source", "varchar(16)", false), S("status", "varchar(16)", false)], []],
+  ["Quote", "biz.quote", "crm", "entity",
+    [S("customer_id", "bigint", false), S("amount", "numeric(18,2)", false), S("quoted_on", "date"), S("rationale", "text"), S("project_id", "bigint")], []],
+  // ---------------- inventory ----------------
+  ["Sku", "biz.sku", "inventory", "entity",
+    [S("name", "varchar(128)", false), S("aliases", "jsonb"), S("unit", "varchar(16)", false), S("safety_stock", "numeric(18,2)")],
+    [["transactions", "StockTxn", "1:N"]]],
+  ["StockTxn", "biz.stock_txn", "inventory", "entity",
+    [S("sku_id", "bigint", false), S("qty", "numeric(18,2)", false), S("unit_price", "numeric(18,4)"), S("txn_type", "varchar(8)", false), S("invoice_status", "varchar(16)"), S("project_id", "bigint"), S("supplier_id", "bigint"), S("reversal_of", "bigint"), S("confidence", "numeric(3,2)"), S("conflict_frozen", "boolean", false)], []],
+  // ---------------- vehicle ----------------
+  ["VehicleLog", "biz.vehicle_log", "vehicle", "entity",
+    [S("plate", "varchar(16)", false), S("trip_date", "date", false), S("km", "numeric(10,2)", false), S("purpose", "varchar(128)"), S("driver", "varchar(64)"), S("subsidy", "numeric(18,2)"), S("evidence_complete", "boolean", false), S("conflict_frozen", "boolean", false)], []],
+  ["SubsidyStandard", "biz.subsidy_standard", "vehicle", "entity",
+    [S("region", "varchar(32)", false), S("year", "integer", false), S("rule", "jsonb", false), S("official_source_type", "varchar(32)", false), S("source_url", "text"), S("doc_no", "varchar(64)"), S("published_at", "date"), S("collected_at", "timestamptz"), S("confirmed_by", "varchar(64)"), S("version", "integer", false), S("status", "varchar(16)", false)], []],
+  // ---------------- intel ----------------
+  ["Lead", "biz.lead", "intel", "entity",
+    [S("source", "varchar(64)"), S("name", "varchar(128)", false), S("score", "numeric(5,2)"), S("status", "varchar(16)", false)], []],
+  ["DdReport", "biz.dd_report", "intel", "entity",
+    [S("target", "varchar(128)", false), S("dimensions", "jsonb"), S("conclusion", "text"), S("data_sources", "jsonb"), S("coverage_disclaimer", "text")], []],
+  // ---------------- workflow ----------------
+  ["WorkflowRegistry", "ref.workflow_registry", "workflow", "entity",
+    [S("workflow_id", "varchar(64)", false), S("version", "varchar(16)", false), S("owner_plugin", "varchar(64)", false), S("scope", "varchar(16)", false), S("meta", "jsonb", false), S("code_hash", "varchar(64)", false), S("risk_level", "varchar(8)", false), S("status", "varchar(16)", false), S("registered_at", "timestamptz", false)],
+    [["instances", "WorkflowInstance", "1:N"]]],
+  ["WorkflowInstance", "audit.workflow_instance", "workflow", "entity",
+    [S("instance_uuid", "uuid", false), S("workflow_id", "varchar(64)", false), S("version", "varchar(16)", false), S("status", "varchar(16)", false), S("deadline_impact", "boolean", false), S("started_at", "timestamptz", false), S("ended_at", "timestamptz")], []],
+  ["WorkflowNodeRun", "audit.workflow_node_run", "workflow", "entity",
+    [S("instance_id", "bigint", false), S("node_id", "varchar(64)", false), S("idempotency_key", "varchar(128)", false), S("status", "varchar(16)", false), S("output", "jsonb"), S("started_at", "timestamptz"), S("ended_at", "timestamptz")], []],
+  ["VerifierVerdict", "audit.verifier_verdict", "workflow", "entity",
+    [S("instance_id", "bigint"), S("node_id", "varchar(64)"), S("verdict", "varchar(16)", false), S("sampling", "integer", false), S("confidence", "numeric(3,2)"), S("evidence_hash", "varchar(64)"), S("escalated", "boolean", false), S("created_at", "timestamptz")], []],
+  // ---------------- audit ----------------
+  ["AuditLog", "audit.audit_log", "audit", "entity",
+    [S("created_at", "timestamptz", false), S("workflow_instance_id", "bigint"), S("actor", "varchar(64)", false), S("action", "varchar(64)", false), S("object_type", "varchar(64)"), S("object_id", "varchar(64)"), S("result", "varchar(16)", false), S("payload", "jsonb"), S("schema_version", "varchar(16)", false), S("test_mode", "boolean", false), S("prev_hash", "varchar(64)"), S("hash", "varchar(64)", false)], []],
+  ["AuditChainHead", "audit.audit_chain_head", "audit", "entity",
+    [S("last_hash", "varchar(64)"), S("last_export_id", "bigint"), S("updated_at", "timestamptz")], []],
+  ["AuditExport", "audit.audit_export", "audit", "entity",
+    [S("file_path", "text", false), S("sha256", "varchar(64)", false), S("prev_export_hash", "varchar(64)"), S("row_count", "integer", false), S("last_audit_id", "bigint"), S("exported_at", "timestamptz", false)], []],
+  // ---------------- scheduler ----------------
+  ["TaskSchedule", "stat.task_schedule", "scheduler", "entity",
+    [S("task_id", "varchar(64)", false), S("cron", "varchar(64)", false), S("timezone", "varchar(64)", false), S("enabled", "boolean", false), S("config", "jsonb"), S("last_run_at", "timestamptz"), S("next_run_at", "timestamptz")], []],
+  ["TaskRun", "stat.task_run", "scheduler", "entity",
+    [S("task_id", "varchar(64)", false), S("scheduled_at", "timestamptz", false), S("started_at", "timestamptz"), S("ended_at", "timestamptz"), S("status", "varchar(16)", false), S("attempt", "integer", false), S("error", "text"), S("result", "jsonb")], []],
+  ["Notification", "stat.notification", "scheduler", "entity",
+    [S("kind", "varchar(32)", false), S("level", "varchar(16)", false), S("payload", "jsonb"), S("status", "varchar(16)", false), S("created_at", "timestamptz", false)], []],
+  ["DailyReport", "stat.daily_report", "scheduler", "entity",
+    [S("report_date", "date", false), S("content", "jsonb", false), S("sent_at", "timestamptz")], []],
+  // ---------------- wbs / publicity / employees（v2.11） ----------------
+  ["WbsNode", "biz.wbs_node", "wbs", "entity",
+    [S("project_id", "bigint", false), S("parent_id", "bigint"), S("node_code", "varchar(32)", false), S("name", "varchar(128)", false), S("deliverable", "text"), S("owner", "varchar(64)"), S("estimate_hours", "numeric(10,2)"), S("start_date", "date"), S("end_date", "date"), S("status", "varchar(16)", false), S("progress", "integer", false), S("dependencies", "jsonb"), S("acceptance_criteria", "text"), S("baseline_version", "varchar(16)"), S("conflict_frozen", "boolean", false)], []],
+  ["WbsBaseline", "biz.wbs_baseline", "wbs", "entity",
+    [S("project_id", "bigint", false), S("version", "varchar(16)", false), S("snapshot", "jsonb", false), S("approved_by", "varchar(64)"), S("approved_at", "timestamptz"), S("status", "varchar(16)", false)], []],
+  ["WbsChange", "biz.wbs_change", "wbs", "entity",
+    [S("wbs_id", "bigint", false), S("change_type", "varchar(16)", false), S("reason", "text"), S("impact", "text"), S("requested_by", "varchar(64)"), S("approved_by", "varchar(64)"), S("status", "varchar(16)", false), S("decided_at", "timestamptz")], []],
+  ["PublicationPlan", "biz.publication_plan", "publicity", "entity",
+    [S("period", "varchar(16)", false), S("theme", "varchar(128)", false), S("channel_mix", "jsonb"), S("owner", "varchar(64)"), S("status", "varchar(16)", false)], []],
+  ["Publication", "biz.publication", "publicity", "entity",
+    [S("plan_id", "bigint"), S("channel", "varchar(32)", false), S("title", "varchar(256)", false), S("content", "text", false), S("audience", "varchar(128)"), S("status", "varchar(16)", false), S("risk_level", "varchar(8)", false), S("scheduled_at", "timestamptz"), S("published_at", "timestamptz"), S("external_url", "text"), S("source_refs", "jsonb")], []],
+  ["PublicationApproval", "biz.publication_approval", "publicity", "entity",
+    [S("publication_id", "bigint", false), S("reviewer", "varchar(64)", false), S("decision", "varchar(16)", false), S("comment", "text"), S("decided_at", "timestamptz")], []],
+  ["ChannelAccount", "biz.channel_account", "publicity", "entity",
+    [S("channel", "varchar(32)", false), S("account_name", "varchar(128)", false), S("owner", "varchar(64)"), S("status", "varchar(16)", false), S("last_sync_at", "timestamptz")], []],
+  ["EmployeePackage", "ref.employee_package", "employees", "entity",
+    [S("package_code", "varchar(64)", false), S("plugin_id", "varchar(64)", false), S("version", "varchar(16)", false), S("manifest", "jsonb", false), S("checksum", "varchar(64)", false), S("signature", "varchar(128)"), S("size_bytes", "integer", false), S("status", "varchar(16)", false), S("created_by", "varchar(64)"), S("source", "varchar(32)"), S("created_at", "timestamptz")], []],
+  ["EmployeeImportJob", "ref.employee_import_job", "employees", "entity",
+    [S("package_code", "varchar(64)", false), S("dry_run", "boolean", false), S("status", "varchar(16)", false), S("report", "jsonb"), S("created_at", "timestamptz"), S("decided_at", "timestamptz"), S("decided_by", "varchar(64)")], []],
+  // ---------------- web（v2.10 网页表现层） ----------------
+  ["WebIngestItem", "stat.web_ingest_item", "web", "entity",
+    [S("source_type", "varchar(16)", false), S("source_ref", "varchar(128)", false), S("raw_text", "text", false), S("content_hash", "varchar(64)", false), S("extracted", "jsonb"), S("domain", "varchar(16)", false), S("confidence", "numeric(4,3)", false), S("status", "varchar(16)", false), S("requires_human", "boolean", false), S("idempotency_key", "varchar(128)", false), S("created_at", "timestamptz"), S("confirmed_by", "varchar(64)"), S("confirmed_at", "timestamptz")], []],
+  ["WebSessionGrant", "ref.web_session_grant", "web", "entity",
+    [S("session_id", "varchar(128)", false), S("message_scope", "varchar(32)", false), S("purpose", "varchar(128)", false), S("granted_by", "varchar(64)", false), S("granted_at", "timestamptz"), S("expires_at", "timestamptz", false), S("revoked_at", "timestamptz"), S("status", "varchar(16)", false)], []],
+  ["WebSessionMessage", "stat.web_session_message", "web", "entity",
+    [S("session_id", "varchar(128)", false), S("message_id", "varchar(128)", false), S("role", "varchar(16)", false), S("content", "text", false), S("created_at", "timestamptz")], []],
+  ["WebMemoryCard", "stat.web_memory_card", "web", "entity",
+    [S("scope", "varchar(32)", false), S("title", "varchar(128)", false), S("content", "text", false), S("source_refs", "jsonb", false), S("confidence", "numeric(3,2)", false), S("content_hash", "varchar(64)", false), S("sensitive", "boolean", false), S("created_at", "timestamptz")], []],
+  ["WebMemoryProposal", "stat.web_memory_proposal", "web", "entity",
+    [S("memory_type", "varchar(32)", false), S("title", "varchar(128)", false), S("content", "text", false), S("source_refs", "jsonb", false), S("confidence", "numeric(3,2)", false), S("status", "varchar(16)", false), S("created_at", "timestamptz"), S("confirmed_at", "timestamptz")], []],
+  ["DashboardSnapshot", "stat.dashboard_snapshot", "web", "entity",
+    [S("range_key", "varchar(16)", false), S("as_of", "timestamptz", false), S("stale", "boolean", false), S("payload", "jsonb", false), S("warnings", "jsonb", false), S("generated_at", "timestamptz")], []],
+  ["BriefItem", "stat.brief_item", "web", "entity",
+    [S("brief_date", "date", false), S("brief_type", "varchar(16)", false), S("title", "varchar(128)", false), S("summary", "text", false), S("source_refs", "jsonb", false), S("priority", "varchar(8)", false), S("status", "varchar(16)", false), S("created_at", "timestamptz")], []],
+  ["RadarItem", "stat.radar_item", "web", "entity",
+    [S("radar_type", "varchar(16)", false), S("title", "varchar(256)", false), S("url", "text", false), S("published_at", "date"), S("score", "numeric(5,2)", false), S("reason", "text", false), S("risks", "jsonb", false), S("dedupe_key", "varchar(256)", false), S("status", "varchar(16)", false), S("created_at", "timestamptz")], []],
+];
+
+/* ---------- 极简块式 YAML 生成器（只覆盖本规格用到的形状） ---------- */
+const NEEDS_QUOTE = /^(true|false|null|~|-?\d+(\.\d+)?)$|[:#{}[\],&*!|>'"%@`]/;
+
+function scalar(value) {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "boolean" || typeof value === "number") return String(value);
+  const text = String(value);
+  if (NEEDS_QUOTE.test(text) || text.trim() !== text || text === "") return JSON.stringify(text);
+  return text;
+}
+
+function emit(value, indent) {
+  const pad = " ".repeat(indent);
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (item !== null && typeof item === "object" && !Array.isArray(item)) {
+        const lines = emit(item, indent + 2);
+        return `${pad}- ${lines.trimStart()}`;
+      }
+      return `${pad}- ${scalar(item)}`;
+    }).join("\n");
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).map(([key, child]) => {
+      if (Array.isArray(child)) {
+        if (child.length === 0) return `${pad}${key}: []`;
+        return `${pad}${key}:\n${emit(child, indent + 2)}`;
+      }
+      if (child !== null && typeof child === "object") {
+        return `${pad}${key}:\n${emit(child, indent + 2)}`;
+      }
+      return `${pad}${key}: ${scalar(child)}`;
+    }).join("\n");
+  }
+  return `${pad}${scalar(value)}`;
+}
+
+function build() {
+  const doc = {
+    package: "OPC-玄机 · 一人公司中枢",
+    baselineTag: "v2.11-20261106",
+    schemaMapping: [],
+    entities: ENTITIES.map(([name, table, module, kind, attributes, relations, vector]) => {
+      const entity = {
+        name,
+        table,
+        module,
+        kind,
+        primaryKey: { strategy: "identity", type: "bigint", column: "id" },
+        attributes: attributes.map((a) => {
+          const row = { name: a.name, type: a.type };
+          if (a.nullable !== undefined) row.nullable = a.nullable;
+          return row;
+        }),
+      };
+      if (relations && relations.length > 0) {
+        entity.relations = relations.map(([relName, target, cardinality]) => ({ name: relName, target, cardinality }));
+      }
+      if (vector && vector.length > 0) {
+        entity.vector = vector.map(([vecName, dimension, index]) => ({ name: vecName, dimension, index }));
+      }
+      return entity;
+    }),
+  };
+  return `# 由 scripts/gen-spec.mjs 生成，勿手改；改实体请改生成器后重跑。\n${emit(doc, 0)}\n`;
+}
+
+const output = build();
+if (process.argv.includes("--check")) {
+  const current = await readFile(SPEC, "utf8").catch(() => "");
+  if (current !== output) {
+    console.error("entities.yaml 与生成器数据不一致，请重跑 node scripts/gen-spec.mjs");
+    process.exit(1);
+  }
+  console.log("entities.yaml 与生成器一致");
+} else {
+  await writeFile(SPEC, output, "utf8");
+  console.log(`wrote ${SPEC} (${output.split("\n").length - 1} lines, ${ENTITIES.length} entities)`);
+}

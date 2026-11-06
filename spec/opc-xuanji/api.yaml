@@ -1,0 +1,1456 @@
+openapi: 3.1.0
+info:
+  title: OPC-玄机 · 一人公司中枢 API
+  version: 0.2.0
+  description: 中枢对外契约：视图授权查询、一次性令牌、冲突冻结与裁决、Workflow Registry、实例幂等节点、Verifier 评判、审计导出、定时自动化任务、Web 表现层、员工插件目录与员工包导入导出。
+servers:
+  - url: http://127.0.0.1:3081
+    description: 单机部署，DSH Web 内嵌路由
+tags:
+  - name: platform
+    description: 中枢平台能力
+  - name: workflow
+    description: 流程固化与评判
+  - name: audit
+    description: 审计与归档
+  - name: scheduler
+    description: 定时自动化任务
+  - name: web
+    description: 网页表现层（右栏驾驶舱/会话/记忆/归置/雷达）
+  - name: employees
+    description: 员工插件目录与员工包导入导出
+
+errorCodes:
+  - ERR-AUTHZ-001
+  - ERR-TOKEN-001
+  - ERR-CONFLICT-001
+  - ERR-WF-001
+  - ERR-WF-002
+  - ERR-WF-003
+  - ERR-WF-004
+  - ERR-AUDIT-001
+  - ERR-TASK-001
+  - ERR-TASK-002
+  - ERR-VIEW-001
+  - ERR-WEB-001
+  - ERR-EMP-001
+  - ERR-SYS-001
+
+paths:
+  /api/v1/health:
+    get:
+      operationId: health
+      tags: [platform]
+      summary: 健康检查（进程 + PG + pgvector + 调度器状态）
+      responses:
+        '200':
+          description: 正常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResult'
+        '503':
+          description: 数据库不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/views/{viewId}/query:
+    post:
+      operationId: queryView
+      tags: [platform]
+      summary: 以视图级授权查询共享数据（只读，自动写审计）
+      x-entity: ViewGrant
+      x-error-codes: [ERR-AUTHZ-001, ERR-VIEW-001]
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewQueryRequest'
+      responses:
+        '200':
+          description: 授权通过，返回聚合行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewRowsResult'
+        '403':
+          description: 视图未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/tokens:
+    post:
+      operationId: issueToken
+      tags: [platform]
+      summary: 签发一次性令牌（绑定任务、单字段范围、有效期 ≤ 5 分钟）
+      x-entity: Token
+      x-error-codes: [ERR-TOKEN-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueTokenRequest'
+      responses:
+        '201':
+          description: 已签发
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResult'
+        '400':
+          description: 范围或有效期不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/tokens/{tokenId}/consume:
+    post:
+      operationId: consumeToken
+      tags: [platform]
+      summary: 消费一次性令牌（使用一次即失效）
+      x-entity: Token
+      x-error-codes: [ERR-TOKEN-001]
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsumeTokenRequest'
+      responses:
+        '200':
+          description: 消费成功，返回授权字段值
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenConsumeResult'
+        '409':
+          description: 令牌已使用或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/conflicts:
+    post:
+      operationId: openConflict
+      tags: [platform]
+      summary: 登记冲突并冻结所涉业务事件
+      x-entity: ConflictQueue
+      x-error-codes: [ERR-CONFLICT-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenConflictRequest'
+      responses:
+        '201':
+          description: 已冻结
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResult'
+        '400':
+          description: 冻结单元不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/conflicts/{conflictId}/resolve:
+    post:
+      operationId: resolveConflict
+      tags: [platform]
+      summary: 老板裁决冲突（选 A / 选 B / 手动），清除冻结并写裁决记录
+      x-entity: ConflictQueue
+      x-error-codes: [ERR-CONFLICT-001]
+      parameters:
+        - name: conflictId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveConflictRequest'
+      responses:
+        '200':
+          description: 已裁决
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResult'
+        '404':
+          description: 冲突不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/workflows:
+    post:
+      operationId: registerWorkflow
+      tags: [workflow]
+      summary: 注册流程版本（六项准入守卫 + 风险等级硬规则，失败拒绝注册）
+      x-entity: WorkflowRegistry
+      x-error-codes: [ERR-WF-001, ERR-WF-002]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterWorkflowRequest'
+      responses:
+        '201':
+          description: 注册成功，返回计算出的风险等级
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowResult'
+        '422':
+          description: 准入守卫失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuardFailureResult'
+
+  /api/v1/workflows/{workflowId}/instances:
+    post:
+      operationId: startInstance
+      tags: [workflow]
+      summary: 以指定版本启动流程实例（校验视图授权，记录生命周期事件）
+      x-entity: WorkflowInstance
+      x-error-codes: [ERR-WF-003]
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartInstanceRequest'
+      responses:
+        '201':
+          description: 实例已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceResult'
+        '404':
+          description: 流程未注册或版本不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/instances/{instanceId}/nodes/{nodeId}/complete:
+    post:
+      operationId: completeNode
+      tags: [workflow]
+      summary: 完成写节点（幂等键 instance_id + node_id，重复执行返回既有结果）
+      x-entity: WorkflowNodeRun
+      x-error-codes: [ERR-WF-004]
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: nodeId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteNodeRequest'
+      responses:
+        '200':
+          description: 已执行或幂等命中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeRunResult'
+        '409':
+          description: 幂等键冲突且入参不同
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/instances/{instanceId}/nodes/{nodeId}/verdict:
+    post:
+      operationId: recordVerdict
+      tags: [workflow]
+      summary: 记录 Verifier 评判（采样投票、置信度、evidence_hash 去重、低置信升级人工）
+      x-entity: VerifierVerdict
+      x-error-codes: [ERR-WF-001]
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: nodeId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerdictRequest'
+      responses:
+        '200':
+          description: 评判已记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerdictResult'
+
+  /api/v1/audits:
+    get:
+      operationId: listAudits
+      tags: [audit]
+      summary: 审计查询（按实例、动作、时间范围聚合）
+      x-entity: AuditLog
+      x-error-codes: [ERR-AUDIT-001]
+      parameters:
+        - name: instanceId
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: action
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, maximum: 500 }
+      responses:
+        '200':
+          description: 审计分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditPageResult'
+
+  /api/v1/audits/export:
+    post:
+      operationId: exportAudits
+      tags: [audit]
+      summary: 增量导出审计（JSONL + SHA-256 + 哈希链头）
+      x-entity: AuditExport
+      x-error-codes: [ERR-AUDIT-001]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportAuditsRequest'
+      responses:
+        '201':
+          description: 导出完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResult'
+        '500':
+          description: 导出失败（重试 3 次后告警）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/tasks:
+    get:
+      operationId: listTasks
+      tags: [scheduler]
+      summary: 列出已配置的定时自动化任务（含下次触发时间与最近运行状态）
+      x-entity: TaskSchedule
+      x-error-codes: []
+      responses:
+        '200':
+          description: 任务列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListResult'
+
+  /api/v1/tasks/{taskId}:
+    put:
+      operationId: upsertTask
+      tags: [scheduler]
+      summary: 新增/更新定时任务（cron + 时区 + 参数，配置驱动）
+      x-entity: TaskSchedule
+      x-error-codes: [ERR-TASK-001]
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertTaskRequest'
+      responses:
+        '200':
+          description: 已保存
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResult'
+        '400':
+          description: cron 无法解析或任务类型未注册
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/tasks/{taskId}/run:
+    post:
+      operationId: runTask
+      tags: [scheduler]
+      summary: 立即执行一次任务（手动触发，幂等键按计划时间或 --force）
+      x-entity: TaskRun
+      x-error-codes: [ERR-TASK-002]
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunTaskRequest'
+      responses:
+        '200':
+          description: 执行完成（或幂等跳过）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskRunResult'
+        '404':
+          description: 任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/reports/daily:
+    get:
+      operationId: getDailyReport
+      tags: [scheduler]
+      summary: 读取指定日期晨报（缺省最近一期）
+      x-entity: DailyReport
+      x-error-codes: []
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: 晨报内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyReportResult'
+        '404':
+          description: 尚无晨报
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/web/manifest:
+    get:
+      operationId: getWebManifest
+      tags: [web]
+      summary: 返回插件栏入口、右栏页签与能力开关
+      x-entity: WebIngestItem
+      x-error-codes: []
+      responses:
+        '200':
+          description: 表现层清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebManifestResult'
+
+  /api/v1/web/dashboard:
+    get:
+      operationId: getDashboard
+      tags: [web]
+      summary: 生成驾驶舱快照（统一 as_of、冻结脚注、陈旧与数据不足提示）
+      x-entity: DashboardSnapshot
+      x-error-codes: []
+      parameters:
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, enum: [today, 7d, 30d, 90d] }
+      responses:
+        '200':
+          description: 驾驶舱快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResult'
+
+  /api/v1/web/inbox:
+    get:
+      operationId: listIngestInbox
+      tags: [web]
+      summary: 读取待归置收件箱
+      x-entity: WebIngestItem
+      x-error-codes: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200 }
+      responses:
+        '200':
+          description: 收件箱条目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestListResult'
+
+  /api/v1/web/ingest:
+    post:
+      operationId: ingestText
+      tags: [web]
+      summary: 把会话/上传输入归置到九域（高风险域只生成确认卡）
+      x-entity: WebIngestItem
+      x-error-codes: [ERR-WEB-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+      responses:
+        '201':
+          description: 新建归置项
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResult'
+        '200':
+          description: 幂等命中，返回既有归置项
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResult'
+
+  /api/v1/web/ingest/{id}/confirm:
+    post:
+      operationId: confirmIngest
+      tags: [web]
+      summary: 确认/忽略归置项（高风险写入必须经此步）
+      x-entity: WebIngestItem
+      x-error-codes: [ERR-WEB-001]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmIngestRequest'
+      responses:
+        '200':
+          description: 已处理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResult'
+
+  /api/v1/web/sessions/{sessionId}/grant:
+    put:
+      operationId: grantSession
+      tags: [web]
+      summary: 授予插件读取指定会话范围（用途 + 有效期 ≤24h）
+      x-entity: WebSessionGrant
+      x-error-codes: [ERR-WEB-001]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionGrantRequest'
+      responses:
+        '201':
+          description: 已授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionGrantResult'
+    delete:
+      operationId: revokeSession
+      tags: [web]
+      summary: 撤回会话授权
+      x-entity: WebSessionGrant
+      x-error-codes: [ERR-WEB-001]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 已撤回
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRevokeResult'
+
+  /api/v1/web/sessions/{sessionId}/context:
+    get:
+      operationId: getSessionContext
+      tags: [web]
+      summary: 读取已授权会话最近 20 条（未授权直接拒绝）
+      x-entity: WebSessionMessage
+      x-error-codes: [ERR-WEB-001]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 会话上下文
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionContextResult'
+        '403':
+          description: 未授权或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/web/memory/search:
+    post:
+      operationId: searchMemory
+      tags: [web]
+      summary: 按 scope 检索记忆卡片（敏感记忆只返回标记）
+      x-entity: WebMemoryCard
+      x-error-codes: [ERR-WEB-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemorySearchRequest'
+      responses:
+        '200':
+          description: 记忆卡片
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemorySearchResult'
+
+  /api/v1/web/memory/propose:
+    post:
+      operationId: proposeMemory
+      tags: [web]
+      summary: 提出记忆写入建议（必须带来源引用）
+      x-entity: WebMemoryProposal
+      x-error-codes: [ERR-WEB-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryProposeRequest'
+      responses:
+        '201':
+          description: 已提议
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryProposalResult'
+
+  /api/v1/web/memory/proposals/{id}/confirm:
+    post:
+      operationId: confirmMemoryProposal
+      tags: [web]
+      summary: 确认记忆提议并落库
+      x-entity: WebMemoryCard
+      x-error-codes: [ERR-WEB-001]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirmedBy: { type: string }
+      responses:
+        '200':
+          description: 已落库
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryConfirmResult'
+
+  /api/v1/web/radar:
+    get:
+      operationId: listRadar
+      tags: [web]
+      summary: 读取插件/关键词雷达条目（只推荐不自动安装）
+      x-entity: RadarItem
+      x-error-codes: []
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema: { type: string, enum: [plugin, keyword] }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        '200':
+          description: 雷达条目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RadarListResult'
+
+  /api/v1/employees:
+    get:
+      operationId: listEmployees
+      tags: [employees]
+      summary: 列出员工插件 manifest、版本与启用状态
+      x-entity: EmployeePlugin
+      x-error-codes: []
+      responses:
+        '200':
+          description: 员工插件清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeListResult'
+    post:
+      operationId: installEmployee
+      tags: [employees]
+      summary: 按 manifest 安装员工插件（默认停用）
+      x-entity: EmployeePlugin
+      x-error-codes: [ERR-EMP-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeInstallRequest'
+      responses:
+        '201':
+          description: 已安装
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResult'
+
+  /api/v1/employees/import:
+    post:
+      operationId: importEmployeePackage
+      tags: [employees]
+      summary: 导入员工包（先校验/dry-run，confirm=true 才安装并默认停用）
+      x-entity: EmployeePackage
+      x-error-codes: [ERR-EMP-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeImportRequest'
+      responses:
+        '200':
+          description: 校验/导入报告
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeImportResult'
+        '422':
+          description: 校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/employees/{pluginId}:
+    get:
+      operationId: getEmployee
+      tags: [employees]
+      summary: 读取单个员工插件
+      x-entity: EmployeePlugin
+      x-error-codes: [ERR-EMP-001]
+      parameters:
+        - name: pluginId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 员工插件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResult'
+        '404':
+          description: 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/employees/{pluginId}/toggle:
+    post:
+      operationId: toggleEmployee
+      tags: [employees]
+      summary: 启用/停用员工插件
+      x-entity: EmployeePlugin
+      x-error-codes: [ERR-EMP-001]
+      parameters:
+        - name: pluginId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeToggleRequest'
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResult'
+        '409':
+          description: 有依赖插件未先停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultVoid'
+
+  /api/v1/employees/{pluginId}/export:
+    post:
+      operationId: exportEmployeePackage
+      tags: [employees]
+      summary: 导出员工插件包（默认不含业务数据/凭据）
+      x-entity: EmployeePackage
+      x-error-codes: [ERR-EMP-001]
+      parameters:
+        - name: pluginId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '201':
+          description: 员工包
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeePackageResult'
+
+components:
+  schemas:
+    ResultVoid:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+    ViewQueryRequest:
+      type: object
+      required: [pluginId]
+      properties:
+        pluginId: { type: string }
+        filter: { type: object }
+        limit: { type: integer }
+    ViewRowsResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            viewId: { type: string }
+            rows: { type: array, items: { type: object } }
+            rowCount: { type: integer }
+    IssueTokenRequest:
+      type: object
+      required: [taskId, pluginId, viewId, fieldScope]
+      properties:
+        taskId: { type: string }
+        pluginId: { type: string }
+        viewId: { type: string }
+        fieldScope: { type: array, items: { type: string } }
+        ttlSeconds: { type: integer, maximum: 300 }
+    TokenResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            tokenId: { type: string }
+            expiresAt: { type: string, format: date-time }
+    ConsumeTokenRequest:
+      type: object
+      required: [taskId]
+      properties:
+        taskId: { type: string }
+    TokenConsumeResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            tokenId: { type: string }
+            fields: { type: object }
+    OpenConflictRequest:
+      type: object
+      required: [conflictType, frozenUnitType, frozenUnitId, parties]
+      properties:
+        conflictType: { type: string, enum: [cost, customer, stock_batch, contract_amount] }
+        frozenUnitType: { type: string }
+        frozenUnitId: { type: integer }
+        parties:
+          type: array
+          items: { type: object }
+        diffFields: { type: array, items: { type: string } }
+    ConflictResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            conflictId: { type: integer }
+            status: { type: string }
+            frozen: { type: boolean }
+    ResolveConflictRequest:
+      type: object
+      required: [choice]
+      properties:
+        choice: { type: string, enum: [A, B, manual, later] }
+        manualValue: { type: object }
+        note: { type: string }
+    RegisterWorkflowRequest:
+      type: object
+      required: [workflowId, version, ownerPlugin, meta, code]
+      properties:
+        workflowId: { type: string }
+        version: { type: string }
+        ownerPlugin: { type: string }
+        meta: { type: object }
+        code: { type: string }
+        testReportHash: { type: string }
+    WorkflowResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            workflowId: { type: string }
+            version: { type: string }
+            riskLevel: { type: string, enum: [high, medium, low] }
+            status: { type: string }
+    GuardFailureResult:
+      type: object
+      required: [code, message, failures]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+        failures:
+          type: array
+          items:
+            type: object
+            properties:
+              item: { type: string }
+              detail: { type: string }
+    StartInstanceRequest:
+      type: object
+      properties:
+        version: { type: string }
+        context: { type: object }
+    InstanceResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            instanceId: { type: integer }
+            workflowId: { type: string }
+            version: { type: string }
+            status: { type: string }
+    CompleteNodeRequest:
+      type: object
+      required: [payload]
+      properties:
+        payload: { type: object }
+    NodeRunResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            nodeId: { type: string }
+            status: { type: string }
+            idempotentHit: { type: boolean }
+            output: { type: object }
+    VerdictRequest:
+      type: object
+      required: [verdict, sampling]
+      properties:
+        verdict: { type: string, enum: [pass, fail] }
+        sampling: { type: integer }
+        confidence: { type: number }
+        evidence: { type: object }
+        escalated: { type: boolean }
+    VerdictResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            verdictId: { type: integer }
+            finalVerdict: { type: string }
+            confidence: { type: number }
+            escalated: { type: boolean }
+            cacheHit: { type: boolean }
+    AuditPageResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            rows:
+              type: array
+              items: { type: object }
+            total: { type: integer }
+    ExportAuditsRequest:
+      type: object
+      properties:
+        sinceId: { type: integer }
+        outDir: { type: string }
+    ExportResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            filePath: { type: string }
+            sha256: { type: string }
+            rowCount: { type: integer }
+            prevHash: { type: string }
+    TaskListResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            tasks:
+              type: array
+              items: { type: object }
+    UpsertTaskRequest:
+      type: object
+      required: [cron, timezone]
+      properties:
+        cron: { type: string }
+        timezone: { type: string }
+        enabled: { type: boolean }
+        config: { type: object }
+    TaskResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            taskId: { type: string }
+            cron: { type: string }
+            nextRunAt: { type: string, format: date-time }
+            enabled: { type: boolean }
+    RunTaskRequest:
+      type: object
+      properties:
+        force: { type: boolean }
+        scheduledAt: { type: string, format: date-time }
+    TaskRunResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            runId: { type: integer }
+            taskId: { type: string }
+            status: { type: string }
+            skipped: { type: boolean }
+            result: { type: object }
+    DailyReportResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            reportDate: { type: string, format: date }
+            content: { type: object }
+    HealthResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            status: { type: string }
+            version: { type: string }
+            pg: { type: boolean }
+            pgvector: { type: boolean }
+            scheduler: { type: object }
+    WebManifestResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            pluginId: { type: string }
+            title: { type: string }
+            panel: { type: string }
+            schemaVersion: { type: string }
+            tabs:
+              type: array
+              items: { type: string }
+            capabilities:
+              type: array
+              items: { type: string }
+    DashboardResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            snapshotId: { type: integer }
+            asOf: { type: string, format: date-time }
+            range: { type: string }
+            stale: { type: boolean }
+            metrics:
+              type: array
+              items: { type: object }
+            frozen: { type: object }
+            warnings:
+              type: array
+              items: { type: string }
+    IngestRequest:
+      type: object
+      required: [sourceType, sourceRef, text]
+      properties:
+        sourceType: { type: string, enum: [session_message, upload, voice, manual] }
+        sourceRef: { type: string }
+        text: { type: string }
+        idempotencyKey: { type: string }
+    ConfirmIngestRequest:
+      type: object
+      properties:
+        action: { type: string, enum: [confirm, ignore] }
+        editedExtracted: { type: object }
+        confirmedBy: { type: string }
+    IngestResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            item: { type: object }
+            duplicate: { type: boolean }
+    IngestListResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items: { type: object }
+            total: { type: integer }
+    SessionGrantRequest:
+      type: object
+      required: [purpose]
+      properties:
+        purpose: { type: string }
+        ttlSeconds: { type: integer, minimum: 60, maximum: 86400 }
+        messageScope: { type: string }
+        grantedBy: { type: string }
+    SessionGrantResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            sessionId: { type: string }
+            purpose: { type: string }
+            messageScope: { type: string }
+            expiresAt: { type: string, format: date-time }
+    SessionRevokeResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            revoked: { type: integer }
+    SessionContextResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            grantId: { type: integer }
+            expiresAt: { type: string, format: date-time }
+            messages:
+              type: array
+              items: { type: object }
+    MemorySearchRequest:
+      type: object
+      required: [query, scopes, purpose]
+      properties:
+        query: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        purpose: { type: string }
+        limit: { type: integer, minimum: 1, maximum: 50 }
+    MemorySearchResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            cards:
+              type: array
+              items: { type: object }
+            total: { type: integer }
+    MemoryProposeRequest:
+      type: object
+      required: [type, title, content, sourceRefs]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        content: { type: string }
+        sourceRefs:
+          type: array
+          items: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    MemoryProposalResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            proposalId: { type: integer }
+            status: { type: string }
+    MemoryConfirmResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            memoryId: { type: integer }
+            created: { type: boolean }
+    RadarListResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items: { type: object }
+            total: { type: integer }
+    EmployeeListResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items: { type: object }
+            total: { type: integer }
+    EmployeeInstallRequest:
+      type: object
+      required: [manifest]
+      properties:
+        manifest: { type: object }
+        enabled: { type: boolean }
+        packageCode: { type: string }
+        actor: { type: string }
+    EmployeeResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data: { type: object }
+    EmployeeToggleRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+        reason: { type: string }
+        actor: { type: string }
+    EmployeeImportRequest:
+      type: object
+      required: [package]
+      properties:
+        package: { type: object }
+        dryRun: { type: boolean }
+        confirm: { type: boolean }
+        actor: { type: string }
+    EmployeeImportResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            packageCode: { type: string }
+            pluginId: { type: string }
+            version: { type: string }
+            existingVersion: { type: string }
+            dryRun: { type: boolean }
+            ready: { type: boolean }
+            errors:
+              type: array
+              items: { type: string }
+            warnings:
+              type: array
+              items: { type: string }
+            missingDependencies:
+              type: array
+              items: { type: string }
+            files: { type: integer }
+            checksum: { type: string }
+    EmployeePackageResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            format: { type: string }
+            formatVersion: { type: string }
+            manifest: { type: object }
+            files:
+              type: array
+              items: { type: object }
+            checksum: { type: string }
+            packageCode: { type: string }

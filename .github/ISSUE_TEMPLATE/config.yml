@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/mindtheory/opc-xuanji/blob/main/docs/index.md
+    about: Read the requirements, design, database, and test documents before opening an issue.
+  - name: Employee requirements
+    url: https://github.com/mindtheory/opc-xuanji/blob/main/docs/%E5%91%98%E5%B7%A5%E9%9C%80%E6%B1%82/index.md
+    about: Check the 11 employee requirement documents.
+  - name: Security policy
+    url: https://github.com/mindtheory/opc-xuanji/security/policy
+    about: Report vulnerabilities privately; do not open a public issue.

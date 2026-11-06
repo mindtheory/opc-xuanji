@@ -1,0 +1,49 @@
+{
+  "name": "opc-xuanji",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OPC-玄机 · 一人公司中枢（DSH Bundle 插件）",
+  "engines": {
+    "node": ">=24.9"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/unit/*.test.ts test/integration/*.test.ts",
+    "test:unit": "node --test test/unit/*.test.ts",
+    "test:integration": "node --test --test-concurrency=1 test/integration/*.test.ts",
+    "migrate": "node scripts/migrate.ts",
+    "migrate:test": "node scripts/migrate.ts --test",
+    "serve": "node scripts/serve.ts",
+    "spec:check": "node scripts/check-spec.mjs --dir spec/opc-xuanji",
+    "docs:check": "node scripts/check-docs.mjs --dir docs",
+    "typecheck": "tsc --noEmit",
+    "gen:spec": "node scripts/gen-spec.mjs"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.1"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mindtheory/opc-xuanji.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mindtheory/opc-xuanji/issues"
+  },
+  "homepage": "https://github.com/mindtheory/opc-xuanji#readme"
+}

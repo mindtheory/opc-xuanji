@@ -1,0 +1,260 @@
+@startuml opc-class
+' OPC-玄机 核心类图
+' 来源：src/platform/{audit,views,token,conflict,json,errors,config}.ts
+'       src/workflow/{registry,guard,instances,verifier,diagnose}.ts
+'       src/scheduler/{engine,cron,tasks/index}.ts
+'       src/web/{classifier,plugin-score,dashboard,services}.ts
+' 口径：只有 src/ 中真实存在的方法才画；Phase 2 项以 <<Phase2>> 标注，不画实现体。
+
+skinparam classAttributeIconSize 0
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Noto Sans CJK SC"
+
+package "src/platform" {
+
+  class AuditService <<service>> {
+    - pool : Pool
+    - schemaVersion : string
+    - clock : () => Date
+    + record(entry : AuditEntry) : Promise~{id,hash,prevHash}~
+    + list(query : AuditListQuery) : Promise~{rows,total}~
+    + export(options : {outDir,sinceId}) : Promise~AuditExport~
+    + verifyChain() : Promise~{ok,checked,brokenAt}~
+    - hashOf(parts) : string
+    - canonical(value) : string
+  }
+
+  class ViewService <<service>> {
+    - pool : Pool
+    - audit : AuditService
+    + query(input : ViewQueryInput) : Promise~ViewQueryResult~
+  }
+
+  class TokenService <<service>> {
+    + MAX_TTL_SECONDS : 300 {static}
+    - pool : Pool
+    - audit : AuditService
+    - clock : () => Date
+    + issue(input : IssueTokenInput) : Promise~{tokenId,expiresAt}~
+    + consume(tokenCode, input) : Promise~{tokenId,fields}~
+  }
+
+  class ConflictService <<service>> {
+    - pool : Pool
+    - audit : AuditService
+    + open(input : OpenConflictInput) : Promise~{conflictId,status,frozen}~
+    + resolve(conflictId, input) : Promise~{conflictId,status,frozen}~
+    + summaryIncludingFrozen(frozenUnitType) : Promise~ConflictSummary~
+  }
+
+  class ViewDefinition <<interface>> {
+    + id : string
+    + description : string
+    + columns : string[]
+    + build(filter, limit) : {text,params}
+  }
+
+  class OpcError <<error>> {
+    + errorCode : ErrorCode
+    + status : number
+    + details : unknown
+  }
+}
+
+package "src/workflow" {
+
+  class WorkflowRegistry <<service>> {
+    - pool : Pool
+    - audit : AuditService
+    + register(input : RegisterInput) : Promise~RegisterResult~
+    + get(workflowId, version) : Promise~RegistryRow~
+    + previewRisk(meta, employee, monthlyFlow) : RiskResult
+    - loadEmployee(pluginId) : Promise~EmployeeProfile~
+  }
+
+  class WorkflowRunner <<service>> {
+    - pool : Pool
+    - audit : AuditService
+    - registry : WorkflowRegistry
+    + start(input : StartInput) : Promise~InstanceResult~
+    + completeNode(input) : Promise~{nodeId,status,idempotentHit,output}~
+    + finish(instanceId, status) : Promise~{instanceId,status}~
+  }
+
+  class Verifier <<service>> {
+    + DEFAULT_THRESHOLD : 0.8 {static}
+    - pool : Pool
+    - audit : AuditService
+    + judge(input : JudgeInput) : Promise~JudgeResult~
+  }
+
+  class Guard <<utility>> {
+    + evaluateGuard(input : GuardInput) : GuardResult {static}
+    + computeRisk(input) : RiskResult {static}
+    + codeHashOf(code) : string {static}
+  }
+
+  class Diagnose <<utility>> {
+    + diagnose(input : DiagnoseInput) : DiagnoseResult {static}
+  }
+
+  class WorkflowMeta <<value>> {
+    + id : string
+    + version : string
+    + owner_plugin : string
+    + scope : single|cross
+    + required_views : string[]
+    + key_nodes : string[]
+    + human_gates : string[]
+    + idempotent_nodes : string[]
+    + write_nodes : string[]
+    + verifier_policy : Record
+    + deadline_impact : boolean
+  }
+
+  class JudgeResult <<value>> {
+    + finalVerdict : pass|fail|escalated
+    + confidence : number
+    + escalated : boolean
+    + verdictId : number
+    + cacheHit : boolean
+    + evidenceHash : string
+    + sampling : number
+  }
+}
+
+package "src/scheduler" {
+
+  class Scheduler <<service>> {
+    - pool : Pool
+    - audit : AuditService
+    - options : SchedulerOptions
+    - tasks : Map~string,TaskDefinition~
+    + register(definition : TaskDefinition) : void
+    + registeredIds() : string[]
+    + seedDefaults() : Promise~number~
+    + list() : Promise~TaskRow[]~
+    + upsert(taskId, input) : Promise~TaskRow~
+    + run(taskId, options) : Promise~RunResult~
+    + tick(now) : Promise~RunResult[]~
+    - tryInsertRun(taskId, scheduledAt, now) : Promise~{id}|null~
+    - notify(kind, level, payload) : Promise~void~
+  }
+
+  class Cron <<utility>> {
+    + parseCron(expression) : CronSpec {static}
+    + nextRun(expression, timeZone, from) : Date {static}
+    + describeCron(expression) : string {static}
+    + partsInZone(instant, timeZone) : Parts {static}
+    + zonedTimeToUtc(y,mo,d,h,mi,tz) : Date {static}
+  }
+
+  class TaskDefinition <<interface>> {
+    + id : string
+    + name : string
+    + defaults : {cron,timezone,enabled}
+    + handler(context : TaskContext) : Promise~Record~
+  }
+}
+
+package "src/db" {
+  class Pool <<driver>> {
+    + query(sql, params)
+    + connect()
+    + end()
+  }
+  class Migrate <<utility>> {
+    + migrate(pool, dir, log) : Promise~MigrationResult~
+  }
+}
+
+AuditService ..> OpcError : 抛 ERR-AUDIT-001
+ViewService --> AuditService : 每次访问写审计
+ViewService --> ViewDefinition : 8 个视图定义
+TokenService --> AuditService : 签发与消费留痕
+ConflictService --> AuditService : 冻结与裁决留痕
+WorkflowRegistry --> Guard : 六项守卫
+WorkflowRegistry --> AuditService : 拒绝与通过均写
+WorkflowRunner --> WorkflowRegistry : 取已注册版本
+WorkflowRunner --> AuditService : 生命周期与节点事件
+Verifier --> AuditService : 评判结果留痕
+Scheduler --> Cron : 解析与下次触发
+Scheduler --> AuditService : 任务执行结果
+AuditService --> Pool
+ViewService --> Pool
+TokenService --> Pool
+ConflictService --> Pool
+WorkflowRegistry --> Pool
+WorkflowRunner --> Pool
+Verifier --> Pool
+Scheduler --> Pool
+Migrate --> Pool : 单文件单事务
+
+note right of AuditService
+  链串行化：pg_advisory_xact_lock
+  哈希材料顺序固定 9 段
+  prev_hash + actor + action + result
+  + schema_version + instance + test_mode
+  + canonical(payload) + createdAt
+end note
+
+note bottom of Verifier
+  <<Phase2>> 真实 LLM 裁判调用
+  当前 samples 由调用方给定
+  evidence_hash 命中只省调用
+  不改结论
+end note
+
+note bottom of WorkflowRegistry
+  <<Phase2>> 注册后自动导出只读快照
+  产品设计 2.4 要求，代码未落地
+end note
+
+package "src/web（v2.10 网页表现层）" {
+
+  class IngestService <<service>> {
+    - pool : Pool
+    - audit : AuditService
+    + ingest(input) : Promise~{item,duplicate}~
+    + list(status, limit) : Promise~IngestRow[]~
+    + confirm(id, input) : Promise~IngestRow~
+  }
+
+  class SessionGrantService <<service>> {
+    + grant(sessionId, input) : Promise~SessionGrant~
+    + revoke(sessionId) : Promise~{revoked}~
+    + context(sessionId) : Promise~{grantId,expiresAt,messages}~
+  }
+
+  class MemoryService <<service>> {
+    + search(input) : Promise~MemoryCard[]~
+    + propose(input) : Promise~{proposalId,status}~
+    + confirm(proposalId, confirmedBy) : Promise~{memoryId,created}~
+  }
+
+  class RadarService <<service>> {
+    + list(input) : Promise~RadarRow[]~
+    + upsert(items) : Promise~number~
+    + recommendPlugins(candidates, profile, now) : Promise~{recommended,rejected}~
+  }
+
+  class DashboardService <<service>> {
+    - pool : Pool
+    + snapshot(range) : Promise~DashboardSnapshot~
+  }
+
+  class Classifier <<module>> {
+    + classifyText(input) : Classification
+    + extractFields(input) : ExtractedFields
+    + decideIngest(classification) : IngestDecision
+  }
+
+  class PluginScore <<module>> {
+    + evaluatePluginCandidate(candidate, profile, now) : PluginEvaluation
+  }
+
+  IngestService --> Classifier
+  RadarService --> PluginScore
+}
+
+@enduml

@@ -16,11 +16,13 @@
 
 | Profile       | 包含员工插件                             | 适用主体   |
 | :------------ | :--------------------------------------- | :--------- |
-| `opc-service` | 财税、法务、行政、战略、项目、情报、客户 | 纯服务型   |
-| `opc-trade`   | 上 + 货栈                                | 有实物销售 |
-| `opc-full`    | 全量（车务按 1.3 规则决定是否独立）      | 混合型     |
+| `opc-service` | 财税、法务、行政、战略、项目、情报、客户、WBS（外宣可选） | 纯服务型   |
+| `opc-trade`   | 上 + 货栈 + WBS（外宣可选）              | 有实物销售 |
+| `opc-full`    | 全量（车务按 1.3 规则决定是否独立；含 WBS、外宣） | 混合型     |
 
 Web 形态（`dsh web`）负责老板交互与看板，Headless 形态负责夜间任务与 Workflow 引擎常驻，两者共享同一 PostgreSQL。
+
+**v2.10 装配补充**：新增 `opc_web` 表现层插件，随 Profile 启用，注册左栏入口“OPC公司管理”与右侧面板。`opc_web` 不直接访问数据库或员工插件，统一经 `opc_hub` 的 Web API 与 `WebHostAdapter` 适配 DSH 实际插槽；Headless 负责计划任务、驾驶舱读模型刷新与简报生成。
 
 
 ## 二、数据层：PostgreSQL + pgvector
@@ -219,6 +221,8 @@ CREATE INDEX ON embedding USING hnsw (embedding vector_cosine_ops)
 └─────────────────────────────────────────────────────────────┘
 ```
 
+**浏览器侧**：左插件栏“OPC公司管理”、中间会话、右侧 Web 面板；面板经 `WebHostAdapter`（原生插槽优先，否则 sandbox iframe + postMessage）连到 DSH Web，实时失效事件走 SSE；Headless 负责计划任务、读模型刷新与简报生成。面板不直连 PgBouncer/PG。
+
 **内存分配**（16G）：`shared_buffers` ≈ 4G（25%），`effective_cache_size` ≈ 12G（75%）；启用本地嵌入模型时按 4.1 实测结果相应下调。
 
 ### 5.2 扩展触发条件
@@ -259,6 +263,9 @@ CREATE INDEX ON embedding USING hnsw (embedding vector_cosine_ops)
 | Workflow 运行 | 流程看板（8.6.10）即运行时入口；生命周期事件落 PG，按 `workflow_instance_id` 聚合 |
 | 审计完整性    | 每日导出后校验 SHA-256；**每次导出记录上一条导出文件哈希**，形成归档链（见下） |
 | Verifier 成本 | Profile 中限制最大并发；统计裁判调用量，按周与容量规划对账   |
+| Web 面板      | `as_of` 陈旧率、接口 p95、SSE 断线重连次数、导出失败数         |
+| 归置流水线    | 收件箱积压量、分类置信度分布、确认/忽略比、抽取失败率         |
+| 计划任务      | `next_run_at` 漂移、连续失败、任务积压、雷达新增条目与点开率   |
 
 **审计哈希链的链头持久化（P1 闭合）**：哈希链的“当前链头”**持久化在 PostgreSQL 的 `audit_chain_head` 表中**，每次导出后更新。导出文件头部写入“上一条文件哈希 + 本条文件哈希 + 链头表快照”。恢复时**先校验链头表与最后一条导出文件的一致性**，不一致则告警并拒绝自动续链。
 
@@ -275,11 +282,221 @@ CREATE INDEX ON embedding USING hnsw (embedding vector_cosine_ops)
 | 风险等级的写入目标解析（P0 闭合） | **每个员工插件为写工具在注册时声明 `write_targets`**（如 `["customer_sensitive","ledger"]`）；Registry 基于 `write_targets` 而非工具名判定风险；任一工具命中高风险域即标记高风险，**不依赖流程自述的 `scope` 或 `deadline_impact`** |
 | 数据不出内网                      | 模型端点按 Profile 路由；嵌入模型与 Verifier 裁判模型均可指向本地；PgBouncer/PG 不监听公网 |
 | 归档可迁移                        | 审计归档头写 `schema_version`；Drizzle 迁移与归档迁移脚本同链管理；30 年项同时输出 CSV/PDF |
+| Web 面板隔离                      | 原生插槽优先；iframe 时 sandbox 不含 `allow-same-origin`，origin 白名单 + CSP + postMessage 请求 ID；面板不直连 DB |
+| 会话/记忆授权                     | `web_session_grant` 绑定范围/用途/有效期；记忆按 scope；跨域单字段一次性令牌；撤回即失效 |
+| 上传归置安全                      | 类型/大小白名单；本地存储；高风险域（财税/法务/客户敏感/合同/库存写入）一律确认后写回 |
 
 
-## 八、选型汇总表
+## 八、Web 表现层与数据驾驶舱（v2.10 新增）
 
-| 层次       | 选型                                         | v2.9 修订点                                                  |
+> **接口声明**：本节 `WebHostAdapter`、`hub.web.*`、`hub.session.*`、`hub.memory.*`、`/api/opc/web/*` 为 OPC-玄机对 DSH Web、会话与记忆能力的**封装约定，非 DSH 实际 API**。落地前须对照 DSH Web SDK/插件插槽、会话事件、记忆插件与鉴权契约逐项核对；不一致处以 DSH 为准并回写本节。
+
+### 8.1 DSH 扩展点与适配层
+
+DSH Web 可能提供三种插件承载方式，按优先级适配：
+
+| 优先级 | 宿主能力                         | `opc_web` 实现方式                                            | 约束                                   |
+| :----- | :------------------------------- | :------------------------------------------------------------ | :------------------------------------- |
+| 1      | 原生 React/DOM 插槽              | 将面板组件挂载到右侧插槽；宿主提供会话事件与主题变量           | 不覆盖宿主全局样式；错误边界隔离       |
+| 2      | 仅 iframe/自定义视图             | 独立 SPA 运行在 sandbox iframe；`postMessage` RPC 到宿主      | `allow-scripts`，禁止 `allow-same-origin`；origin 白名单 |
+| 3      | 无右侧面板 API                   | 功能降级为“会话命令 + 独立本地页面”，并在设置页明确提示        | 不伪造“已嵌入”；P1 需与 DSH 确认插槽能力 |
+
+**适配层契约**（设计示意）：
+
+```ts
+// 接口设计示意（非 DSH 实际 API）
+interface WebHostAdapter {
+  registerSidebarItem(item: {
+    id: string;
+    title: string;
+    icon: string;
+    badge?: number;
+  }): Promise<void>;
+
+  mountPanel(container: HTMLElement, ctx: PanelContext): Promise<void>;
+
+  onSessionEvent(handler: (event: SessionEvent) => void): () => void;
+
+  getSessionContext(req: SessionContextRequest): Promise<SessionContext>;
+  openThread(req: OpenThreadRequest): Promise<void>;
+
+  searchMemory(req: MemorySearchRequest): Promise<MemoryCard[]>;
+  queryDashboard(req: DashboardQuery): Promise<DashboardSnapshot>;
+}
+```
+
+**iframe/postMessage 安全规则**：
+- `postMessage` 必须指定 `targetOrigin`，禁止 `*`；
+- 消息含 `schema_version`、`request_id`、`capability_token`，30 秒超时；
+- 宿主校验 origin 白名单与 token 作用域；token 绑定单次面板会话，默认 8 小时；
+- 面板 CSP：`default-src 'self'; connect-src 'self'; img-src 'self' data:; script-src 'self'`；
+- 不使用 `eval`、`new Function`、内联脚本；Markdown 渲染前消毒。
+
+### 8.2 前端技术选型
+
+| 项         | 选型                                   | 说明                                                     |
+| :--------- | :------------------------------------- | :------------------------------------------------------- |
+| 语言       | TypeScript                             | 与后端契约共享类型；`strict` 模式                         |
+| UI         | React 19（宿主持插槽时）               | 若宿主只支持 iframe，同一 SPA 独立运行；不做 SSR          |
+| 构建       | Vite                                   | 产物为静态资源，由 `opc_web` 托管                         |
+| 图表       | ECharts（按需引入）                    | 驾驶舱折线/柱状/环形/热力；懒加载，首屏不阻塞             |
+| 状态       | React 本地状态 + 服务端查询            | 不引入 Redux；服务端状态以 `as_of` 为准                   |
+| 实时       | SSE；不支持时 15s 轮询                 | 只传失效事件与快照版本，不传敏感明细                     |
+| 样式       | CSS 变量 + 宿主主题变量                | 跟随 DSH 明暗主题；右栏最小宽度 420px，最小高度 600px     |
+| 可访问性   | 键盘可达、对比度 ≥4.5:1、焦点可见      | 图表提供表格替代视图                                     |
+| 体积预算   | 首屏 JS ≤500KB gzip，图表按路由懒加载  | 超预算需说明                                               |
+
+### 8.3 Web API（经中枢）
+
+所有接口挂在 `opc_hub` 下，前端不得直连员工插件或数据库。
+
+| 方法 | 路径                                   | 用途                                   | 鉴权/约束                                      |
+| :--- | :------------------------------------- | :------------------------------------- | :--------------------------------------------- |
+| GET  | `/api/opc/web/manifest`                | 返回插件栏信息、能力开关、schema 版本  | DSH 会话                                       |
+| GET  | `/api/opc/web/dashboard?range=90d`     | 驾驶舱快照                             | 老板/授权角色；返回 `as_of`、`stale`、脚注     |
+| GET  | `/api/opc/web/inbox?status=pending`    | 待归置收件箱                           | 老板/授权角色；敏感字段掩码                    |
+| POST | `/api/opc/web/ingest`                  | 提交会话消息/附件引用                  | `Idempotency-Key`；写审计                      |
+| POST | `/api/opc/web/ingest/:id/confirm`      | 确认/修改/忽略归置                     | 高风险域必须确认；写审计                       |
+| GET  | `/api/opc/web/sessions/:id/context`    | 读取授权范围内会话上下文               | 会话授权 token；默认最近 20 条                 |
+| POST | `/api/opc/web/sessions/:id/consent`    | 授予/撤回会话范围                      | 老板；有效期 ≤24h；写审计                      |
+| POST | `/api/opc/web/memory/search`           | 记忆检索                               | scope 授权；返回来源与置信度                   |
+| POST | `/api/opc/web/memory/propose`          | 记忆写入提议                           | 老板确认后落库；写审计                         |
+| GET  | `/api/opc/web/tasks`                   | 计划任务列表与最近运行                 | 老板只读                                       |
+| POST | `/api/opc/web/tasks/:key/run`          | 手动触发任务                           | 老板；幂等键；写审计                           |
+| GET  | `/api/opc/web/radar?type=plugin`       | 插件/关键词雷达条目                    | 只读；附来源与发布时间                         |
+| GET  | `/api/opc/web/events`                  | SSE 失效事件                           | 仅事件类型与版本号                             |
+| POST | `/api/opc/web/export`                  | 导出驾驶舱/简报                        | 老板；CSV 为主；写审计                         |
+
+**响应信封**：`{ schema_version, trace_id, as_of, data, warnings[] }`；`warnings` 用于“数据陈旧/未检索/冻结脚注”，前端不得吞掉。
+
+**写接口约束**：`POST` 必须带 `Idempotency-Key`；服务端以 `(actor, route, key)` 去重；重复请求返回首次结果，不重复写业务表。
+
+### 8.4 数据模型新增（Drizzle 迁移）
+
+| 表                          | 关键字段                                                                 | 索引/约束                                              |
+| :-------------------------- | :----------------------------------------------------------------------- | :----------------------------------------------------- |
+| `web_ingest_item`           | `id, source_type, source_ref, content_hash, raw_ref, extracted_json, domain, confidence, status, idempotency_key, created_at, confirmed_by, confirmed_at` | `unique(content_hash, source_ref)`；`index(status, created_at)` |
+| `web_session_grant`         | `id, session_id, message_ids[], purpose, granted_by, granted_at, expires_at, revoked_at` | `index(session_id, expires_at)`                        |
+| `web_memory_proposal`       | `id, type, content, source_refs[], confidence, status, created_at, confirmed_at` | `index(status, created_at)`                            |
+| `dashboard_metric_daily`    | `metric_id, date, dimension, value, unit, source, as_of, frozen_included` | `unique(metric_id, date, dimension)`                   |
+| `dashboard_snapshot`        | `snapshot_id, range, generated_at, as_of, payload_json, stale, warnings_json` | `index(range, generated_at)`                           |
+| `brief_item`                | `id, brief_date, type, title, summary, source_refs[], priority, status`  | `unique(brief_date, type, title)`；`index(brief_date)` |
+| `radar_item`                | `id, radar_type, title, url, published_at, score, reason, risks[], dedupe_key, status` | `unique(radar_type, dedupe_key)`；`index(status, published_at)` |
+| `scheduled_task`            | `task_key, cron, enabled, config_json, last_run_at, next_run_at, status`  | `unique(task_key)`；`index(enabled, next_run_at)`      |
+| `task_run`                  | `id, task_key, scheduled_at, started_at, finished_at, status, error, result_ref, idempotency_key` | `unique(task_key, scheduled_at)`；`index(status, started_at)` |
+
+**约束**：
+- 所有表通过 Drizzle 迁移生成，不手改迁移文件；迁移与审计 `schema_version` 同链（2.3）；
+- 驾驶舱读模型不落 `customer_sensitive` 原值；敏感字段只保留聚合或掩码；
+- `task_run` 与 `web_ingest_item` 按月分区预留（主键含 `created_at`/`scheduled_at`），与审计分区策略一致；
+- 保留期：雷达条目 180 天、任务运行 1 年、归置原文按老板配置（默认 1 年）；审计按 8.4 产品文档。
+
+### 8.5 调度与并发
+
+- 调度器运行在 Headless Profile；`scheduled_task` 保存 cron 与 `next_run_at`，进程重启后从 PG 恢复。
+- 任务领取用短事务 `SELECT … FOR UPDATE SKIP LOCKED LIMIT 1`，提交后再执行；**不使用 advisory lock**（PgBouncer transaction 模式不支持跨语句会话状态）。
+- 幂等键 `(task_key, scheduled_at)`；重复触发直接返回已有 `task_run`。
+- 重试 3 次，指数退避（1m/5m/15m）；超限置 `failed` 并告警，保留上次成功结果。
+- 并发上限：4C 机器同时执行 2 个后台任务；驾驶舱查询优先，任务让路。
+- 外部检索/摘要调用绑定 `AbortSignal.timeout()`：检索 60s、摘要 120s、驾驶舱聚合 30s；超时视为失败并降级。
+- `plugin_radar_scan` 等推荐任务**只写 `radar_item`，不触发安装**；安装必须由老板在会话或设置页显式确认。
+
+### 8.6 聚合与缓存
+
+- 读模型优先常规表增量 upsert（`dashboard_metric_daily`），重聚合用物化视图 `REFRESH MATERIALIZED VIEW CONCURRENTLY`（需唯一索引）。
+- 驾驶舱一次查询在只读 `REPEATABLE READ` 事务内完成，统一 `as_of`；冻结事件按“总额（含冻结）+ 脚注”输出。
+- 缓存：进程内 LRU（5 分钟）+ ETag；领域事件使缓存失效；**v1 不引入 Redis**。
+- 简报生成读取当日已聚合快照，不重新扫描业务主表；生成失败保留上一版并标注。
+- SSE 仅推送 `{type, snapshot_version, as_of}`，前端收到后重新拉取快照；断线重连按 `snapshot_version` 补齐。
+
+### 8.7 安全与隐私落点
+
+| 要求                 | 落点                                                                 |
+| :------------------- | :------------------------------------------------------------------- |
+| 面板鉴权             | DSH 会话 + `opc_hub` capability token；角色校验；CSRF token          |
+| iframe 隔离          | sandbox 不含 `allow-same-origin`；origin 白名单；CSP 禁止内联脚本    |
+| 会话引用             | `web_session_grant` 绑定范围/用途/有效期；撤回即失效；引用写审计     |
+| 记忆检索             | scope 授权；敏感记忆只返回标记；跨域单字段走一次性令牌（≤5min）       |
+| 上传归置             | 类型/大小白名单；本地存储；病毒扫描可选；高风险写入必须确认           |
+| 敏感字段不上面板     | 驾舱读模型不 JOIN `customer_sensitive`；接口层再次脱敏               |
+| 审计                 | 面板/会话/记忆/归置/任务事件统一 `opc_hub.audit.record()`；不可直写   |
+| 导出                 | CSV 为主；PDF 走 Pandoc 固定模板；文件头写 `schema_version`/`as_of`   |
+| 速率限制             | 每会话 60 req/min；导出 5 次/小时；超限 429 并写审计                 |
+
+### 8.8 性能预算与容量
+
+| 指标                         | 目标（4C/16G 本地）                         |
+| :--------------------------- | :------------------------------------------ |
+| 面板首屏                     | ≤2s（静态资源本地加载）                     |
+| 驾驶舱查询（90 天）          | p95 ≤500ms                                  |
+| 归置分类（单条）             | p95 ≤3s（含 OCR/ASR 时按实际另计）          |
+| 事件到面板刷新               | ≤5s                                         |
+| 计划任务调度漂移             | ≤60s                                        |
+| 并发会话                     | 1 老板 + ≤10 会话；后台任务并发 ≤2          |
+| 雷达单次检索                 | ≤60s；超时降级                              |
+
+### 8.9 测试策略
+
+| 层级     | 范围                                                                 | 工具/方式                                      |
+| :------- | :------------------------------------------------------------------- | :--------------------------------------------- |
+| 单元     | 分类、归置决策、驾驶舱快照、任务去重、插件评分、权限判定             | `node --test` + TypeScript 类型剥离            |
+| 契约     | `WebHostAdapter`、Web API schema、SSE 事件、iframe postMessage       | DSH mock host；JSON schema 快照                |
+| 集成     | 归置→确认→写回→读模型刷新；任务领取→执行→失败重试                    | 本地 PostgreSQL；Drizzle 迁移                  |
+| E2E      | 三栏：上传→收件箱→确认→驾驶舱；会话引用→记忆检索→授权撤回            | Playwright                                     |
+| 安全     | 敏感字段不出接口；越权视图；origin/CSRF；审计完整性；上传类型        | 负向用例 + 响应体扫描                          |
+| 性能     | 驾驶舱 90 天查询、SSE 刷新、任务积压                                  | `autocannon`/轻量压测；记录 p95                |
+| CI       | Node 24.9、最新 24、26；`npm test` + `npm run typecheck`             | 三版本矩阵；失败阻断合并                       |
+
+**测试数据**：全部使用合成数据或脱敏快照；禁止真实客户敏感字段进入测试夹具；`test_mode=true` 的审计不计入业务统计。
+
+### 8.10 实施顺序与回滚
+
+1. **P1**：`manifest` + 左栏入口 + 右栏驾驶舱只读快照 + 待归置收件箱 + `dashboard_refresh`/`daily_brief`；
+2. **P2**：会话桥、记忆桥、归置写回确认、插件雷达/关键词雷达、SSE；
+3. **P3**：多角色视图、下钻增强、导出 PDF、驾驶舱自定义布局。
+
+**回滚**：`opc_web` 可独立停用，停用后左栏入口消失、右栏显示不可用提示，不影响中枢/员工/Workflow；读模型与归置表保留，重新启用后从 `as_of` 恢复。计划任务停用后不删除历史 `task_run`；插件推荐不产生安装副作用，回滚无下游不可逆动作。
+
+
+### 8.11 员工包与插件生命周期（v2.11 新增）
+
+**目标**：员工插件可独立安装、启用、停用、卸载，并可打包迁移到另一中枢；包只含插件代码/配置/流程，不含业务数据与凭据。
+
+**包格式**：`opc-employee-package` v1（JSON 信封）：
+
+```json
+{
+  "format": "opc-employee-package",
+  "formatVersion": "1",
+  "manifest": {
+    "pluginId": "opc_wbs",
+    "employeeCode": "WBS",
+    "displayName": "WBS 员工",
+    "version": "0.1.0",
+    "minHubVersion": "0.2.1",
+    "schemaVersion": "1",
+    "requiredViews": ["view_project_status"],
+    "tools": ["opc_wbs_decompose"],
+    "writeTargets": ["wbs_node"],
+    "singleWorkflows": ["wbs_baseline_change"],
+    "dependencies": []
+  },
+  "files": [{ "path": "workflows/wbs_baseline_change.ts", "sha256": "…", "contentBase64": "…" }],
+  "checksum": "sha256(canonical(manifest + files))"
+}
+```
+
+**导入校验顺序**：格式/大小 → checksum → manifest schema → `pluginId/version` → `minHubVersion/schemaVersion` → 依赖插件 → 视图/工具/写目标合法性 → 路径穿越/文件类型 → dry-run 差异报告 → 老板确认 → 安装（默认停用）→ 二次确认启用。
+
+**边界**：
+- 包默认不含 `biz.*` 业务数据、`.env`、令牌、客户敏感字段；含数据导出必须单独确认、脱敏、审计。
+- 导入失败回滚，不留半安装插件/流程/授权；同名插件不静默覆盖运行中版本。
+- 停用不删除业务数据；卸载默认保留数据并转只读，删除须老板确认。
+- 导入/导出、安装/启用/停用/卸载均写审计；`ref.employee_package`/`ref.employee_import_job` 记录包与任务状态。
+
+## 九、选型汇总表
+
+| 层次       | 选型                                         | v2.10 修订点                                                 |
 | :--------- | :------------------------------------------- | :----------------------------------------------------------- |
 | 运行时     | DSH Profile/Bundle/patch 三层装配            | 不变                                                         |
 | Node.js    | ≥ 24.9                                       | 不变                                                         |
@@ -293,6 +510,11 @@ CREATE INDEX ON embedding USING hnsw (embedding vector_cosine_ops)
 | 嵌入       | 本地优先，云端兜底                           | **实测方法**：RSS 峰值 × 1.3 反推 `shared_buffers`           |
 | 部署       | 单机 + PgBouncer + PG/pgvector               | 扩展触发条件不变；**审计表分区键前置**                       |
 | 备份       | pgBackRest/WAL + 逻辑备份 + 开放格式审计归档 | **哈希链链头持久化于 `audit_chain_head` 表**；PDF 用 Pandoc  |
+| Web 表现层 | `opc_web` + `WebHostAdapter`                 | 原生插槽优先，否则 sandbox iframe + postMessage；面板不直连 DB |
+| 前端       | TypeScript + React 19 + Vite + ECharts       | 首屏 ≤500KB gzip；图表懒加载；跟随 DSH 主题                  |
+| 实时       | SSE（不支持时 15s 轮询）                     | 只推失效事件与快照版本，不推敏感明细                         |
+| 计划任务   | PG `scheduled_task`/`task_run` + SKIP LOCKED | 不用 Redis/advisory lock；`(task_key, scheduled_at)` 幂等     |
+| 雷达检索   | 外部 MCP/搜索源                              | 只推荐不自动安装；附来源/许可证/权限/风险；失败标注“未检索”  |
 
 ---
 
@@ -322,6 +544,25 @@ CREATE INDEX ON embedding USING hnsw (embedding vector_cosine_ops)
 7. 独立 Verifier Agent 与 coding agent 模型配置分离增加运维复杂度，需在 P2 前完成模型路由与成本评估；
 8. 低频流程长期处于“观察期延长”，若积累过多需运营定期审查并人工决定是否提前转正。
 
+**v2.10 新增闭合项**：
+
+| 新增点                             | 处理                                                         | 位置 |
+| :--------------------------------- | :----------------------------------------------------------- | :--- |
+| DSH Web 扩展点未知（P0）           | 定义 `WebHostAdapter` 三档适配：原生插槽 → sandbox iframe → 降级独立页；落地前核对 DSH 契约 | 8.1  |
+| 面板越权读会话/记忆（P0）          | 会话授权绑定范围/用途/有效期；记忆按 scope；跨域单字段一次性令牌；撤回即失效 | 8.7  |
+| 上传归置误写（P0）                 | 分类置信度分级；财税/法务/客户敏感/合同/库存写入一律确认；幂等键防重复 | 8.4、8.5 |
+| 驾驶舱数据陈旧/伪造（P1）          | 统一 `as_of`；陈旧徽标；不填 0；冻结脚注；SSE 只推版本号     | 8.6  |
+| 计划任务重复执行（P1）             | `(task_key, scheduled_at)` 唯一；`FOR UPDATE SKIP LOCKED`；不用 advisory lock | 8.5  |
+| 插件推荐被误解为自动安装（P1）     | 只写 `radar_item`；安装必须老板显式确认；推荐卡列权限与数据驻留风险 | 8.5、8.10 |
+| iframe 安全（P2）                  | sandbox 不含 `allow-same-origin`；origin 白名单；CSP；postMessage 请求 ID/超时 | 8.1、8.7 |
+
+**v2.10 残余风险**：
+1. DSH Web 若未提供右侧面板插槽，P1 只能降级为“会话命令 + 独立页面”，需尽早确认；
+2. 会话/记忆授权的“范围可理解性”依赖 UI 表达，需在可用性测试中验证老板是否真正理解授权边界；
+3. 归置分类依赖规则 + 模型，长尾表达仍可能误分，收件箱与确认卡是必要兜底；
+4. 外部检索源的稳定性与版权/引用合规需运营期持续评估；
+5. 驾驶舱读模型与业务表存在秒级延迟，需在界面明确 `as_of`，避免被当作实时账；
+
 ---
 
-**一句话**：v2.9 把上一轮审阅指出的**三个“写在文档里看着对、编码时才发现无法直接落地”的执行缺口**——cutover 原子性、非代码流程的 Verifier 缓存口径、风险等级的写入目标解析——全部收敛为可直接编码的规则；同时补齐了超时绑定点、哈希链链头、分区前置设计与嵌入模型实测方法。**可作为 Phase 1 的部署基线。**
+**一句话**：v2.10 在 v2.9 的 Phase 1 部署基线上补齐老板侧表现层——`opc_web` 插件栏入口、右侧驾驶舱、会话桥/记忆桥、上传归置流水线与 PG 原生计划任务；所有读取按会话/scope 授权，所有写入经中枢确认与审计，插件推荐只推荐不自动安装。**可作为 Web 表现层 P1 的设计基线。**

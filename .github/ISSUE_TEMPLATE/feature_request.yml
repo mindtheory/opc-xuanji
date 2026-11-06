@@ -1,0 +1,81 @@
+name: Feature / requirement request
+description: Propose a new capability, employee workflow, or contract change
+title: "[Feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for product requirements, employee-line changes, API contract changes, or workflow requests.
+        A change usually follows `spec → docs → code → tests → process assets`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / opportunity
+      description: What business problem does this solve? Who is the user?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior, data, UI, and workflow boundaries.
+    validations:
+      required: true
+  - type: dropdown
+    id: employee
+    attributes:
+      label: Employee line
+      options:
+        - Platform / cross-cutting
+        - 财税管家 FIN
+        - 法务官 LEG
+        - 行政总管 ADM
+        - 战略参谋 STR
+        - 项目监理 PRJ
+        - 情报官 INT
+        - 客户管家 CRM
+        - 车务官 VEH
+        - 货栈总管 INV
+        - WBS 员工 WBS
+        - 外宣员工 PUB
+        - Web presentation layer
+        - Employee packaging
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List verifiable AC. Prefer observable fields, thresholds, and state transitions.
+      placeholder: |
+        - AC-1 ...
+        - AC-2 ...
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Fixed workflow vs AI judgment
+      description: Which steps should be a deterministic workflow, and which need AI judgment?
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract/data impact
+      description: New/changed API, tool, entity, view, write target, or migration.
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / privacy / security
+      description: Human gates, sensitive data, external dependencies, or rollback concerns.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the SRS/IRS/SDD/DBDD and employee requirement index.
+          required: true
+        - label: I understand this may require a spec/contract change before implementation.
+          required: true
