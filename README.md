@@ -8,7 +8,7 @@
 
 - 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.10、《OPC-玄机 · 技术选型与系统架构.md》v2.10（与本仓库同目录）
 - 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（31 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（34 个 operation）+ PostgreSQL 17 / pgvector 数据层
-- 当前阶段：**D4 基线 + v2.11 员工分册/可插拔/员工包增量**（单元 25/25、`tsc --noEmit` 0 错误；新增集成用例需 `OPC_TEST_DSN` 指向测试库后执行）
+- 当前阶段：**v0.1.0 已发布**。CI 在 Node 24.9/24/26 上单元与门禁全绿；PostgreSQL 17 + pgvector 集成 **68/68** 通过。本地跑集成仍需 `OPC_TEST_DSN`。
 
 ## 目录结构
 
@@ -131,7 +131,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 ## 测试与门禁
 
 ```bash
-npm test          # 单元 25 + 集成 43（Web/员工增量用例需 OPC_TEST_DSN）
+npm test          # 68 用例：单元 25 + 集成 43（本地需 OPC_TEST_DSN；CI 已全绿）
 npm run typecheck # tsc --noEmit，0 错误
 npm run spec:check# check-spec：PASS（ERROR 0）
 npm run docs:check# check-docs：frontmatter/文末两节/编号
@@ -162,7 +162,7 @@ npm run docs:check# check-docs：frontmatter/文末两节/编号
 | [docs/releases/](docs/releases/) | 发布说明与发布流程 |
 | [LICENSE](LICENSE) | 专有许可（All rights reserved） |
 
-当前版本：`0.1.0`。发布流程见 [docs/releases/README.md](docs/releases/README.md)；发布说明见 [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md)。
+当前版本：`0.1.0`。发布流程见 [docs/releases/README.md](docs/releases/README.md)；发布说明见 [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md)；发布与 CI 证据见 [PA-OPC-016](docs/过程资产/PA-OPC-016-v0.1.0发布证据.md)。
 
 ## Git
 
