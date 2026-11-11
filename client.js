@@ -18,6 +18,8 @@ window.__ModuleLoader__.load({
     var exports = module.exports;
     var react = require("react");
     var h = react.createElement;
+    // Fragment 兜底：宿主 react 模块若没有 Fragment，就退回 div 包装
+    var Fragment = (react && react.Fragment) || "div";
 
     var inject = ["slots", "locale"];
     var PANEL_ID = "opc-xuanji";
@@ -255,7 +257,7 @@ window.__ModuleLoader__.load({
         });
       }
       var ranges = ["today", "7d", "30d", "90d"];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocStrip" },
           h("div", { className: "ocChip" }, h(Dot, { state: health.pg ? "ok" : "bad" }), t("panel.pg")),
           h("div", { className: "ocChip" }, h(Dot, { state: health.pgvector ? "ok" : "bad" }), t("panel.pgvector") + (health.pgvectorVersion ? " " + health.pgvectorVersion : "")),
@@ -339,7 +341,7 @@ window.__ModuleLoader__.load({
         { key: "createdAt", label: "开始", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.createdAt)); } },
         { key: "taskText", label: "任务", render: function (r) { return h("span", { className: "ocEllip", title: r.taskText || "" }, short(r.taskText, 60)); } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h("span", null, "员工矩阵：", h("b", null, String(catalog.length)), " 个员工 · 已安装 " + installed.length),
           h("span", { style: { flex: 1 } }),
@@ -382,7 +384,7 @@ window.__ModuleLoader__.load({
       var dash = dashS[0].data;
       var groups = {};
       if (dash && dash.metrics) dash.metrics.forEach(function (m) { (groups[m.group] = groups[m.group] || []).push(m); });
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h("span", null, "业务域：9 个经营域 + 平台域，指标来自驾驶舱聚合（只读）"),
           h("span", { style: { flex: 1 } }),
@@ -420,7 +422,7 @@ window.__ModuleLoader__.load({
         { key: "started_at", label: "开始", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.started_at)); } },
         { key: "ops", label: "操作", render: function (r) { return h(Btn, { onClick: function () { setDetail(r.id); } }, t("panel.detail")); } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h(Btn, { onClick: props.onBack }, "← " + t("panel.back")),
           h("span", null, "流程实例：", h("b", null, short(props.workflowId, 30))),
@@ -506,7 +508,7 @@ window.__ModuleLoader__.load({
         deadline_impact: true, idempotent_nodes: ["write_ledger"], write_nodes: ["write_ledger"], tools: ["opc_ledger_write"],
         verifier_policy: { reconcile: { sampling: 3 } },
       };
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h("span", null, "流程注册表：", h("b", null, String(workflows.length)), " 个版本"),
           h("span", { style: { flex: 1 } }),
@@ -555,7 +557,7 @@ window.__ModuleLoader__.load({
               h(Btn, { disabled: busy, onClick: function () { act(apiPut("/tasks/" + encodeURIComponent(r.taskId), { cron: r.cron, timezone: r.timezone, enabled: !r.enabled, config: r.config || {} }), r.enabled ? "已停用" : "已启用"); } }, r.enabled ? t("panel.disabled") : t("panel.enabled")));
           } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h("span", null, "定时任务：", h("b", null, String(tasks.length)), " 个（cron + 时区 + 幂等执行）"),
           h("span", { style: { flex: 1 } }),
@@ -589,7 +591,7 @@ window.__ModuleLoader__.load({
         { key: "object_id", label: "对象", render: function (r) { return h("span", { className: "ocMono" }, short((r.object_type || "") + ":" + (r.object_id || ""), 30)); } },
         { key: "hash", label: "哈希链", render: function (r) { return h("span", { className: "ocMono" }, short(r.hash || "", 12)); } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocFormRow" },
           h(Field, { label: "动作过滤", value: filter.action, onChange: function (v) { setFilter(Object.assign({}, filter, { action: v })); } }),
           h(NumField, { label: "条数", value: filter.limit, onChange: function (v) { setFilter(Object.assign({}, filter, { limit: v })); } }),
@@ -627,7 +629,7 @@ window.__ModuleLoader__.load({
         { key: "detected_at", label: "检出", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.detected_at)); } },
         { key: "ops", label: "操作", render: function (r) { return h(Btn, { onClick: function () { setRes({ id: String(r.id), choice: "A", note: "" }); } }, t("panel.resolve")); } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h("span", null, "冲突队列：", h("b", null, String(items.length)), " 条（冻结单元不入有效汇总，总额含冻结）"),
           h("span", { style: { flex: 1 } }),
@@ -670,7 +672,7 @@ window.__ModuleLoader__.load({
               h(Btn, { disabled: busy || r.status === "confirmed" || r.status === "ignored", onClick: function () { act(apiPost("/web/ingest/" + r.id + "/confirm", { action: "ignore" }), "已忽略"); } }, t("panel.ignore")));
           } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h("span", null, "收件箱：", h("b", null, String(items.length)), " 条（高风险域只生成确认卡，不自动写库）"),
           h("span", { style: { flex: 1 } }),
@@ -718,7 +720,7 @@ window.__ModuleLoader__.load({
         { key: "content", label: "内容", render: function (r) { return h("span", { className: "ocEllip", title: r.content || "" }, short(r.content, 60)); } },
         { key: "sensitive", label: "敏感", render: function (r) { return h(Badge, { tone: r.sensitive ? "warn" : "mute" }, r.sensitive ? "是" : "否"); } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocSection" },
           h("div", { className: "ocH" }, t("panel.search")),
           h("div", { className: "ocFormRow" },
@@ -758,7 +760,7 @@ window.__ModuleLoader__.load({
         { key: "reason", label: "理由", render: function (r) { return h("span", { className: "ocEllip", title: r.reason || "" }, short(r.reason, 40)); } },
         { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "new" ? "ok" : "mute" }, r.status); } },
       ];
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h("div", { className: "ocRow" },
           h("span", null, "插件/关键词雷达：", h("b", null, String(items.length)), " 条（只推荐不自动安装）"),
           h("span", { style: { flex: 1 } }),
@@ -781,7 +783,7 @@ window.__ModuleLoader__.load({
           .catch(function (e) { props.flash(String((e && e.message) || e), false); })
           .then(function () { setBusy(false); });
       }
-      return h(Fragment ? Fragment : "div", null,
+      return h(Fragment, null,
         h(ErrLine, { error: healthS[0].error || manifestS[0].error }),
         h(Card, null,
           h("div", { className: "ocH" }, "员工智能体（基础设施层 dsh-super-agents）"),
@@ -890,16 +892,23 @@ window.__ModuleLoader__.load({
       } catch (e) { /* locale optional */ }
 
       var disposers = [];
-      if (ctx && ctx.slots && typeof ctx.slots.inject === "function" && slotDeclared(ctx, "sidebar.panellist") && slotDeclared(ctx, "main")) {
+      function seat(slotName, register) {
         try {
-          disposers.push(ctx.slots.inject("main", function () {
-            return ctx.slots.register({ name: "main", key: PANEL_ID }, Console);
-          }));
-          disposers.push(ctx.slots.inject("sidebar.panellist", function () {
-            return ctx.slots.register({ name: "sidebar.panellist", id: PANEL_ID, order: PANEL_ORDER, label: function () { return t("panel.title"); } }, SidebarIcon);
-          }));
+          disposers.push(ctx.slots.inject(slotName, register));
         } catch (err) {
-          console.warn("[opc-xuanji] panel seat failed:", err);
+          console.warn("[opc-xuanji] panel seat failed (" + slotName + "):", err);
+        }
+      }
+      if (ctx && ctx.slots && typeof ctx.slots.inject === "function") {
+        if (slotDeclared(ctx, "sidebar.panellist")) {
+          seat("sidebar.panellist", function () {
+            return ctx.slots.register({ name: "sidebar.panellist", id: PANEL_ID, order: PANEL_ORDER, label: "OPC驾驶舱" }, SidebarIcon);
+          });
+        }
+        if (slotDeclared(ctx, "main")) {
+          seat("main", function () {
+            return ctx.slots.register({ name: "main", key: PANEL_ID }, Console);
+          });
         }
       }
       return function () {
