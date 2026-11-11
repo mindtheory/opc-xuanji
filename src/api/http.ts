@@ -25,6 +25,7 @@ import type { EmployeePackageService } from "../employees/package.ts";
 import { EMPLOYEE_MANIFESTS } from "../employees/catalog.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
 import type { SuperAgentService } from "../agents/service.ts";
+import type { HindsightSyncService } from "../memory/sync.ts";
 
 export interface WebServices {
   ingest: IngestService;
@@ -47,6 +48,7 @@ export interface ApiContext {
   web: WebServices;
   employees: EmployeePackageService;
   agents?: SuperAgentService;
+  memorySync?: HindsightSyncService;
   archiveDir: string;
   version: string;
 }
@@ -90,6 +92,11 @@ function requireString(body: Record<string, unknown>, key: string): string {
   const value = body[key];
   if (typeof value !== "string" || value.trim() === "") throw new OpcError(ERR.SYS, `字段 ${key} 必须是非空字符串`, 400);
   return value;
+}
+
+function requireMemorySync(ctx: ApiContext): HindsightSyncService {
+  if (ctx.memorySync === undefined) throw new OpcError(ERR.HINDSIGHT_UNAVAILABLE, "未装配 Hindsight 记忆桥", 503);
+  return ctx.memorySync;
 }
 
 function requireAgents(ctx: ApiContext): SuperAgentService {
@@ -626,6 +633,49 @@ export const ROUTES: Route[] = [
         prompt: requireString(body, "prompt"),
       });
       return { status: 201, data: result };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/memory\/hindsight$/,
+    keys: [],
+    async handler(ctx) {
+      if (ctx.memorySync === undefined) return { status: 200, data: { reachable: false, error: "未装配 Hindsight 桥", bank: "dsh", opcCards: 0, pendingProposals: 0 } };
+      return { status: 200, data: await ctx.memorySync.status() };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/memory\/hindsight\/memories$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      const sync = requireMemorySync(ctx);
+      const limit = query.get("limit") === null ? 50 : Number(query.get("limit"));
+      const offset = query.get("offset") === null ? 0 : Number(query.get("offset"));
+      return { status: 200, data: await sync.list(Number.isFinite(limit) ? limit : 50, Number.isFinite(offset) ? offset : 0) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/memory\/hindsight\/import$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      const sync = requireMemorySync(ctx);
+      const items = Array.isArray(body.items) ? (body.items as Record<string, unknown>[]) : [];
+      return { status: 201, data: await sync.import({ items: items as never[], async: body.async === true }) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/memory\/hindsight\/sync$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      const sync = requireMemorySync(ctx);
+      const direction = optionalString(body.direction) ?? "both";
+      if (direction === "push") return { status: 200, data: await sync.syncPush() };
+      if (direction === "pull") return { status: 200, data: await sync.syncPull(typeof body.limit === "number" ? body.limit : 50) };
+      if (direction === "both") return { status: 200, data: await sync.syncBoth(typeof body.limit === "number" ? body.limit : 50) };
+      throw new OpcError(ERR.HINDSIGHT_UNAVAILABLE, `不支持的同步方向：${direction}`, 400);
     },
   },
   {

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hindsight 记忆导入与同步**：`src/memory/hindsight.ts`（Hindsight API 桥：health/stats/list/import，超时与 `ERR-HINDSIGHT-001` 归一）+ `src/memory/sync.ts`（导入、推送 OPC 记忆卡→Hindsight、拉取 Hindsight→OPC 记忆提案、双向同步，全部写审计）；OPC 记忆卡以 `document_id=opc-memory-<id>` 幂等写入，敏感卡永不推送，拉取方向生成 pending 提案并自动去重。HTTP 契约 +4 operation（`/api/v1/memory/hindsight*`，共 47）；面板新增「记忆同步」页签（状态条、JSON/文本导入、推送/拉取/双向、远端记忆列表）。配置 `hindsightUrl`/`hindsightBank`（env `OPC_HINDSIGHT_URL`/`OPC_HINDSIGHT_BANK`，默认 `http://127.0.0.1:28888` / `dsh`）。
+- `docs/过程资产/PA-OPC-021-Hindsight记忆导入与同步.md`: change record with ADRs and verification.
+
 - **OPC驾驶舱升级为全功能 Web 控制台**（11 个模块页签：驾驶舱/员工/业务域/流程/任务/审计/冲突/收件箱/记忆/雷达/设置）：员工矩阵可见 11 个员工并支持安装、启用停用、部署角色卡、派活、员工包导出导入；流程可见注册版本/实例并支持注册、启动实例、完成节点、Verifier 评判；任务可立即执行与启停；审计可过滤与导出；冲突可裁决；收件箱可确认归置；记忆可检索与提案；设置页含智能体健康与全局暂停。
 - 服务端契约 +5 operation：`listWorkflows`、`listWorkflowInstances`、`getWorkflowInstance`、`agentRuns`、`listConflicts`；`GET /api/v1/employees` 响应增加 `catalog`（11 个员工 manifest）。
 - `apply` 增注册 `/api/v1` **前缀路由**（DSH webServer 最长前缀匹配），动态路径在浏览器端可达。

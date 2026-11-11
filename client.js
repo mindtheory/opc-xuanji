@@ -750,6 +750,70 @@ window.__ModuleLoader__.load({
             h(Btn, { kind: "primary", disabled: busy || !conf.id, onClick: function () { act(apiPost("/web/memory/proposals/" + encodeURIComponent(conf.id) + "/confirm", {}), "提案已确认"); } }, t("panel.confirmProposal")))));
     }
 
+    // ================= 记忆同步（Hindsight） =================
+    function HindsightTab(props) {
+      var statusS = useLoad(function () { return apiGet("/memory/hindsight"); }, []);
+      var listS = useLoad(function () { return apiGet("/memory/hindsight/memories?limit=50"); }, []);
+      var importS = react.useState({ text: "" });
+      var imp = importS[0];
+      var setImp = importS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0];
+      var setBusy = busyS[1];
+      function act(promise, ok) {
+        setBusy(true);
+        promise
+          .then(function (d) { props.flash(ok + (d ? "：" + JSON.stringify(d) : ""), true); statusS[1](); listS[1](); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(false); });
+      }
+      var st = statusS[0].data || {};
+      var stats = st.stats || {};
+      var mems = (listS[0].data && listS[0].data.items) || [];
+      var cols = [
+        { key: "id", label: "#", render: function (r) { return h("span", { className: "ocMono" }, short(r.id, 12)); } },
+        { key: "text", label: "内容", render: function (r) { return h("span", { className: "ocEllip", title: r.text || "" }, short(r.text, 60)); } },
+        { key: "context", label: "上下文", render: function (r) { return h("span", { className: "ocMono" }, short(r.context || "", 30)); } },
+        { key: "tags", label: "标签", render: function (r) { return h("span", { className: "ocMono" }, (r.tags || []).join(", ")); } },
+        { key: "date", label: "时间", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.date)); } },
+        { key: "state", label: "状态", render: function (r) { return h(Badge, { tone: r.state === "valid" ? "ok" : "mute" }, r.state); } },
+      ];
+      return h(Fragment, null,
+        h("div", { className: "ocRow" },
+          h("span", null, "Hindsight 记忆同步：", h("b", null, st.bank || "dsh"), "（OPC 记忆卡 " + (st.opcCards || 0) + " · 待确认提案 " + (st.pendingProposals || 0) + "）"),
+          h("span", { style: { flex: 1 } }),
+          h(Badge, { tone: st.reachable ? "ok" : "bad" }, st.reachable ? "可达" : "不可达"),
+          h(Btn, { onClick: function () { statusS[1](); listS[1](); } }, t("panel.refresh"))),
+        h(ErrLine, { error: statusS[0].error || listS[0].error || (st.reachable ? "" : st.error) }),
+        st.reachable && stats
+          ? h("div", { className: "ocStrip" },
+              h("div", { className: "ocChip" }, h(Dot, { state: "ok" }), "记忆节点 " + (stats.totalNodes || 0)),
+              h("div", { className: "ocChip" }, h(Dot, { state: "ok" }), "链接 " + (stats.totalLinks || 0)),
+              h("div", { className: "ocChip" }, h(Dot, { state: "ok" }), "文档 " + (stats.totalDocuments || 0)),
+              h("div", { className: "ocChip" }, h(Dot, { state: "mute" }), "最后写入 " + fmtTime(stats.lastWriteAt)))
+          : null,
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "导入到 Hindsight"),
+          h(Area, { label: "记忆项 JSON 数组（[{content, context?, tags?, timestamp?, document_id?}]，也可直接粘一段文本作单条）", value: imp.text, onChange: function (v) { setImp({ text: v }); } }),
+          h("div", { className: "ocRow" },
+            h(Btn, { kind: "primary", disabled: busy || !imp.text.trim(), onClick: function () {
+                var items;
+                try {
+                  var parsed = JSON.parse(imp.text);
+                  items = Array.isArray(parsed) ? parsed : [parsed];
+                } catch (e) {
+                  items = [{ content: imp.text }];
+                }
+                act(apiPost("/memory/hindsight/import", { items: items }), "已导入");
+              } }, "导入"),
+            h(Btn, { disabled: busy, onClick: function () { act(apiPost("/memory/hindsight/sync", { direction: "push" }), "已推送 OPC 记忆卡"); } }, "推送 OPC 记忆卡 →"),
+            h(Btn, { disabled: busy, onClick: function () { act(apiPost("/memory/hindsight/sync", { direction: "pull" }), "已拉取为记忆提案"); } }, "← 拉取为记忆提案"),
+            h(Btn, { disabled: busy, onClick: function () { act(apiPost("/memory/hindsight/sync", { direction: "both" }), "双向同步完成"); } }, "双向同步"))),
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "Hindsight 记忆", h("span", { className: "ocCount" }, String((listS[0].data && listS[0].data.total) || mems.length))),
+          h(Table, { columns: cols, rows: mems })));
+    }
+
     // ================= 雷达 =================
     function RadarTab(props) {
       var listS = useLoad(function () { return apiGet("/web/radar?limit=100"); }, []);
@@ -816,6 +880,7 @@ window.__ModuleLoader__.load({
       { id: "conflicts", label: "冲突" },
       { id: "inbox", label: "收件箱" },
       { id: "memory", label: "记忆" },
+      { id: "hindsight", label: "记忆同步" },
       { id: "radar", label: "雷达" },
       { id: "settings", label: "设置" },
     ];
@@ -841,6 +906,7 @@ window.__ModuleLoader__.load({
       else if (tab === "conflicts") body = h(ConflictsTab, { flash: flashMsg });
       else if (tab === "inbox") body = h(InboxTab, { flash: flashMsg });
       else if (tab === "memory") body = h(MemoryTab, { flash: flashMsg });
+      else if (tab === "hindsight") body = h(HindsightTab, { flash: flashMsg });
       else if (tab === "radar") body = h(RadarTab, { flash: flashMsg });
       else body = h(SettingsTab, { flash: flashMsg });
 

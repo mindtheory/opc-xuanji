@@ -37,6 +37,7 @@ errorCodes:
   - ERR-WEB-001
   - ERR-EMP-001
   - ERR-AGENT-001
+  - ERR-HINDSIGHT-001
   - ERR-SYS-001
 
 paths:
@@ -994,6 +995,50 @@ paths:
       responses:
         '200':
           description: 派活结果（runId、agentId）
+
+  /api/v1/memory/hindsight:
+    get:
+      operationId: memoryHindsightStatus
+      tags: [agents]
+      summary: Hindsight 记忆服务状态（可达性、bank、统计、OPC 卡片与待确认提案数）
+      x-entity: AgentRun
+      x-error-codes: []
+      responses:
+        '200':
+          description: 状态聚合（reachable=false 表示服务不可达）
+
+  /api/v1/memory/hindsight/memories:
+    get:
+      operationId: memoryHindsightList
+      tags: [agents]
+      summary: 列出 Hindsight 记忆（只读，limit/offset 分页）
+      x-entity: AgentRun
+      x-error-codes: [ERR-HINDSIGHT-001]
+      responses:
+        '200':
+          description: 记忆列表
+
+  /api/v1/memory/hindsight/import:
+    post:
+      operationId: memoryHindsightImport
+      tags: [agents]
+      summary: 批量导入记忆项到 Hindsight（文档级幂等：document_id）
+      x-entity: AgentRun
+      x-error-codes: [ERR-HINDSIGHT-001]
+      responses:
+        '201':
+          description: 导入结果（accepted 数量）
+
+  /api/v1/memory/hindsight/sync:
+    post:
+      operationId: memoryHindsightSync
+      tags: [agents]
+      summary: 记忆同步（push：OPC 记忆卡→Hindsight；pull：Hindsight→OPC 记忆提案；both）
+      x-entity: AgentRun
+      x-error-codes: [ERR-HINDSIGHT-001]
+      responses:
+        '200':
+          description: 同步结果（推送/拉取计数）
 
   /api/v1/agents/pause:
     post:

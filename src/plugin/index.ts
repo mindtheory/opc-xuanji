@@ -30,6 +30,8 @@ import { EmployeePackageService } from "../employees/package.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
 import { SuperAgentsBridge } from "../agents/bridge.ts";
 import { SuperAgentService } from "../agents/service.ts";
+import { HindsightBridge } from "../memory/hindsight.ts";
+import { HindsightSyncService } from "../memory/sync.ts";
 
 export const name = "opc-xuanji";
 export const inject = ["tools"];
@@ -42,6 +44,8 @@ export interface HubConfig {
   tickMs?: number;
   enableScheduler?: boolean;
   superAgentsUrl?: string;
+  hindsightUrl?: string;
+  hindsightBank?: string;
 }
 
 export interface Hub {
@@ -63,6 +67,7 @@ export interface Hub {
   };
   employees: EmployeePackageService;
   agents: SuperAgentService;
+  memorySync: HindsightSyncService;
   api: ApiContext;
   config: ReturnType<typeof loadConfig>;
   tools: ToolDefinition[];
@@ -113,6 +118,11 @@ export function createHub(options: HubConfig = {}): Hub {
   const employees = new EmployeePackageService(pool, audit, { hubVersion: options.version ?? "0.2.1" });
   const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
   const agents = new SuperAgentService(bridge, audit, { archiveDir });
+  const hindsight = new HindsightBridge({
+    baseUrl: options.hindsightUrl ?? (process.env.OPC_HINDSIGHT_URL?.trim() || undefined),
+    bankId: options.hindsightBank ?? (process.env.OPC_HINDSIGHT_BANK?.trim() || undefined),
+  });
+  const memorySync = new HindsightSyncService(hindsight, pool, audit);
 
   const api: ApiContext = {
     pool,
@@ -127,6 +137,7 @@ export function createHub(options: HubConfig = {}): Hub {
     web,
     employees,
     agents,
+    memorySync,
     archiveDir,
     version: options.version ?? "0.1.0",
   };
@@ -668,6 +679,7 @@ export function createHub(options: HubConfig = {}): Hub {
     web,
     employees,
     agents,
+    memorySync,
     api,
     config,
     tools,
