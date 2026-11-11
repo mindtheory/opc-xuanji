@@ -117,7 +117,9 @@ window.__ModuleLoader__.load({
 
     // ================= styles =================
     var CSS = [
-      ".ocWrap{padding:12px;display:flex;flex-direction:column;gap:12px;font-size:13px;min-height:100%}",
+      ".ocWrap{box-sizing:border-box;height:100%;padding:12px;display:flex;flex-direction:column;gap:12px;font-size:13px;overflow:hidden}",
+      ".ocBody{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-right:4px}",
+      ".ocHead,.ocTabs{flex:0 0 auto}",
       ".ocHead{display:flex;align-items:flex-start;gap:10px}",
       ".ocTitle{font-size:16px;font-weight:700;letter-spacing:.4px}",
       ".ocSub{opacity:.6;font-size:12px;margin-top:2px}",
@@ -854,7 +856,7 @@ window.__ModuleLoader__.load({
           TABS.map(function (x) {
             return h("span", { key: x.id, className: "ocTab" + (x.id === tab ? " on" : ""), onClick: function () { setTab(x.id); } }, x.label);
           })),
-        body,
+        h("div", { className: "ocBody" }, body),
         flash.msg ? h("div", { className: "ocFlash" + (flash.ok ? "" : " bad") }, flash.msg) : null);
     }
 
