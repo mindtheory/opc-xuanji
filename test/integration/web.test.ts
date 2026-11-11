@@ -47,7 +47,7 @@ test("manifest 与驾驶舱：返回插件栏信息、as_of 与冻结脚注", as
   const manifest = await call("GET", "/api/v1/web/manifest");
   assert.equal(manifest.status, 200);
   assert.equal(manifest.json.data.pluginId, "opc_web");
-  assert.equal(manifest.json.data.title, "OPC公司管理");
+  assert.equal(manifest.json.data.title, "OPC驾驶舱");
   assert.deepEqual(manifest.json.data.tabs, ["dashboard", "domains", "briefs", "tasks", "settings"]);
 
   await hub.pool.query("INSERT INTO biz.ledger (entry_date, amount, direction, category, entity) VALUES (current_date, 1000, 'in', 'x', 'company')");

@@ -1,13 +1,13 @@
 ---
 doc_id: OPC-SRS-001
 title: OPC-玄机 · 一人公司中枢 软件需求规格说明
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D1
 owner: 玄机文档组
 upstream: ["OPC-玄机 · 一人公司中枢-产品设计.md（v2.12）", "OPC-玄机 · 技术选型与系统架构.md（v2.12）", "spec/opc-xuanji/usecases.yaml（v2.11 基线）"]
 gate: G1
-updated: 2026-11-06
+updated: 2026-11-11
 ---
 
 # OPC-玄机 · 一人公司中枢 软件需求规格说明
@@ -638,11 +638,11 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 
 #### 8.4.1 REQ-WEB-001 插件栏入口与右侧面板
 
-**需求陈述**：安装后 DSH 左栏显示“OPC公司管理”入口，点击打开右侧 Web 面板；面板承载驾驶舱、十一域栏目、日报/简报、流程与任务、设置五类页面。
+**需求陈述**：安装后 DSH 左栏（插件栏）显示“OPC驾驶舱”入口，点击打开只读驾驶舱面板；面板承载健康条、范围快照指标、待归置、定时任务与雷达。
 
 **验收标准**：
 
-- **AC-1** `GET /api/v1/web/manifest` 返回 `pluginId=opc_web`、标题、右栏标识与五个页签；左栏入口与角标数量来自中枢，不由前端自行编造。
+- **AC-1** `GET /api/v1/web/manifest` 返回 `pluginId=opc_web`、标题“OPC驾驶舱”、左栏标识与五个页签；左栏入口与角标数量来自中枢，不由前端自行编造。
 - **AC-2** 宿主提供原生插槽时优先使用；仅支持 iframe 时使用 sandbox（不含 `allow-same-origin`）+ postMessage；无面板插槽时明确提示降级，不伪造“已嵌入”。
 - **AC-3** 面板默认只读；任何写操作生成确认卡或跳回中间会话，不直接写业务表。
 

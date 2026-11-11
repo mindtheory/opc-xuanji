@@ -416,8 +416,8 @@ export function createHub(options: HubConfig = {}): Hub {
       async execute() {
         return jsonText({
           pluginId: "opc_web",
-          title: "OPC公司管理",
-          panel: "right",
+          title: "OPC驾驶舱",
+          panel: "left",
           schemaVersion: "1",
           tabs: ["dashboard", "domains", "briefs", "tasks", "settings"],
           capabilities: ["ingest", "session_bridge", "memory_bridge", "dashboard", "radar"],

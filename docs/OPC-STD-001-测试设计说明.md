@@ -1,13 +1,13 @@
 ---
 doc_id: OPC-STD-001
 title: OPC-玄机 · 一人公司中枢 测试设计说明
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D4
 owner: 质量与交付组（docs-test）
 upstream: ["spec/opc-xuanji/usecases.yaml", "spec/opc-xuanji/api.yaml", "spec/opc-xuanji/entities.yaml", "docs/OPC-STP-001-测试计划.md"]
 gate: G4
-updated: 2026-11-06
+updated: 2026-11-11
 ---
 
 # OPC-STD-001 · OPC-玄机 · 一人公司中枢 测试设计说明
@@ -581,7 +581,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **步骤**：请求 `GET /api/v1/web/manifest`。
 
-**期望结果**：`pluginId=opc_web`、`title=OPC公司管理`、`panel=right`、五个页签；宿主无插槽时降级提示由 DSH 端验证。
+**期望结果**：`pluginId=opc_web`、`title=OPC驾驶舱`、`panel=left`、五个页签；宿主无插槽时降级提示由 DSH 端验证。
 
 **对应用例**：`test/integration/web.test.ts` ·「manifest 与驾驶舱…」；`test/integration/plugin.test.ts` ·工具清单（`opc_web_manifest` 参数 schema 完整）
 

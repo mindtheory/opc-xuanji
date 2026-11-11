@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Web 界面「OPC驾驶舱」**：浏览器半 `client.js` 通过 DSH Client 插件机制注册左栏入口（`sidebar.panellist`，order 27）与主面板（`main`），展示健康条（PG/pgvector/调度/员工智能体）、范围快照指标（今日/7天/30天/90天 + 冻结脚注 + as-of）、待归置、定时任务与雷达；数据只读、30 秒自动刷新。`package.json` 增 `exports./client` 与 `dsh.client`；manifest 标题统一为「OPC驾驶舱」、`panel=left`（取代 PA-OPC-010 的「OPC公司管理/右栏」口径，历史记录保留）。
+- `docs/过程资产/PA-OPC-019-Web驾驶舱界面.md`: change record for the cockpit panel (ADR, verification, rollback).
+
 - **Super Agent application layer (OPC-SDD-003)**: opc-xuanji now builds on [dsh-super-agents](https://github.com/mindtheory/dsh-super-agents) as the application layer — `src/agents/bridge.ts` (loopback HTTP bridge with timeout/degradation/idempotent upsert) and `src/agents/service.ts` (deploy employees as persona cards, dispatch cognitive tasks and collect artifacts, health aggregation, global pause); 5 new tools (`opc_agent_deploy/dispatch/result/health/pause`, 36 total) and 4 new HTTP operations (`/api/v1/agents/*`, 38 total); `/api/v1/health` and `opc_health` gain an `agents` section plus `degraded` flag; new error code `ERR-AGENT-001`; soft dependency — without dsh-super-agents the agent tools degrade gracefully and everything else keeps working.
 - `docs/OPC-SDD-003-SuperAgent应用层设计.md`: application-layer positioning, concept mapping (employee→persona card, cognitive task→Run), bridge contract, dual-track scheduling, health/pause/degradation, acceptance scenarios, and rejected alternatives.
 - `AGENTS.md`: main-session agent operating charter (five proactives, reporting rhythm, decision-card rules, boundary and compliance).

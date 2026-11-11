@@ -96,6 +96,16 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 
 `health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，以及 Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
 
+### Web 界面（DSH 插件栏「OPC驾驶舱」）
+
+浏览器半 `client.js` 向宿主注册左栏入口 **OPC驾驶舱**（`sidebar.panellist`，order 27，紧邻「超级智能体」）与主面板（`main`），只读展示：
+
+- 健康条：PostgreSQL、pgvector 版本、调度任务（启用/注册）、员工智能体（可达/暂停/队列/运行中）
+- 范围快照：今日 / 7 天 / 30 天 / 90 天，按 group 渲染驾驶舱指标 + 冻结事件脚注 + as-of/陈旧标记
+- 待归置（收件箱）、定时任务（含下次触发）、插件与关键词雷达
+
+面板数据全部来自宿主侧 `/api/v1/*`（驾驶舱聚合、收件箱、任务、雷达），自身不写库、不派活；30 秒自动刷新，失败显示错误条不清空旧数据。注册模式与 dsh-super-agents 一致（`window.__ModuleLoader__.load` + `ctx.slots.inject/register`）。
+
 ### DSH 工具（`opc_*`）
 
 36 个：基线 16 个 + Web 10 个（`opc_web_*`）+ 员工目录/员工包 5 个（`opc_employee_list`、`opc_employee_install`、`opc_employee_toggle`、`opc_employee_export`、`opc_employee_import`）+ Super Agent 5 个（`opc_agent_deploy`、`opc_agent_dispatch`、`opc_agent_result`、`opc_agent_health`、`opc_agent_pause`）。

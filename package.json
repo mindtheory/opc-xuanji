@@ -35,6 +35,15 @@
     },
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
     }
   },
   "license": "UNLICENSED",
@@ -48,6 +57,8 @@
   "homepage": "https://github.com/mindtheory/opc-xuanji#readme",
   "main": "./src/plugin/index.ts",
   "exports": {
-    ".": "./src/plugin/index.ts"
+    ".": "./src/plugin/index.ts",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
   }
 }
