@@ -72,6 +72,7 @@ export interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  output?: { schema: Record<string, unknown>; render(args: unknown, value: unknown): unknown };
   execute(args: Record<string, unknown>, exec?: unknown): Promise<unknown>;
 }
 
@@ -88,8 +89,10 @@ function jsonText(value: unknown): { type: string; text: string } {
 
 export function createHub(options: HubConfig = {}): Hub {
   const config = loadConfig();
-  const pool = createPool(options.dsn ?? config.dsn, { max: 6 });
-  const archiveDir = options.archiveDir ?? config.archiveDir;
+  // bundle 自带的 cordis.patch.yml 会把 dsn/archiveDir 注入为空串；注释口径是
+  // "留空则使用环境变量"，所以用 ||（空串也回退），不能用 ??（只挡 null/undefined）。
+  const pool = createPool(options.dsn?.trim() || config.dsn, { max: 6 });
+  const archiveDir = options.archiveDir?.trim() || config.archiveDir;
   const audit = new AuditService(pool, { schemaVersion: config.schemaVersion });
   const views = new ViewService(pool, audit);
   const tokens = new TokenService(pool, audit);
@@ -97,7 +100,7 @@ export function createHub(options: HubConfig = {}): Hub {
   const registry = new WorkflowRegistry(pool, audit);
   const runner = new WorkflowRunner(pool, audit, registry);
   const verifier = new Verifier(pool, audit);
-  const scheduler = new Scheduler(pool, audit, { archiveDir, timezone: options.timezone ?? config.timezone });
+  const scheduler = new Scheduler(pool, audit, { archiveDir, timezone: options.timezone?.trim() || config.timezone });
   for (const task of defaultTasks()) scheduler.register(task);
 
   const web = {
@@ -129,8 +132,17 @@ export function createHub(options: HubConfig = {}): Hub {
   };
 
   // 工具边界统一错误口径：DSH 只看到一条可读错误，前缀带 OPC 错误码，便于模型与审计对账
+  // output 契约（DSH ≥0.2.1）：execute 已返回 {type:"text",text} 块，render 直接透传
+  const TEXT_OUTPUT = {
+    schema: { type: "object" },
+    render(_args: unknown, value: unknown): unknown {
+      if (typeof value === "string") return { type: "text", text: value };
+      return value;
+    },
+  };
   const tool = (def: ToolDefinition): ToolDefinition => ({
     ...def,
+    output: TEXT_OUTPUT,
     async execute(args: Record<string, unknown>, exec?: unknown): Promise<unknown> {
       try {
         return await def.execute(args, exec);
@@ -670,6 +682,7 @@ export function apply(ctx: { tools: { register(def: unknown): unknown }; inject?
       name: def.name,
       description: def.description,
       parameters: def.parameters,
+      ...(def.output !== undefined ? { output: def.output } : {}),
       execute: def.execute,
     });
   }
@@ -712,17 +725,29 @@ export function apply(ctx: { tools: { register(def: unknown): unknown }; inject?
     });
   }
 
-  if (config.enableScheduler !== false && typeof ctx.setInterval === "function") {
-    const timer = (ctx.setInterval as (fn: () => void, ms: number) => unknown)(() => {
+  // 调度 tick：用 Node 全局 setInterval（cordis ctx 的 timer 属性需要 inject 声明，
+  // 与 dsh-super-agents 同一模式：全局定时器 + unref，dispose 时清理）
+  if (config.enableScheduler !== false) {
+    hub.scheduler.seedDefaults().catch((error) => {
+      console.warn("[opc-xuanji] 默认任务播种失败:", error instanceof Error ? error.message : String(error));
+    });
+    const timer = setInterval(() => {
       hub.scheduler.tick().catch((error) => {
         console.warn("[opc-xuanji] 调度 tick 失败:", error instanceof Error ? error.message : String(error));
       });
     }, config.tickMs ?? 60_000);
-    if (typeof ctx.on === "function") {
-      (ctx.on as (event: string, fn: () => void) => void)("dispose", () => {
-        clearInterval(timer as ReturnType<typeof setInterval>);
-        void hub.pool.end();
-      });
+    if (typeof timer === "object" && timer !== null && "unref" in timer) {
+      (timer as { unref(): void }).unref();
+    }
+    try {
+      if (typeof ctx.on === "function") {
+        (ctx.on as (event: string, fn: () => void) => void)("dispose", () => {
+          clearInterval(timer);
+          void hub.pool.end();
+        });
+      }
+    } catch {
+      // ctx.on 不可用时忽略：进程退出即释放
     }
   }
 }

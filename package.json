@@ -45,5 +45,9 @@
   "bugs": {
     "url": "https://github.com/mindtheory/opc-xuanji/issues"
   },
-  "homepage": "https://github.com/mindtheory/opc-xuanji#readme"
+  "homepage": "https://github.com/mindtheory/opc-xuanji#readme",
+  "main": "./src/plugin/index.ts",
+  "exports": {
+    ".": "./src/plugin/index.ts"
+  }
 }
