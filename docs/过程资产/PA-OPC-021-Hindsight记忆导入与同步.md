@@ -21,7 +21,7 @@
 | `src/memory/sync.ts` | `HindsightSyncService`：`status`（可达性+bank 统计+OPC 卡片/待确认提案数）、`list`、`import`（批量导入）、`syncPush`（OPC 记忆卡→Hindsight）、`syncPull`（Hindsight→OPC 记忆提案）、`syncBoth`；全部写审计 |
 | `src/api/http.ts` | +4 operation：`GET /api/v1/memory/hindsight`、`GET .../memories`、`POST .../import`、`POST .../sync`（direction: push/pull/both） |
 | 错误码 | 新增 `ERR-HINDSIGHT-001`（api.yaml errorCodes 同步） |
-| 配置 | `HubConfig.hindsightUrl/hindsightBank`，环境变量 `OPC_HINDSIGHT_URL` / `OPC_HINDSIGHT_BANK`，默认 `http://127.0.0.1:28888` / `dsh` |
+| 配置 | `HubConfig.hindsightUrl/hindsightBank`，环境变量 `OPC_HINDSIGHT_URL` / `OPC_HINDSIGHT_BANK`；**内网服务实测位于 `192.168.1.12:8888`**（`.25:8888` 无响应），bank 与 dsh-hindsight-memory 插件一致为 `coding-agent::workspace`（4993 节点/149894 链接/641 文档） |
 
 ### 2.2 面板
 
@@ -47,7 +47,8 @@
 | 项 | 方式 | 结果 |
 | :--- | :--- | :--- |
 | 单元 | `node --test test/unit/hindsight.test.ts`（桩 Hindsight） | 7/7 PASS（请求形状、分页、import async 开关、错误映射、转换函数） |
-| 端到端 | 桩 Hindsight + 独立 API 服务（真实 PG，测试库） | status/list/import/push/pull/both 全通过；敏感卡跳过；`opc-memory-1` 幂等 document_id；二次拉取 `skipped:1` 去重 |
+| 端到端（桩） | 桩 Hindsight + 独立 API 服务（真实 PG，测试库） | status/list/import/push/pull/both 全通过；敏感卡跳过；`opc-memory-1` 幂等 document_id；二次拉取 `skipped:1` 去重 |
+| 端到端（真实服务） | 直连内网 `192.168.1.12:8888` | status 可达、bank `coding-agent::workspace`、nodes=4993/links=149894/docs=641；memories/list 正常；pull(3) 生成 3 条提案后清理 |
 | 渲染 | 迷你渲染器 | 「记忆同步」页签渲染通过 |
 | 回归 | `npm test` | 82/82 PASS；typecheck/spec/docs 门禁绿 |
 

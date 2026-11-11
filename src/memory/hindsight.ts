@@ -1,7 +1,8 @@
 /**
  * Hindsight 记忆桥（记忆导入与同步）：opc-xuanji 应用层对 Hindsight 记忆服务的唯一出口。
  *
- * 依赖的服务：vectorize-io/hindsight（默认 http://127.0.0.1:28888，bank 默认 dsh）。
+ * 依赖的服务：vectorize-io/hindsight（公司内网 192.168.1.12:8888；bank 默认与 dsh-hindsight-memory
+ * 插件一致：coding-agent::workspace，可用 OPC_HINDSIGHT_URL / OPC_HINDSIGHT_BANK 覆盖）。
  * API（取自其 openapi.json）：
  *   GET  /health
  *   GET  /v1/default/banks/{bank}/stats
@@ -60,9 +61,9 @@ export interface HindsightBridgeOptions {
   timeoutMs?: number;
 }
 
-const DEFAULT_BASE = "http://127.0.0.1:28888";
-const DEFAULT_BANK = "dsh";
-const UNAVAILABLE_HINT = "Hindsight 记忆服务不可达：确认服务已启动（默认 127.0.0.1:28888）";
+const DEFAULT_BASE = "http://192.168.1.12:8888";
+const DEFAULT_BANK = "coding-agent::workspace";
+const UNAVAILABLE_HINT = "Hindsight 记忆服务不可达：确认服务已启动（默认 192.168.1.12:8888）";
 
 export class HindsightBridge {
   private readonly baseUrl: string;

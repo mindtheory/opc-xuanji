@@ -111,7 +111,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | 冲突 | 队列浏览、裁决（A/B/manual/later + 备注） |
 | 收件箱 | 归置项确认/忽略、新增归置 |
 | 记忆 | 按 scope 检索、记忆提案、确认提案 |
-| 记忆同步 | Hindsight 记忆导入（JSON/文本）、推送 OPC 记忆卡、拉取为记忆提案、双向同步、远端记忆列表 |
+| 记忆同步 | Hindsight 记忆导入（JSON/文本）、推送 OPC 记忆卡、拉取为记忆提案、双向同步、远端记忆列表（默认服务 `192.168.1.12:8888`，bank `coding-agent::workspace`） |
 | 雷达 | 插件/关键词雷达列表 |
 | 设置 | 智能体健康与全局暂停、manifest |
 
@@ -132,8 +132,8 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
         timezone: 'Asia/Shanghai'
         enableScheduler: true
         # superAgentsUrl: 'http://127.0.0.1:3081'   # dsh-super-agents 面板地址（默认即此值）
-        # hindsightUrl: 'http://127.0.0.1:28888'    # Hindsight 记忆服务（默认即此值）
-        # hindsightBank: 'dsh'                       # Hindsight bank（默认 dsh）
+        # hindsightUrl: 'http://192.168.1.12:8888'  # Hindsight 记忆服务（内网默认）
+        # hindsightBank: 'coding-agent::workspace'  # Hindsight bank（与 dsh-hindsight-memory 插件一致）
 ```
 
 ## 定时自动化任务（配置驱动，可增删改）
