@@ -28,6 +28,8 @@ import { IngestService, MemoryService, RadarService, SessionGrantService, type I
 import type { ExtractedFields } from "../web/classifier.ts";
 import { EmployeePackageService } from "../employees/package.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
+import { SuperAgentsBridge } from "../agents/bridge.ts";
+import { SuperAgentService } from "../agents/service.ts";
 
 export const name = "opc-xuanji";
 export const inject = ["tools"];
@@ -39,6 +41,7 @@ export interface HubConfig {
   version?: string;
   tickMs?: number;
   enableScheduler?: boolean;
+  superAgentsUrl?: string;
 }
 
 export interface Hub {
@@ -59,6 +62,7 @@ export interface Hub {
     dashboard: DashboardService;
   };
   employees: EmployeePackageService;
+  agents: SuperAgentService;
   api: ApiContext;
   config: ReturnType<typeof loadConfig>;
   tools: ToolDefinition[];
@@ -104,6 +108,8 @@ export function createHub(options: HubConfig = {}): Hub {
     dashboard: new DashboardService(pool),
   };
   const employees = new EmployeePackageService(pool, audit, { hubVersion: options.version ?? "0.2.1" });
+  const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
+  const agents = new SuperAgentService(bridge, audit, { archiveDir });
 
   const api: ApiContext = {
     pool,
@@ -117,6 +123,7 @@ export function createHub(options: HubConfig = {}): Hub {
     scheduler,
     web,
     employees,
+    agents,
     archiveDir,
     version: options.version ?? "0.1.0",
   };
@@ -148,6 +155,7 @@ export function createHub(options: HubConfig = {}): Hub {
           pgvectorVersion: vector.rows[0]?.extversion ?? null,
           views: knownViewIds(),
           registeredTasks: tasks.map((task) => task.taskId),
+          agents: await agents.healthSafe(),
         });
       },
     }),
@@ -588,6 +596,51 @@ export function createHub(options: HubConfig = {}): Hub {
         }));
       },
     }),
+    tool({
+      name: "opc_agent_deploy",
+      description: "把员工部署为超级智能体角色卡（dsh-super-agents）：幂等，重复部署更新同一张卡。",
+      parameters: OBJECT({ pluginId: { type: "string" } }, ["pluginId"]),
+      async execute(args) {
+        return jsonText(await agents.deploy(String(args.pluginId)));
+      },
+    }),
+    tool({
+      name: "opc_agent_dispatch",
+      description: "给员工超级智能体派认知任务（读文档/写分析类）：按 pluginId 或 agentId 二选一，返回 runId。",
+      parameters: OBJECT({ pluginId: { type: "string" }, agentId: { type: "string" }, prompt: { type: "string" } }, ["prompt"]),
+      async execute(args) {
+        return jsonText(await agents.dispatch({
+          pluginId: typeof args.pluginId === "string" ? args.pluginId : undefined,
+          agentId: typeof args.agentId === "string" ? args.agentId : undefined,
+          prompt: String(args.prompt),
+        }));
+      },
+    }),
+    tool({
+      name: "opc_agent_result",
+      description: "回收一次派活的产物：状态 + 第一行一句话结论 + 产物全文。",
+      parameters: OBJECT({ runId: { type: "string" } }, ["runId"]),
+      async execute(args) {
+        return jsonText(await agents.result(String(args.runId)));
+      },
+    }),
+    tool({
+      name: "opc_agent_health",
+      description: "超级智能体基础设施健康：可达性、暂停、问题条目、队列水位。不可达时其余功能不受影响。",
+      parameters: OBJECT({}),
+      async execute() {
+        return jsonText(await agents.healthSafe());
+      },
+    }),
+    tool({
+      name: "opc_agent_pause",
+      description: "全局暂停/恢复认知调度（确定性 SQL 任务不受影响）。",
+      parameters: OBJECT({ paused: { type: "boolean" } }, ["paused"]),
+      async execute(args) {
+        await agents.setPaused(args.paused === true);
+        return jsonText({ paused: args.paused === true });
+      },
+    }),
   ];
 
   return {
@@ -602,6 +655,7 @@ export function createHub(options: HubConfig = {}): Hub {
     scheduler,
     web,
     employees,
+    agents,
     api,
     config,
     tools,
@@ -640,6 +694,10 @@ export function apply(ctx: { tools: { register(def: unknown): unknown }; inject?
     "/api/v1/web/radar",
     "/api/v1/employees",
     "/api/v1/employees/import",
+    "/api/v1/agents/health",
+    "/api/v1/agents/deploy",
+    "/api/v1/agents/dispatch",
+    "/api/v1/agents/pause",
   ];
   if (typeof ctx.inject === "function") {
     ctx.inject(["webServer"], (wctx: { webServer?: { register(route: unknown): unknown } }) => {

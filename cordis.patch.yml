@@ -9,3 +9,5 @@
         archiveDir: ''
         timezone: 'Asia/Shanghai'
         enableScheduler: true
+        # Super Agent 基础设施层（dsh-super-agents）面板地址，默认 http://127.0.0.1:3081
+        # superAgentsUrl: 'http://127.0.0.1:3081'

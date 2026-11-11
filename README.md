@@ -6,8 +6,9 @@
 
 运行在 **DeepSeek Harness（DSH ≥ 0.2.1）** 上的 Bundle 插件：以「中枢调度 + 专业员工矩阵 + 三级沉淀 + TS 流程固化」补全一人公司在财税、法务、行政、战略、项目、情报、客户、车务、进销存上的职能短板，并把**公司日常经营中需要定期执行的事**做成配置驱动的自动化任务。
 
-- 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.12、《OPC-玄机 · 技术选型与系统架构.md》v2.12（与本仓库同目录）
-- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（31 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（34 个 operation）+ PostgreSQL 17 / pgvector 数据层
+- 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.12、《OPC-玄机 · 技术选型与系统架构.md》v2.12（与本仓库同目录）、《OPC-SDD-003 Super Agent 应用层设计》（应用层定位）
+- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（36 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（38 个 operation）+ PostgreSQL 17 / pgvector 数据层
+- 应用层依赖：**[mindtheory/dsh-super-agents](https://github.com/mindtheory/dsh-super-agents)**（软依赖，同 profile 安装即得员工超级智能体：部署/派活/回流/健康；未装则 agent 类工具降级，其余功能不受影响）
 - 当前阶段：**v0.1.0 已发布**。CI 在 Node 24.9/24/26 上单元与门禁全绿；PostgreSQL 17 + pgvector 集成 **68/68** 通过。本地跑集成仍需 `OPC_TEST_DSN`。
 
 ## 目录结构
@@ -27,8 +28,9 @@ opc-xuanji/
 │   ├── scheduler/   # 自动化：cron/engine/tasks
 │   ├── web/         # 网页表现层：归置/会话/记忆/驾驶舱/雷达
 │   ├── employees/   # 员工 manifest、目录、员工包导入导出
+│   ├── agents/      # Super Agent 应用层：桥（依赖 dsh-super-agents）、部署/派活/回流
 │   ├── api/         # HTTP /api/v1 契约层
-│   ├── plugin/      # DSH cordis 插件入口（31 个工具）
+│   ├── plugin/      # DSH cordis 插件入口（36 个工具）
 │   └── db/          # 连接池与迁移执行器
 ├── scripts/         # gen-spec / migrate / serve
 ├── test/            # 单元 25 + 集成 43（新增 Web/员工用例需测试库）
@@ -92,11 +94,11 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 
 ### HTTP 契约（`/api/v1`）
 
-`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，以及 Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`、`employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
+`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，以及 Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
 
 ### DSH 工具（`opc_*`）
 
-31 个：基线 16 个 + Web 10 个（`opc_web_*`）+ 员工目录/员工包 5 个（`opc_employee_list`、`opc_employee_install`、`opc_employee_toggle`、`opc_employee_export`、`opc_employee_import`）。
+36 个：基线 16 个 + Web 10 个（`opc_web_*`）+ 员工目录/员工包 5 个（`opc_employee_list`、`opc_employee_install`、`opc_employee_toggle`、`opc_employee_export`、`opc_employee_import`）+ Super Agent 5 个（`opc_agent_deploy`、`opc_agent_dispatch`、`opc_agent_result`、`opc_agent_health`、`opc_agent_pause`）。
 
 插件装配（DSH profile 的 `cordis.patch.yml`）：
 
@@ -108,6 +110,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
         dsn: 'postgresql://<user>:<password>@localhost:5432/opc'
         timezone: 'Asia/Shanghai'
         enableScheduler: true
+        # superAgentsUrl: 'http://127.0.0.1:3081'   # dsh-super-agents 面板地址（默认即此值）
 ```
 
 ## 定时自动化任务（配置驱动，可增删改）

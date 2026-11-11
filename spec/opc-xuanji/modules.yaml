@@ -100,6 +100,13 @@ modules:
     writeDomains:
       - src/employees
 
+  - name: agents
+    package: opc.agents
+    responsibility: Super Agent 应用层——SuperAgentsBridge（回环 HTTP 依赖 dsh-super-agents）、员工部署为角色卡、认知派活与产物回流、健康聚合与全局暂停
+    dependsOn: [platform, audit, employees]
+    writeDomains:
+      - src/agents
+
   - name: audit
     package: opc.audit
     responsibility: 审计统一写入口——哈希链、JSONL+CSV 导出、链头持久化与恢复校验
@@ -131,13 +138,13 @@ modules:
   - name: api
     package: opc.api
     responsibility: HTTP /api/v1 契约层与 DSH 工具适配
-    dependsOn: [platform, finance, legal, admin, strategy, project, crm, inventory, vehicle, intel, wbs, publicity, employees, workflow, scheduler, web]
+    dependsOn: [platform, finance, legal, admin, strategy, project, crm, inventory, vehicle, intel, wbs, publicity, employees, workflow, scheduler, web, agents]
     writeDomains:
       - src/api
 
   - name: plugin
     package: opc.plugin
     responsibility: DSH cordis 插件入口——工具注册、系统提示词与定时器挂载
-    dependsOn: [api, employees]
+    dependsOn: [api, employees, agents]
     writeDomains:
       - src/plugin

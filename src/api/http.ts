@@ -23,6 +23,7 @@ import type { IngestService, MemoryService, RadarService, SessionGrantService, I
 import type { ExtractedFields } from "../web/classifier.ts";
 import type { EmployeePackageService } from "../employees/package.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
+import type { SuperAgentService } from "../agents/service.ts";
 
 export interface WebServices {
   ingest: IngestService;
@@ -44,6 +45,7 @@ export interface ApiContext {
   scheduler: Scheduler;
   web: WebServices;
   employees: EmployeePackageService;
+  agents?: SuperAgentService;
   archiveDir: string;
   version: string;
 }
@@ -89,6 +91,11 @@ function requireString(body: Record<string, unknown>, key: string): string {
   return value;
 }
 
+function requireAgents(ctx: ApiContext): SuperAgentService {
+  if (ctx.agents === undefined) throw new OpcError(ERR.AGENT_UNAVAILABLE, "未装配 Super Agent 桥（确认 dsh-super-agents 已启用）", 503);
+  return ctx.agents;
+}
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
@@ -102,15 +109,19 @@ export const ROUTES: Route[] = [
       const pg = await ctx.pool.query("SELECT 1");
       const vector = await ctx.pool.query<{ extversion: string }>("SELECT extversion FROM pg_extension WHERE extname = 'vector'");
       const tasks = await ctx.scheduler.list();
+      const agents = ctx.agents === undefined ? { reachable: false, error: "未装配 Super Agent 桥" } : await ctx.agents.healthSafe();
+      const degraded = agents.reachable === false || (agents.problems ?? []).some((p) => (p as { level?: string }).level === "error");
       return {
         status: 200,
         data: {
           status: "ok",
+          degraded,
           version: ctx.version,
           pg: pg.rows.length === 1,
           pgvector: vector.rows.length === 1,
           pgvectorVersion: vector.rows[0]?.extversion ?? null,
           scheduler: { registered: tasks.length, enabled: tasks.filter((task) => task.enabled).length },
+          agents,
         },
       };
     },
@@ -538,6 +549,48 @@ export const ROUTES: Route[] = [
         actor: optionalString(body.actor) ?? "boss",
       });
       return { status: report.ready ? 200 : 422, data: report };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/agents\/health$/,
+    keys: [],
+    async handler(ctx) {
+      if (ctx.agents === undefined) return { status: 200, data: { reachable: false, error: "未装配 Super Agent 桥" } };
+      return { status: 200, data: await ctx.agents.healthSafe() };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/agents\/deploy$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      const service = requireAgents(ctx);
+      return { status: 201, data: await service.deploy(requireString(body, "pluginId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/agents\/dispatch$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      const service = requireAgents(ctx);
+      const result = await service.dispatch({
+        pluginId: optionalString(body.pluginId),
+        agentId: optionalString(body.agentId),
+        prompt: requireString(body, "prompt"),
+      });
+      return { status: 201, data: result };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/agents\/pause$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      const service = requireAgents(ctx);
+      await service.setPaused(body.paused === true);
+      return { status: 200, data: { paused: body.paused === true } };
     },
   },
 ];

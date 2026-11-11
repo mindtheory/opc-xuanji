@@ -19,6 +19,8 @@ tags:
     description: 网页表现层（右栏驾驶舱/会话/记忆/归置/雷达）
   - name: employees
     description: 员工插件目录与员工包导入导出
+  - name: agents
+    description: Super Agent 应用层（依赖 dsh-super-agents）——员工部署、认知派活、回流与健康
 
 errorCodes:
   - ERR-AUTHZ-001
@@ -34,6 +36,7 @@ errorCodes:
   - ERR-VIEW-001
   - ERR-WEB-001
   - ERR-EMP-001
+  - ERR-AGENT-001
   - ERR-SYS-001
 
 paths:
@@ -909,6 +912,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EmployeePackageResult'
+
+  /api/v1/agents/health:
+    get:
+      operationId: agentsHealth
+      tags: [agents]
+      summary: Super Agent 基础设施层健康（可达性、暂停、问题条目、队列水位）
+      x-entity: AgentRun
+      x-error-codes: []
+      responses:
+        '200':
+          description: 健康聚合（reachable=false 表示 dsh-super-agents 不可达，中枢其余功能不受影响）
+
+  /api/v1/agents/deploy:
+    post:
+      operationId: agentsDeploy
+      tags: [agents]
+      summary: 员工部署为超级智能体角色卡（幂等 upsert，写审计）
+      x-entity: AgentRun
+      x-error-codes: [ERR-EMP-001, ERR-AGENT-001]
+      responses:
+        '200':
+          description: 部署结果（agent 与 created 标记）
+
+  /api/v1/agents/dispatch:
+    post:
+      operationId: agentsDispatch
+      tags: [agents]
+      summary: 按员工（pluginId）或角色卡（agentId）派认知任务，返回 runId
+      x-entity: AgentRun
+      x-error-codes: [ERR-EMP-001, ERR-AGENT-001]
+      responses:
+        '200':
+          description: 派活结果（runId、agentId）
+
+  /api/v1/agents/pause:
+    post:
+      operationId: agentsPause
+      tags: [agents]
+      summary: 全局暂停/恢复认知调度（确定性 SQL 任务不受影响）
+      x-entity: AgentRun
+      x-error-codes: [ERR-AGENT-001]
+      responses:
+        '200':
+          description: 暂停状态
 
 components:
   schemas:

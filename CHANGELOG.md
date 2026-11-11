@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Super Agent application layer (OPC-SDD-003)**: opc-xuanji now builds on [dsh-super-agents](https://github.com/mindtheory/dsh-super-agents) as the application layer — `src/agents/bridge.ts` (loopback HTTP bridge with timeout/degradation/idempotent upsert) and `src/agents/service.ts` (deploy employees as persona cards, dispatch cognitive tasks and collect artifacts, health aggregation, global pause); 5 new tools (`opc_agent_deploy/dispatch/result/health/pause`, 36 total) and 4 new HTTP operations (`/api/v1/agents/*`, 38 total); `/api/v1/health` and `opc_health` gain an `agents` section plus `degraded` flag; new error code `ERR-AGENT-001`; soft dependency — without dsh-super-agents the agent tools degrade gracefully and everything else keeps working.
+- `docs/OPC-SDD-003-SuperAgent应用层设计.md`: application-layer positioning, concept mapping (employee→persona card, cognitive task→Run), bridge contract, dual-track scheduling, health/pause/degradation, acceptance scenarios, and rejected alternatives.
 - `AGENTS.md`: main-session agent operating charter (five proactives, reporting rhythm, decision-card rules, boundary and compliance).
 - `OPC-SDD-002`: main-session agent persona, work loop, discovery, planning, execution, reporting, decision cards, metrics, and AC-AGT-01..10.
 - `OPC-SDP-001`: software development plan with roles, WBS, G0–G6 gates, milestones, resources, and change control.

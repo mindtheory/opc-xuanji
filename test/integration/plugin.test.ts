@@ -21,12 +21,17 @@ beforeEach(async () => {
   await hub.scheduler.seedDefaults();
 });
 
-test("工具清单：31 个 opc_* 工具且参数 schema 完整", () => {
+test("工具清单：36 个 opc_* 工具且参数 schema 完整", () => {
   const names = hub.tools.map((tool) => tool.name).sort();
-  assert.equal(names.length, 31);
+  assert.equal(names.length, 36);
   assert.ok(names.includes("opc_health"));
   assert.ok(names.includes("opc_workflow_register"));
   assert.ok(names.includes("opc_task_upsert"));
+  assert.ok(names.includes("opc_agent_deploy"));
+  assert.ok(names.includes("opc_agent_dispatch"));
+  assert.ok(names.includes("opc_agent_result"));
+  assert.ok(names.includes("opc_agent_health"));
+  assert.ok(names.includes("opc_agent_pause"));
   for (const tool of hub.tools) {
     assert.equal(tool.parameters.type, "object", tool.name);
     assert.ok(tool.description.length > 5, tool.name);

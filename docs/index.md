@@ -5,7 +5,7 @@ version: 0.4
 status: 评审稿
 stage: D5
 owner: 项目集成者
-upstream: [OPC-SRS-001, OPC-IRS-001, OPC-SDD-001, OPC-SDD-002, OPC-DBDD-001, OPC-STP-001, OPC-STD-001, OPC-STR-001, OPC-SDP-001, OPC-SCMP-001, OPC-SQAP-001, OPC-RMP-001, OPC-RTM-001, OPC-SVD-001]
+upstream: [OPC-SRS-001, OPC-IRS-001, OPC-SDD-001, OPC-SDD-002, OPC-SDD-003, OPC-DBDD-001, OPC-STP-001, OPC-STD-001, OPC-STR-001, OPC-SDP-001, OPC-SCMP-001, OPC-SQAP-001, OPC-RMP-001, OPC-RTM-001, OPC-SVD-001]
 gate: G6
 updated: 2026-11-06
 ---
@@ -31,6 +31,7 @@ updated: 2026-11-06
 | OPC-IRS-001 | 接口需求规格说明 | IRS | D2/G2 | 评审稿 | `docs/OPC-IRS-001-接口需求规格说明.md` |
 | OPC-SDD-001 | 系统设计说明 | SDD | D2/G2 | 评审稿 | `docs/OPC-SDD-001-系统设计说明.md` |
 | OPC-SDD-002 | 主会话 Agent 设定与运行设计 | SDD | D2/G2 | 评审稿 | `docs/OPC-SDD-002-主会话Agent设定与运行设计.md` |
+| OPC-SDD-003 | Super Agent 应用层设计（依赖 dsh-super-agents） | SDD | D2/G2 | 评审稿 | `docs/OPC-SDD-003-SuperAgent应用层设计.md` |
 | OPC-DBDD-001 | 数据库设计说明 | DBDD | D2/G2 | 评审稿 | `docs/OPC-DBDD-001-数据库设计说明.md` |
 | OPC-SDP-001 | 软件开发计划 | SDP | D0/G0 | 评审稿 | `docs/OPC-SDP-001-软件开发计划.md` |
 | OPC-SCMP-001 | 配置管理计划 | SCMP | D0/G0 | 评审稿 | `docs/OPC-SCMP-001-配置管理计划.md` |
