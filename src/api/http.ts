@@ -22,6 +22,7 @@ import { parseRange } from "../web/dashboard.ts";
 import type { IngestService, MemoryService, RadarService, SessionGrantService, IngestStatus, MemoryScope, RadarType } from "../web/services.ts";
 import type { ExtractedFields } from "../web/classifier.ts";
 import type { EmployeePackageService } from "../employees/package.ts";
+import { EMPLOYEE_MANIFESTS } from "../employees/catalog.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
 import type { SuperAgentService } from "../agents/service.ts";
 
@@ -166,6 +167,15 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    method: "GET",
+    pattern: /^\/api\/v1\/conflicts$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      const items = await ctx.conflicts.list(query.get("status") ?? undefined);
+      return { status: 200, data: { items, total: items.length } };
+    },
+  },
+  {
     method: "POST",
     pattern: /^\/api\/v1\/conflicts$/,
     keys: [],
@@ -208,6 +218,31 @@ export const ROUTES: Route[] = [
         monthlyFlow: typeof body.monthlyFlow === "number" ? body.monthlyFlow : undefined,
       });
       return { status: 201, data: result };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/workflows$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: { workflows: await ctx.registry.list() } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/workflows\/([^/]+)\/instances$/,
+    keys: ["workflowId"],
+    async handler(ctx, params) {
+      const items = await ctx.runner.list(decodeURIComponent(params.workflowId));
+      return { status: 200, data: { items, total: items.length } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/instances\/(\d+)$/,
+    keys: ["instanceId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await ctx.runner.get(Number(params.instanceId)) };
     },
   },
   {
@@ -484,7 +519,7 @@ export const ROUTES: Route[] = [
     keys: [],
     async handler(ctx) {
       const items = await ctx.employees.list();
-      return { status: 200, data: { items, total: items.length } };
+      return { status: 200, data: { items, total: items.length, catalog: EMPLOYEE_MANIFESTS } };
     },
   },
   {
@@ -549,6 +584,16 @@ export const ROUTES: Route[] = [
         actor: optionalString(body.actor) ?? "boss",
       });
       return { status: report.ready ? 200 : 422, data: report };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/agents\/runs$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      if (ctx.agents === undefined) return { status: 200, data: { items: [], error: "未装配 Super Agent 桥" } };
+      const items = await ctx.agents.runs(query.get("agentId") ?? undefined);
+      return { status: 200, data: { items, total: items.length } };
     },
   },
   {

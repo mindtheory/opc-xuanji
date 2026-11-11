@@ -151,6 +151,15 @@ paths:
                 $ref: '#/components/schemas/ResultVoid'
 
   /api/v1/conflicts:
+    get:
+      operationId: listConflicts
+      tags: [conflicts]
+      summary: 列出冲突队列（只读，可按 status 过滤）
+      x-entity: ConflictQueue
+      x-error-codes: []
+      responses:
+        '200':
+          description: 冲突列表
     post:
       operationId: openConflict
       tags: [platform]
@@ -210,6 +219,15 @@ paths:
                 $ref: '#/components/schemas/ResultVoid'
 
   /api/v1/workflows:
+    get:
+      operationId: listWorkflows
+      tags: [workflow]
+      summary: 列出已注册流程版本（只读，运维/驾驶舱用）
+      x-entity: WorkflowRegistry
+      x-error-codes: []
+      responses:
+        '200':
+          description: 流程版本列表
     post:
       operationId: registerWorkflow
       tags: [workflow]
@@ -237,6 +255,15 @@ paths:
                 $ref: '#/components/schemas/GuardFailureResult'
 
   /api/v1/workflows/{workflowId}/instances:
+    get:
+      operationId: listWorkflowInstances
+      tags: [workflow]
+      summary: 列出某流程的实例（只读）
+      x-entity: WorkflowInstance
+      x-error-codes: []
+      responses:
+        '200':
+          description: 实例列表
     post:
       operationId: startInstance
       tags: [workflow]
@@ -268,6 +295,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/ResultVoid'
 
+  /api/v1/instances/{instanceId}:
+    get:
+      operationId: getWorkflowInstance
+      tags: [workflow]
+      summary: 实例详情（含节点运行记录，只读）
+      x-entity: WorkflowInstance
+      x-error-codes: [ERR-WF-003]
+      responses:
+        '200':
+          description: 实例与节点
+        '404':
+          description: 实例不存在
   /api/v1/instances/{instanceId}/nodes/{nodeId}/complete:
     post:
       operationId: completeNode
@@ -913,6 +952,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/EmployeePackageResult'
 
+  /api/v1/agents/runs:
+    get:
+      operationId: agentRuns
+      tags: [agents]
+      summary: 智能体运行记录（只读，可按 agentId 过滤）
+      x-entity: AgentRun
+      x-error-codes: [ERR-AGENT-001]
+      responses:
+        '200':
+          description: 运行记录列表
   /api/v1/agents/health:
     get:
       operationId: agentsHealth

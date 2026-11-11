@@ -120,6 +120,17 @@ export class WorkflowRegistry {
     };
   }
 
+  /** 只读列表：运维/驾驶舱用（不写库、不写审计）。 */
+  async list(limit = 200): Promise<RegistryRow[]> {
+    const safeLimit = Math.min(Math.max(limit, 1), 500);
+    const result = await this.pool.query<RegistryRow>(
+      `SELECT workflow_id, version, owner_plugin, scope, meta, code_hash, risk_level, status
+       FROM ref.workflow_registry ORDER BY workflow_id, registered_at DESC LIMIT $1`,
+      [safeLimit],
+    );
+    return result.rows;
+  }
+
   async get(workflowId: string, version?: string): Promise<RegistryRow> {
     const result = version === undefined
       ? await this.pool.query<RegistryRow>(

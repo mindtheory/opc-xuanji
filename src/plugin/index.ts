@@ -687,7 +687,9 @@ export function apply(ctx: { tools: { register(def: unknown): unknown }; inject?
     });
   }
 
-  // 静态路径挂到 DSH Web；带路径参数的动态路由由独立服务进程（scripts/serve.ts）提供
+  // API 挂到 DSH Web：优先精确路径（健康/列表等），再注册 /api/v1 前缀路由，
+  // 让带路径参数的动态端点（员工启停/流程实例/实例节点/令牌消费等）在浏览器端也可达。
+  // 独立进程（scripts/serve.ts）仍可承载完整 API，两条通路共用同一个 createApiHandler。
   const handler = createApiHandler(hub.api);
   const staticPaths = [
     "/api/v1/health",
@@ -708,6 +710,7 @@ export function apply(ctx: { tools: { register(def: unknown): unknown }; inject?
     "/api/v1/employees",
     "/api/v1/employees/import",
     "/api/v1/agents/health",
+    "/api/v1/agents/runs",
     "/api/v1/agents/deploy",
     "/api/v1/agents/dispatch",
     "/api/v1/agents/pause",
@@ -721,6 +724,12 @@ export function apply(ctx: { tools: { register(def: unknown): unknown }; inject?
         } catch (error) {
           console.warn(`[opc-xuanji] 路由注册失败 ${path}: ${error instanceof Error ? error.message : String(error)}`);
         }
+      }
+      // 最长前缀匹配兜住所有动态路径（/api/v1/employees/{id}、/api/v1/workflows/{id}/instances 等）
+      try {
+        wctx.webServer.register({ kind: "prefix", path: "/api/v1", handler });
+      } catch (error) {
+        console.warn(`[opc-xuanji] 前缀路由注册失败 /api/v1: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
   }

@@ -28,6 +28,17 @@ export interface OpenConflictInput {
   note?: string;
 }
 
+export interface ConflictRow {
+  id: number;
+  conflict_type: string;
+  frozen_unit_type: string;
+  frozen_unit_id: number;
+  parties: unknown;
+  diff_fields: unknown;
+  detected_at: Date;
+  status: string;
+}
+
 export interface ConflictSummary {
   total_including_frozen: number;
   effective_total: number;
@@ -41,6 +52,22 @@ export class ConflictService {
   constructor(pool: Pool, audit: AuditService) {
     this.pool = pool;
     this.audit = audit;
+  }
+
+  /** 只读列表：运维/驾驶舱用（可按 status 过滤）。 */
+  async list(status?: string): Promise<ConflictRow[]> {
+    const result =
+      status === undefined
+        ? await this.pool.query<ConflictRow>(
+            `SELECT id, conflict_type, frozen_unit_type, frozen_unit_id, parties, diff_fields, detected_at, status
+             FROM biz.conflict_queue ORDER BY detected_at DESC, id DESC LIMIT 200`,
+          )
+        : await this.pool.query<ConflictRow>(
+            `SELECT id, conflict_type, frozen_unit_type, frozen_unit_id, parties, diff_fields, detected_at, status
+             FROM biz.conflict_queue WHERE status = $1 ORDER BY detected_at DESC, id DESC LIMIT 200`,
+            [status],
+          );
+    return result.rows;
   }
 
   async open(input: OpenConflictInput): Promise<{ conflictId: number; status: string; frozen: boolean }> {

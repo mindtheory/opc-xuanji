@@ -89,6 +89,11 @@ export class SuperAgentService {
     return { status: detail.run.status, head, artifact: detail.artifact };
   }
 
+  /** 运行记录列表（只读）。 */
+  async runs(agentId?: string): Promise<unknown[]> {
+    return this.bridge.runs(agentId);
+  }
+
   /** 认知调度登记说明：调度本体在基础设施层（cron + tz），中枢只做语义包装与审计。 */
   async noteSchedule(action: "set" | "delete", payload: Record<string, unknown>): Promise<void> {
     await this.audit.record({

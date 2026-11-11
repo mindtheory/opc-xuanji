@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OPC驾驶舱升级为全功能 Web 控制台**（11 个模块页签：驾驶舱/员工/业务域/流程/任务/审计/冲突/收件箱/记忆/雷达/设置）：员工矩阵可见 11 个员工并支持安装、启用停用、部署角色卡、派活、员工包导出导入；流程可见注册版本/实例并支持注册、启动实例、完成节点、Verifier 评判；任务可立即执行与启停；审计可过滤与导出；冲突可裁决；收件箱可确认归置；记忆可检索与提案；设置页含智能体健康与全局暂停。
+- 服务端契约 +5 operation：`listWorkflows`、`listWorkflowInstances`、`getWorkflowInstance`、`agentRuns`、`listConflicts`；`GET /api/v1/employees` 响应增加 `catalog`（11 个员工 manifest）。
+- `apply` 增注册 `/api/v1` **前缀路由**（DSH webServer 最长前缀匹配），动态路径在浏览器端可达。
+
 - **Web 界面「OPC驾驶舱」**：浏览器半 `client.js` 通过 DSH Client 插件机制注册左栏入口（`sidebar.panellist`，order 27）与主面板（`main`），展示健康条（PG/pgvector/调度/员工智能体）、范围快照指标（今日/7天/30天/90天 + 冻结脚注 + as-of）、待归置、定时任务与雷达；数据只读、30 秒自动刷新。`package.json` 增 `exports./client` 与 `dsh.client`；manifest 标题统一为「OPC驾驶舱」、`panel=left`（取代 PA-OPC-010 的「OPC公司管理/右栏」口径，历史记录保留）。
 - `docs/过程资产/PA-OPC-019-Web驾驶舱界面.md`: change record for the cockpit panel (ADR, verification, rollback).
 

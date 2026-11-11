@@ -27,6 +27,25 @@ export interface InstanceResult {
   deadlineImpact: boolean;
 }
 
+export interface InstanceListRow {
+  id: number;
+  workflow_id: string;
+  version: string;
+  status: string;
+  deadline_impact: boolean;
+  started_at: Date;
+  ended_at: Date | null;
+}
+
+export interface NodeRunRow {
+  node_id: string;
+  idempotency_key: string;
+  status: string;
+  output: unknown;
+  started_at: Date;
+  ended_at: Date | null;
+}
+
 export class WorkflowRunner {
   private readonly pool: Pool;
   private readonly audit: AuditService;
@@ -117,6 +136,41 @@ export class WorkflowRunner {
       });
     }
     return { nodeId: input.nodeId, status: "done", idempotentHit: outcome.hit, output: outcome.output };
+  }
+
+  /** 只读列表：运维/驾驶舱用（可按 workflowId 过滤）。 */
+  async list(workflowId?: string, limit = 100): Promise<InstanceListRow[]> {
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+    const result =
+      workflowId === undefined
+        ? await this.pool.query<InstanceListRow>(
+            `SELECT id, workflow_id, version, status, deadline_impact, started_at, ended_at
+             FROM audit.workflow_instance ORDER BY started_at DESC, id DESC LIMIT $1`,
+            [safeLimit],
+          )
+        : await this.pool.query<InstanceListRow>(
+            `SELECT id, workflow_id, version, status, deadline_impact, started_at, ended_at
+             FROM audit.workflow_instance WHERE workflow_id = $1 ORDER BY started_at DESC, id DESC LIMIT $2`,
+            [workflowId, safeLimit],
+          );
+    return result.rows;
+  }
+
+  /** 只读详情：实例 + 节点运行记录（运维/驾驶舱用）。 */
+  async get(instanceId: number): Promise<{ instance: InstanceListRow; nodes: NodeRunRow[] }> {
+    const instance = await this.pool.query<InstanceListRow>(
+      `SELECT id, workflow_id, version, status, deadline_impact, started_at, ended_at
+       FROM audit.workflow_instance WHERE id = $1`,
+      [instanceId],
+    );
+    const row = instance.rows[0];
+    if (row === undefined) throw new OpcError(ERR.WF_NOT_FOUND, `实例不存在：${instanceId}`, 404);
+    const nodes = await this.pool.query<NodeRunRow>(
+      `SELECT node_id, idempotency_key, status, output, started_at, ended_at
+       FROM audit.workflow_node_run WHERE instance_id = $1 ORDER BY id`,
+      [instanceId],
+    );
+    return { instance: row, nodes: nodes.rows };
   }
 
   async finish(instanceId: number, status: "completed" | "failed" | "blocked" | "awaiting_decision" = "completed"): Promise<{ instanceId: number; status: string }> {

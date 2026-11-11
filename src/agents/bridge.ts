@@ -119,6 +119,13 @@ export class SuperAgentsBridge {
     return data.agents ?? [];
   }
 
+  /** 运行记录（按 agentId 过滤可选；只读）。 */
+  async runs(agentId?: string): Promise<BridgeRunRow[]> {
+    const data = await this.request<{ runs?: BridgeRunRow[] }>("/api/dsh-super-agents/state");
+    const runs = data.runs ?? [];
+    return agentId === undefined ? runs : runs.filter((r) => r.agentId === agentId);
+  }
+
   /** 以 name 为键幂等 upsert：存在则 update，否则 create。 */
   async upsertAgent(input: { name: string; systemRole: string; model?: string; cwd?: string; learn?: boolean }): Promise<BridgeAgentRow> {
     const existing = (await this.listAgents()).find((a) => a.name === input.name);
