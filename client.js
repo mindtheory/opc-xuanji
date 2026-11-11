@@ -892,6 +892,8 @@ window.__ModuleLoader__.load({
       } catch (e) { /* locale optional */ }
 
       var disposers = [];
+      // 直接 inject：ctx.slots.inject 会在槽声明后回调，无需前置 spec 探测
+      // （探测时序不稳时会把注册整个跳过，导致入口消失）。
       function seat(slotName, register) {
         try {
           disposers.push(ctx.slots.inject(slotName, register));
@@ -900,16 +902,12 @@ window.__ModuleLoader__.load({
         }
       }
       if (ctx && ctx.slots && typeof ctx.slots.inject === "function") {
-        if (slotDeclared(ctx, "sidebar.panellist")) {
-          seat("sidebar.panellist", function () {
-            return ctx.slots.register({ name: "sidebar.panellist", id: PANEL_ID, order: PANEL_ORDER, label: "OPC驾驶舱" }, SidebarIcon);
-          });
-        }
-        if (slotDeclared(ctx, "main")) {
-          seat("main", function () {
-            return ctx.slots.register({ name: "main", key: PANEL_ID }, Console);
-          });
-        }
+        seat("sidebar.panellist", function () {
+          return ctx.slots.register({ name: "sidebar.panellist", id: PANEL_ID, order: PANEL_ORDER, label: "OPC驾驶舱" }, SidebarIcon);
+        });
+        seat("main", function () {
+          return ctx.slots.register({ name: "main", key: PANEL_ID }, Console);
+        });
       }
       return function () {
         for (var i = 0; i < disposers.length; i += 1) {
@@ -921,6 +919,7 @@ window.__ModuleLoader__.load({
 
     exports.apply = apply;
     exports.inject = inject;
+    exports.PANEL_ID = PANEL_ID;
     return module.exports;
   },
 });
