@@ -26,6 +26,7 @@ import { EMPLOYEE_MANIFESTS } from "../employees/catalog.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
 import type { SuperAgentService } from "../agents/service.ts";
 import type { HindsightSyncService } from "../memory/sync.ts";
+import type { ProjectSoftwareService } from "../domains/project/software.ts";
 
 export interface WebServices {
   ingest: IngestService;
@@ -47,6 +48,7 @@ export interface ApiContext {
   scheduler: Scheduler;
   web: WebServices;
   employees: EmployeePackageService;
+  software: ProjectSoftwareService;
   agents?: SuperAgentService;
   memorySync?: HindsightSyncService;
   archiveDir: string;
@@ -91,6 +93,12 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 function requireString(body: Record<string, unknown>, key: string): string {
   const value = body[key];
   if (typeof value !== "string" || value.trim() === "") throw new OpcError(ERR.SYS, `字段 ${key} 必须是非空字符串`, 400);
+  return value;
+}
+
+function requireId(params: Record<string, string>, key: string): number {
+  const value = Number(params[key]);
+  if (!Number.isInteger(value) || value <= 0) throw new OpcError(ERR.PRJ_INVALID, `${key} 必须是正整数`, 400);
   return value;
 }
 
@@ -686,6 +694,126 @@ export const ROUTES: Route[] = [
       const service = requireAgents(ctx);
       await service.setPaused(body.paused === true);
       return { status: 200, data: { paused: body.paused === true } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/milestones$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await ctx.software.listMilestones(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/milestones$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await ctx.software.createMilestone(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/repositories$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await ctx.software.listRepositories(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/repositories$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await ctx.software.createRepository(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/artifacts$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await ctx.software.listArtifacts(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/artifacts$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await ctx.software.createArtifact(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/environments$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await ctx.software.listEnvironments(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/environments$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await ctx.software.createEnvironment(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/releases$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await ctx.software.listReleases(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/releases$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await ctx.software.createRelease(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/releases\/([^/]+)\/approve$/,
+    keys: ["releaseId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await ctx.software.approveRelease(requireId(params, "releaseId"), body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/test-plans$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await ctx.software.createTestPlan(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/test-runs$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 201, data: await ctx.software.createTestRun(requireId({ projectId: String(body.projectId ?? "") }, "projectId"), body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/test-runs\/([^/]+)\/results$/,
+    keys: ["runId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await ctx.software.recordResult(requireId(params, "runId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/projects\/([^/]+)\/defects$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await ctx.software.listDefects(requireId(params, "projectId")) };
     },
   },
 ];

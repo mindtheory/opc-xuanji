@@ -11,6 +11,18 @@ export const config = loadConfig();
 export const testDsn = config.testDsn;
 
 const TABLES = [
+  "biz.test_result",
+  "biz.test_run",
+  "biz.test_suite",
+  "biz.test_case",
+  "biz.test_plan",
+  "biz.defect",
+  "biz.release_order",
+  "biz.work_log",
+  "biz.project_milestone",
+  "ref.deploy_environment",
+  "ref.artifact_repository",
+  "ref.code_repository",
   "audit.verifier_verdict",
   "audit.workflow_node_run",
   "audit.workflow_instance",

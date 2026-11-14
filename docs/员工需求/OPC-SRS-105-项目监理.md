@@ -1,7 +1,7 @@
 ---
 doc_id: OPC-SRS-105
 title: 项目监理 员工需求规格说明
-version: 0.2
+version: 0.3
 status: 评审稿
 stage: D1
 owner: 玄机文档组
@@ -9,14 +9,14 @@ employee_code: PRJ
 plugin_id: opc_project
 upstream: ["OPC-SRS-001（v0.3）", "产品设计 §4.5"]
 gate: G1
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # 项目监理 员工需求规格说明
 
 ## 1. 定位与边界
 
-项目监理是一人公司的**项目全生命周期管理角色**：从商机/立项、范围、计划、执行、监控，到验收、收尾与复盘；以里程碑和细化任务为骨架，以甘特图/基线/关键路径为可视化与偏差控制手段，并与公司目标管理（OKR）联动。
+项目监理是一人公司的**项目全生命周期管理角色**：从商机/立项、范围、计划、执行、监控，到验收、收尾与复盘；以里程碑和细化任务为骨架，以甘特图/基线/关键路径为可视化与偏差控制手段，并与公司目标管理（OKR）联动。对软件研发项目，额外管理版本库（Git/SVN）、制品仓库（Maven/Docker）、部署环境（SSH）、发布/回滚与测试证据链，并协同专门测试 Agent 完成测试执行与报告。
 
 | 视角 | 职责 |
 | :--- | :--- |
@@ -33,6 +33,8 @@ updated: 2026-11-06
 - 项目监理不代替老板做项目取舍、资源优先级、客户承诺与验收终审；只呈报事实、偏差、风险与选项。
 - 不伪造进度、验收、回款或干系人确认；无证据的完成状态只能标“待核实”。
 - 验收终审、重大范围/预算变更、项目终止必须 human gate；高风险节点 `timeout_policy=hold`。
+- 版本库/制品库/SSH 凭据只存引用（`auth_ref`），不落明文、不进日志、不随员工包导出；生产发布与回滚必须老板或授权人确认。
+- 测试 Agent 只提供测试证据与建议，不替老板做发布/验收终审；未执行的测试不得计为通过。
 
 ## 2. 可插拔契约
 
@@ -41,10 +43,10 @@ updated: 2026-11-06
 | 插件 ID | `opc_project` |
 | 员工代码 | `PRJ` |
 | 可读视图 | `view_company_profile`、`view_project_status`、`view_ar_ap`、`view_contract_index`、`view_okr`、`view_customer_base` |
-| 注册工具族 | `opc_project_lifecycle_*`（阶段/阶段门）、`opc_project_charter_*`（立项/章程）、`opc_project_scope_*`（范围/交付物）、`opc_project_milestone_*`（里程碑）、`opc_project_task_*`（任务/依赖/资源）、`opc_project_schedule_*`（甘特/基线/关键路径）、`opc_project_progress_*`（进度/EVM）、`opc_project_okr_*`（OKR 联动）、`opc_project_risk_*`（风险/问题/变更）、`opc_project_acceptance_*`（质量/验收）、`opc_project_closure_*`（收尾/复盘）、`opc_project_report_*`（状态报告） |
-| 写入目标（需求层） | `project`、`project_charter`、`project_plan`、`milestone`、`task`、`task_dependency`、`project_baseline`、`project_change`、`risk_issue`、`status_report`、`acceptance`、`project_closure`、`okr_link`；具体表名由 DBDD 落地 |
-| 单员工流程 | `project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`；`project_acceptance_flow` 为跨员工流程（含验收终审 human gate） |
-| 依赖 | WBS 员工提供工作包/基线；财税提供成本汇总与开票回款；法务提供合同交付物；客户管家提供客户承诺；战略提供 OKR |
+| 注册工具族 | `opc_project_lifecycle_*`（阶段/阶段门）、`opc_project_charter_*`（立项/章程）、`opc_project_scope_*`（范围/交付物）、`opc_project_milestone_*`（里程碑）、`opc_project_task_*`（任务/依赖/资源）、`opc_project_schedule_*`（甘特/基线/关键路径）、`opc_project_progress_*`（进度/EVM）、`opc_project_okr_*`（OKR 联动）、`opc_project_risk_*`（风险/问题/变更）、`opc_project_acceptance_*`（质量/验收）、`opc_project_closure_*`（收尾/复盘）、`opc_project_report_*`（状态报告）、`opc_project_repo_*`（Git/SVN 版本库）、`opc_project_artifact_*`（Maven/Docker 制品库）、`opc_project_env_*`（环境与 SSH）、`opc_project_release_*`（发布单/回滚）、`opc_project_test_*`（测试计划/用例/执行/缺陷） |
+| 写入目标（需求层） | `project`、`project_charter`、`project_plan`、`milestone`、`task`、`task_dependency`、`project_baseline`、`project_change`、`risk_issue`、`status_report`、`acceptance`、`project_closure`、`okr_link`、`work_log`、`code_repository`、`artifact_repository`、`deploy_environment`、`release_order`、`test_plan`、`test_case`、`test_suite`、`test_run`、`test_result`、`defect`；具体表名由 DBDD 落地 |
+| 单员工流程 | `project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`、`project_release_flow`、`project_test_review`；`project_acceptance_flow` 为跨员工流程（含验收终审 human gate） |
+| 依赖 | WBS 员工提供工作包/基线；财税提供成本汇总与开票回款；法务提供合同交付物；客户管家提供客户承诺；战略提供 OKR；测试 Agent 提供测试执行与报告（角色卡，经 `dsh-super-agents` 部署） |
 | 启用/停用 | 停用后不再派工、工具不可见、单员工流程不启动；项目/任务/验收历史只读保留 |
 | 安装/卸载 | 安装需校验 manifest、视图、工具、写目标；卸载默认保留项目数据，删除须走数据删除审计 |
 | 打包导出/导入 | 导出 manifest + 流程 + 配置 + checksum；默认不含业务数据/凭据；导入先 dry-run，老板确认后安装为停用状态 |
@@ -259,6 +261,104 @@ updated: 2026-11-06
 
 追溯：AC 直验 / 主 SRS §7 审计
 
+### 3.16 REQ-PRJ-016 软件研发项目档案与项目起点
+
+**需求陈述**：为软件研发类项目提供专用档案，明确项目起点（立项批准、计划基线冻结、启动会）与研发要素（技术栈、代码库、制品库、环境、测试策略），与通用项目共用生命周期但增加研发检查项。
+
+**验收标准**：
+
+- **AC-1** `project` 支持 `project_type=software`，含 `start_date`（项目起点）、`target_end_date`、`actual_start_date`、`actual_end_date`、`timezone`、`work_calendar`、`tech_stack`、`software_profile`。
+- **AC-2** 项目起点必须明确三项之一并留痕：章程批准日、计划基线冻结日、启动会日期；未确定起点不得生成进度基线。
+- **AC-3** 软件项目必须声明代码库、制品库、环境清单与测试策略；缺失项在阶段门提示“研发要素不完整”，不阻断只读查看。
+- **AC-4** 研发要素变更（技术栈、仓库、环境、测试策略）走变更单，记录影响范围；未批准不改变已冻结基线。
+- **AC-5** 项目起点、关键节点与时间口径写入项目档案，对外报告统一引用同一口径，不出现两套日期。
+
+追溯：AC 直验 / `project_stage_gate` 流程
+
+### 3.17 REQ-PRJ-017 版本库管理（Git / SVN）
+
+**需求陈述**：统一登记项目使用的 Git/SVN 版本库地址、协议、默认分支/主干、认证引用与同步策略；只同步元数据（分支、标签、提交/修订），不在中枢保存代码副本。
+
+**验收标准**：
+
+- **AC-1** `code_repository` 含项目、名称、类型（`git`/`svn`）、地址、默认分支（Git）或主干路径（SVN）、认证引用 `auth_ref`、同步方式（手动/定时/Webhook）、同步状态与最近同步时间。
+- **AC-2** 凭据只以 `auth_ref` 引用密钥/环境变量，禁止明文入库、禁止写入日志与员工包；导出员工包默认不含凭据。
+- **AC-3** 元数据同步只读：Git 读取分支、标签、提交 SHA、作者与时间；SVN 读取 trunk/branches/tags、修订号、作者与时间；同步失败标注“未同步/数据不可用”，不编造提交记录。
+- **AC-4** 支持将提交/修订关联到任务、里程碑与发布单；关联需记录来源与时间，不自动修改任务状态。
+- **AC-5** 仓库地址或认证变更必须写审计；停用仓库不删除历史关联，只停止同步。
+
+追溯：AC 直验 / `project_release_flow` 流程
+
+### 3.18 REQ-PRJ-018 制品仓库管理（Maven / Docker）
+
+**需求陈述**：统一登记 Maven、Docker 等制品仓库与制品坐标，支持查询可用版本、镜像标签与摘要；发布/推送必须经发布单与审批，默认不自动推送。
+
+**验收标准**：
+
+- **AC-1** `artifact_repository` 含项目、类型（`maven`/`docker`/其他）、仓库地址、命名空间、认证引用 `auth_ref`、保留策略、状态；凭据同样只存引用。
+- **AC-2** Maven 制品记录 `groupId:artifactId:version` 与校验和；Docker 镜像记录 `repository:tag@digest`，以 digest 作为不可变标识，tag 仅作展示。
+- **AC-3** 查询制品/镜像列表只读；拉取与推送按仓库权限控制，生产仓库推送必须有发布单与老板确认，不得设置自动默认。
+- **AC-4** 制品与发布单、版本库标签、测试报告关联；缺少摘要或校验和的制品标记“证据不完整”。
+- **AC-5** 保留策略只影响查询展示与清理建议，不自动删除制品；删除必须人工确认并写审计。
+
+追溯：AC 直验 / `project_release_flow` 流程
+
+### 3.19 REQ-PRJ-019 部署环境与 SSH 发布
+
+**需求陈述**：管理开发、测试、预发、生产等部署环境，登记 SSH 主机与认证引用；发布单驱动部署、健康检查与回滚，生产发布必须 human gate。
+
+**验收标准**：
+
+- **AC-1** `deploy_environment` 含项目、环境类型（`dev`/`test`/`staging`/`prod`）、名称、主机、端口、SSH 用户、认证引用、跳板机引用（可选）、隔离级别、审批策略与状态。
+- **AC-2** 凭据只存 `auth_ref`；SSH 必须校验主机指纹，禁止 `StrictHostKeyChecking=no`；可执行命令按环境白名单/模板限制，禁止任意命令透传。
+- **AC-3** `release_order` 含版本、制品引用、目标环境、变更说明、回滚版本、申请人、审批人、执行状态与时间；同一环境同一时刻只允许一个执行中的发布。
+- **AC-4** 开发/测试环境可按策略自动执行；预发/生产必须老板或授权人确认，`timeout_policy=hold`，不可逆动作不得设自动默认；发布后必须健康检查并留存日志摘要。
+- **AC-5** 支持回滚到指定版本；回滚同样走发布单与审批；部署、回滚、审批、失败原因全部写审计，敏感值不入日志。
+
+追溯：AC 直验 / `project_release_flow` 流程
+
+### 3.20 REQ-PRJ-020 测试统一管理
+
+**需求陈述**：按项目/版本统一管理测试计划、用例、套件、执行、结果与缺陷；覆盖手工与自动化测试，关联需求、里程碑、发布单与环境，形成可追溯的测试证据链。
+
+**验收标准**：
+
+- **AC-1** `test_plan` 含项目、版本/迭代、范围、测试类型（单元/集成/接口/UI/性能/安全/验收）、进入/退出标准、环境、负责人、起止时间与状态。
+- **AC-2** `test_case` 含用例编号、标题、前置条件、步骤、预期结果、优先级、类型（手工/自动）、关联需求/验收标准；用例变更保留版本。
+- **AC-3** `test_suite` 组织用例集合；`test_run` 记录执行批次、环境、版本、执行人/Agent、开始结束时间；`test_result` 记录逐用例结果、证据与失败原因。
+- **AC-4** `defect` 含严重级别、复现步骤、影响版本、关联用例/需求、责任人、状态与回归结果；缺陷关闭必须有验证证据。
+- **AC-5** 测试执行不得伪造结果；环境不可用或用例未执行标注“未执行/阻塞”，不以通过计；测试数据须脱敏或使用专用测试数据。
+
+追溯：AC 直验 / `project_test_review` 流程
+
+### 3.21 REQ-PRJ-021 专门测试 Agent 协同
+
+**需求陈述**：设立专门测试 Agent，按项目需求生成测试策略与用例、执行自动化测试、归类失败、输出测试报告；Agent 只提供证据与建议，不替代老板做发布/验收终审。
+
+**验收标准**：
+
+- **AC-1** 测试 Agent 以独立角色卡部署（经 `dsh-super-agents`），绑定项目与测试计划；具备测试计划、用例、执行、缺陷、报告工具，不授予生产写权限。
+- **AC-2** 用例生成必须引用需求/验收标准与来源；无来源的推断用例标记“建议用例”，不得冒充已批准用例。
+- **AC-3** 自动化执行默认只在 `dev`/`test` 环境；对 `staging`/`prod` 的只读冒烟需单独授权，禁止执行写操作与数据修改。
+- **AC-4** 失败归类区分“产品缺陷/用例问题/环境问题/数据问题”，置信度低时升级人工；不把未复现失败直接判为通过。
+- **AC-5** 测试报告含范围、环境、版本、通过/失败/阻塞数、缺陷清单、覆盖率、未覆盖风险与 `as_of`；发布/验收结论由老板确认，Agent 不自动放行。
+
+追溯：AC 直验 / `project_test_review` 流程
+
+### 3.22 REQ-PRJ-022 时间管理、日历与关键节点
+
+**需求陈述**：以项目起点为锚，维护工作日历、时区、计划/实际日期、关键节点与里程碑，支持工期、浮动时间、关键路径与到期提醒；时间变更留痕，不静默改期。
+
+**验收标准**：
+
+- **AC-1** 项目含 `timezone` 与 `work_calendar`（工作日、节假日、每日工时）；跨时区项目统一按项目时区计算，报告标注口径。
+- **AC-2** 关键节点/里程碑含目标日期、实际日期、依赖、责任人与准入/退出条件；关键节点延期必须记录原因与影响。
+- **AC-3** 任务支持工期、开始/结束、浮动时间与关键路径；日期变更写审计并提示受影响的任务、里程碑与发布单。
+- **AC-4** `work_log` 记录工时（人、日期、任务、时长、来源）；工时仅作事实记录，不自动折算绩效。
+- **AC-5** 到期提醒按提前量分级（如 7/3/1 天），影响里程碑或发布截止日的即时提醒；提醒不替代正式审批。
+
+追溯：AC 直验 / `project_status_review` 流程
+
 ## 4. 数据对象与视图（需求层）
 
 | 数据对象 | 用途 |
@@ -275,20 +375,28 @@ updated: 2026-11-06
 | `acceptance` | 交付物验收、缺陷整改与证据 |
 | `project_closure` | 收尾清单、结算、复盘与知识沉淀 |
 | `okr_link` | 项目/里程碑与 OKR/关键结果的权重与回卷口径 |
+| `work_log` | 工时记录：人、日期、任务、时长、来源 |
+| `code_repository` | Git/SVN 版本库地址、分支/主干、认证引用与同步状态 |
+| `artifact_repository` | Maven/Docker 仓库地址、命名空间、认证引用与保留策略 |
+| `deploy_environment` | 开发/测试/预发/生产环境、SSH 主机、认证引用与审批策略 |
+| `release_order` | 发布单：版本、制品、目标环境、审批、回滚与执行结果 |
+| `test_plan` / `test_case` / `test_suite` | 测试计划、用例与套件 |
+| `test_run` / `test_result` / `defect` | 测试执行批次、逐用例结果与缺陷 |
 
 **视图**：公司档案、项目状态、应收应付、合同索引、OKR、客户基础信息只读；客户敏感字段不进入项目视图；跨域明细经 `need_detail` 或一次性令牌。
 
 ## 5. 事件、降级与审计
 
-- **主动事件**：阶段门待审、里程碑临近/延期、任务逾期、关键路径变化、进度/成本偏差超阈值、OKR 风险、范围蔓延、重大变更、验收待审/驳回、回款逾期、项目收尾。
-- **降级**：财税/合同/客户/OKR/外部依赖不可用时标注“数据不足/未获取”，不伪造进度、成本、验收或回款。
-- **审计**：立项、阶段门、计划/基线、任务变更、风险/变更、验收、收尾、报告导出、删除归档均入审计。
+- **主动事件**：阶段门待审、里程碑临近/延期、任务逾期、关键路径变化、进度/成本偏差超阈值、OKR 风险、范围蔓延、重大变更、验收待审/驳回、回款逾期、项目收尾；版本库同步失败、制品证据不完整、发布待审、生产发布失败、回滚、测试阻塞/失败率超阈值、测试报告待确认。
+- **降级**：财税/合同/客户/OKR/版本库/制品库/SSH 环境/测试环境不可用时标注“数据不足/未获取/未执行”，不伪造进度、成本、验收、提交记录、制品摘要、发布结果或测试结果。
+- **审计**：立项、阶段门、计划/基线、任务变更、风险/变更、验收、收尾、报告导出、删除归档；版本库/制品库地址与认证变更、发布/回滚/审批、测试计划与用例变更、测试执行与缺陷关闭均入审计。
 
 ## 6. 验收与追溯
 
-- 本文 15 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
-- 单员工流程：`project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`；跨员工 `project_acceptance_flow` 含验收终审 human gate。
-- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12。
+- 本文 22 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
+- 单员工流程：`project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`、`project_release_flow`、`project_test_review`；跨员工 `project_acceptance_flow` 含验收终审 human gate。
+- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.22。
+- 版本库/制品库/SSH 环境/测试管理为软件研发项目增量，契约与 DDL 在 Phase 2 落地；落地前 manifest 只声明工具族与写目标，不宣称已实现。
 - 插件可插拔验收：manifest 完整、启用/停用可逆、停用后不派工、卸载不误删项目数据。
 
 ## 自检清单
@@ -298,6 +406,9 @@ updated: 2026-11-06
 - [x] 与 OKR 联动且明确回卷口径、权重上限与不替老板调目标。
 - [x] 明确 WBS/财税/法务/客户/战略职责边界，不重复建账。
 - [x] 阶段门、验收、重大变更 human gate 与停用/卸载语义写明。
+- [x] 软件研发要素完整：项目起点、Git/SVN、Maven/Docker、SSH 环境、发布/回滚、测试管理与专门测试 Agent、时间管理均有 AC。
+- [x] 凭据只存引用、不落明文；生产发布与回滚 human gate，不可逆动作无自动默认。
+- [x] 版本库同步、制品查询、测试执行失败均标注“未获取/未执行”，不伪造证据。
 
 ## 与其他文档的关系
 

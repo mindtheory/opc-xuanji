@@ -24,6 +24,7 @@ import { startApiServer, type ApiContext } from "../../src/api/http.ts";
 import { DashboardService } from "../../src/web/dashboard.ts";
 import { IngestService, MemoryService, RadarService, SessionGrantService } from "../../src/web/services.ts";
 import { EmployeePackageService } from "../../src/employees/package.ts";
+import { ProjectSoftwareService } from "../../src/domains/project/software.ts";
 
 let pool: Pool;
 let server: Server;
@@ -85,6 +86,7 @@ before(async () => {
       dashboard: new DashboardService(pool),
     },
     employees: new EmployeePackageService(pool, audit, { hubVersion: "0.1.0" }),
+    software: new ProjectSoftwareService(pool, audit),
     archiveDir,
     version: "0.1.0",
   };
