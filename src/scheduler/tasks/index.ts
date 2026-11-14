@@ -11,6 +11,7 @@ import { OpcError, ERR } from "../../platform/errors.ts";
 import type { TaskDefinition } from "../engine.ts";
 import { DashboardService } from "../../web/dashboard.ts";
 import { RadarService } from "../../web/services.ts";
+import { IntelPipelineService, type RawIntelItem } from "../../domains/intel/daily.ts";
 import type { PluginCandidate } from "../../web/plugin-score.ts";
 
 function monthPath(now: Date): string {
@@ -202,5 +203,80 @@ export function defaultTasks(): TaskDefinition[] {
         return { scanned: items.length, written };
       },
     },
+    {
+      id: "intel_source_collect",
+      name: "情报采集（每 30 分钟，按来源间隔与限流）",
+      defaults: { cron: "*/30 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const raw = Array.isArray(ctx.config.intelItems) ? (ctx.config.intelItems as Array<Record<string, unknown>>) : [];
+        const result = await new IntelPipelineService(ctx.pool).collectAll(ctx.now, raw.map(toRawIntelItem));
+        if (result.blocked > 0) await ctx.notify("intel_source_blocked", "digest", { ...result });
+        return { ...result };
+      },
+    },
+    {
+      id: "intel_analyze",
+      name: "情报分析（每小时，关键词/标签评分与去重）",
+      defaults: { cron: "10 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const result = await new IntelPipelineService(ctx.pool).analyze(ctx.now);
+        return { ...result };
+      },
+    },
+    {
+      id: "intel_aggregate",
+      name: "情报汇总（每日按项目，产出覆盖度）",
+      defaults: { cron: "20 6 * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const result = await new IntelPipelineService(ctx.pool).aggregate(ctx.now);
+        return { ...result };
+      },
+    },
+    {
+      id: "intel_brief",
+      name: "情报日报生成（每 10 分钟检查项目到点时间）",
+      defaults: { cron: "*/10 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const briefs = await new IntelPipelineService(ctx.pool).buildBriefs(ctx.now);
+        const created = briefs.filter((brief) => !brief.skipped).length;
+        if (created > 0) await ctx.notify("intel_brief", "digest", { created, briefs });
+        return { projects: briefs.length, created, briefs };
+      },
+    },
+    {
+      id: "intel_push",
+      name: "情报日报推送（外部渠道不可用时降级站内）",
+      defaults: { cron: "*/10 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const result = await new IntelPipelineService(ctx.pool).push(ctx.now);
+        if (result.pending > 0) await ctx.notify("intel_push_pending", "digest", result);
+        return { ...result };
+      },
+    },
   ];
+}
+
+function toRawIntelItem(item: Record<string, unknown>): RawIntelItem {
+  return {
+    projectId: toOptionalNumber(item.projectId),
+    sourceId: toOptionalNumber(item.sourceId),
+    externalId: typeof item.externalId === "string" ? item.externalId : undefined,
+    url: typeof item.url === "string" ? item.url : undefined,
+    title: String(item.title ?? ""),
+    summary: typeof item.summary === "string" ? item.summary : undefined,
+    publishedAt: typeof item.publishedAt === "string" ? item.publishedAt : undefined,
+    author: typeof item.author === "string" ? item.author : undefined,
+    language: typeof item.language === "string" ? item.language : undefined,
+    tags: Array.isArray(item.tags) ? (item.tags as string[]) : undefined,
+    sentiment: typeof item.sentiment === "string" ? item.sentiment : undefined,
+    infoType: typeof item.infoType === "string" ? item.infoType : undefined,
+    riskLevel: typeof item.riskLevel === "string" ? item.riskLevel : undefined,
+    confidence: typeof item.confidence === "number" ? item.confidence : undefined,
+  };
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return undefined;
 }

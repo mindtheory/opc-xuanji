@@ -37,7 +37,7 @@ beforeEach(async () => {
   await scheduler.seedDefaults();
 });
 
-test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲突/月度归档）", async () => {
+test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲突/月度归档/情报五阶段）", async () => {
   const tasks = await scheduler.list();
   const ids = tasks.map((task) => task.taskId).sort();
   assert.deepEqual(ids, [
@@ -46,6 +46,11 @@ test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲
     "contract_expiry",
     "daily_report",
     "dashboard_refresh",
+    "intel_aggregate",
+    "intel_analyze",
+    "intel_brief",
+    "intel_push",
+    "intel_source_collect",
     "invoice_backlog",
     "keyword_radar_scan",
     "monthly_archive",

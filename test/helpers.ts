@@ -11,6 +11,16 @@ export const config = loadConfig();
 export const testDsn = config.testDsn;
 
 const TABLES = [
+  "stat.intel_push_log",
+  "stat.intel_pipeline_run",
+  "stat.intel_collect_run",
+  "biz.intel_brief",
+  "biz.intel_item",
+  "biz.intel_tag",
+  "biz.watch_topic",
+  "biz.source_binding",
+  "biz.source",
+  "biz.intel_project_scope",
   "biz.test_result",
   "biz.test_run",
   "biz.test_suite",
