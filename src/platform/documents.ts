@@ -234,18 +234,24 @@ export function extractDocuments(files: IdeaDocumentInput[] | undefined): Extrac
 
     const warnings: string[] = [];
     let text = "";
-    if (TEXT_EXT.has(ext)) {
-      text = buffer.toString("utf8");
-      if (text.includes("\u0000")) {
-        warnings.push("检测到二进制内容，已按文本处理");
-        text = text.replace(/\u0000/g, "");
+    try {
+      if (TEXT_EXT.has(ext)) {
+        text = buffer.toString("utf8");
+        if (text.includes("\u0000")) {
+          warnings.push("检测到二进制内容，已按文本处理");
+          text = text.replace(/\u0000/g, "");
+        }
+      } else if (ext === "docx") {
+        text = extractDocx(buffer);
+      } else if (ext === "xlsx") {
+        text = extractXlsx(buffer);
+      } else {
+        text = extractPdf(buffer);
       }
-    } else if (ext === "docx") {
-      text = extractDocx(buffer);
-    } else if (ext === "xlsx") {
-      text = extractXlsx(buffer);
-    } else {
-      text = extractPdf(buffer);
+    } catch (error) {
+      if (error instanceof OpcError) throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new OpcError(ERR.IDEA_DOC, `文档 ${name} 解析失败：${detail}`, 422);
     }
     text = text.trim();
     if (text === "") throw new OpcError(ERR.IDEA_DOC, `文档 ${name} 未解析出文本`, 422);

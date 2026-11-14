@@ -271,6 +271,12 @@ test("TC-IDEA-005 不支持的格式与空创意被拒", async () => {
   assert.equal(badDoc.status, 415);
   assert.equal(badDoc.json.errorCode, "ERR-IDEA-002");
 
+  const badPdf = await call("POST", "/api/v1/admin/ideas/analyze", {
+    files: [{ name: "坏.pdf", contentBase64: Buffer.from("%PDF-1.4\nno text layer\n%%EOF", "latin1").toString("base64") }],
+  });
+  assert.equal(badPdf.status, 422);
+  assert.equal(badPdf.json.errorCode, "ERR-IDEA-002");
+
   const empty = await call("POST", "/api/v1/admin/ideas/analyze", {});
   assert.equal(empty.status, 400);
   assert.equal(empty.json.errorCode, "ERR-IDEA-001");
