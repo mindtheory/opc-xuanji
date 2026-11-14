@@ -1987,11 +1987,148 @@ window.__ModuleLoader__.load({
             : h(EmptyState, { title: "还没有项目", hint: "情报空间按项目划分，请先在「项目管理」新建项目。", icon: "target" }));
     }
 
+    // ================= 自动驾驶 =================
+    function AutopilotTab(props) {
+      var projectsS = useLoad(function () { return apiGet("/admin/projects"); }, []);
+      var projects = (projectsS[0].data && projectsS[0].data.items) || [];
+      var selS = react.useState("");
+      var selected = selS[0], setSelected = selS[1];
+      react.useEffect(function () {
+        if (!selected && projects.length) setSelected(String(projects[0].id));
+      }, [projects.length, selected]);
+      var sumS = useLoad(function () { return selected ? apiGet("/admin/projects/" + selected + "/autopilot") : Promise.resolve(null); }, [selected]);
+      var sum = (sumS[0].data && sumS[0].data) || {};
+      var formS = react.useState({ name: "", repositoryUrl: "", branch: "main", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true });
+      var form = formS[0], setForm = formS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      var decideS = react.useState(null);
+      var deciding = decideS[0], setDeciding = decideS[1];
+      function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
+      function refreshAll() { projectsS[1](); if (selected) sumS[1](); }
+      function run() {
+        if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
+        setBusy(true);
+        apiPost("/admin/projects", {
+          name: form.name || ("自动生产-" + new Date().toISOString().slice(5, 16)),
+          stage: "planning",
+          repository: { url: form.repositoryUrl, branch: form.branch || undefined, authRef: form.authRef || undefined },
+          autopilotOptions: { scaffold: form.scaffold, pipeline: form.pipeline, deployTest: form.deployTest, healthUrl: form.healthUrl || undefined },
+        }).then(function (r) {
+          var ap = r.autopilot || {};
+          var parts = [];
+          if (ap.checkout) parts.push("检出 " + String(ap.checkout.commit || "").slice(0, 8));
+          if (ap.scaffold) parts.push("骨架 " + ap.scaffold.status);
+          if (ap.pipeline) parts.push("流水线 " + ap.pipeline.status);
+          if (ap.deploy) parts.push("测试环境 " + ap.deploy.status);
+          props.flash("自动生产完成：" + (parts.join(" · ") || "已创建"));
+          if (r.id) setSelected(String(r.id));
+          refreshAll();
+        }).catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function rerunDeploy() {
+        setBusy(true);
+        apiPost("/admin/projects/" + selected + "/deploy-test", {})
+          .then(function (r) { props.flash("测试环境发布：" + r.status); sumS[1](); })
+          .catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function submitDecision(decisionId) {
+        var text = deciding && deciding.text ? deciding.text : "";
+        if (!text) { props.flash("请填写裁决内容", false); return; }
+        apiPost("/admin/projects/" + selected + "/decisions/" + decisionId + "/decide", { decision: text, decidedBy: "老板" })
+          .then(function () { props.flash("已裁决"); setDeciding(null); sumS[1](); })
+          .catch(function (e) { props.flash(e.message || String(e), false); });
+      }
+      var plans = sum.plans || [];
+      var decisions = sum.decisions || [];
+      var pending = decisions.filter(function (d) { return d.status === "pending"; });
+      var pipeline = sum.pipeline || [];
+      var deploy = sum.deploy || [];
+      var checkout = sum.checkout;
+      var scanFindings = (sum.scan && sum.scan.findings) || {};
+      var tech = (sum.profile && sum.profile.tech_stack) || {};
+      return h(Fragment, null,
+        h(PageHeader, { title: "自动驾驶", subtitle: "填写版本库 → 检出 → 扫描 → 骨架 → 测试流水线 → 计划 → 测试环境；只有裁决项等人" },
+          h(Select, { label: "当前项目", value: selected, options: projects.map(function (p) { return { value: String(p.id), label: p.name + " · " + p.stage }; }), onChange: setSelected }),
+          h(Btn, { onClick: refreshAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
+        h(ErrLine, { error: projectsS[0].error || sumS[0].error, onRetry: refreshAll }),
+        h(Card, null,
+          h("div", { className: "ocH" }, "新建项目并自动生产"),
+          h("div", { className: "ocFormRow" },
+            h(Field, { label: "项目名称", value: form.name, onChange: function (v) { up("name", v); } }),
+            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///…" }),
+            h(Field, { label: "分支", value: form.branch, onChange: function (v) { up("branch", v); } }),
+            h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
+            h(Field, { label: "健康检查 URL", value: form.healthUrl, onChange: function (v) { up("healthUrl", v); }, placeholder: "http://host:port/health" })),
+          h("div", { className: "ocRow" },
+            h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.scaffold, onChange: function (e) { up("scaffold", e.target.checked); } }), " 生成代码骨架"),
+            h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.pipeline, onChange: function (e) { up("pipeline", e.target.checked); } }), " 跑测试流水线"),
+            h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.deployTest, onChange: function (e) { up("deployTest", e.target.checked); } }), " 发测试环境"),
+            h(Btn, { kind: "primary", disabled: busy, onClick: run }, busy ? "执行中…" : "开始自动生产"))),
+        !selected ? null : h(Fragment, null,
+          h(KpiGrid, { items: [
+            { label: "检出", value: checkout && checkout.status === "ok" ? 1 : 0, unit: checkout && checkout.status === "ok" ? "ok" : "", tone: checkout && checkout.status === "ok" ? "ok" : "warn" },
+            { label: "源码文件", value: (checkout && checkout.file_count) || 0 },
+            { label: "主语言", value: tech.primaryLanguage || "-" },
+            { label: "计划", value: plans.length },
+            { label: "待裁决", value: pending.length, tone: pending.length > 0 ? "warn" : "ok" },
+            { label: "流水线失败", value: pipeline.filter(function (r) { return r.status === "failed"; }).length, tone: pipeline.some(function (r) { return r.status === "failed"; }) ? "bad" : "ok" },
+            { label: "测试环境", value: deploy.length ? deploy[0].status : "-", tone: deploy.length && deploy[0].status === "ok" ? "ok" : "warn" },
+          ] }),
+          h(Card, null,
+            h("div", { className: "ocH" }, "检出与扫描"),
+            h("div", { className: "ocMuted" }, checkout ? ("commit " + String(checkout.commit_sha || "").slice(0, 12) + " · 文件 " + (checkout.file_count || 0) + " · 字节 " + (checkout.size_bytes || 0) + " · 分支 " + (checkout.branch || "-")) : "尚未检出"),
+            h("div", { className: "ocMuted" }, "语言：" + Object.keys((sum.scan && sum.scan.languages) || {}).join(" / ") + "；测试：" + (((sum.scan && sum.scan.tests) || []).length) + "；CI：" + (((sum.scan && sum.scan.ci) || []).length)),
+            h("div", { className: "ocMuted" }, "缓存排除：" + Object.keys(scanFindings).length + " 项扫描证据")),
+          h(Card, null,
+            h("div", { className: "ocH" }, "开发/测试/部署计划"),
+            h(Table, { columns: [
+              { key: "plan_kind", label: "类型", render: function (r) { return h(Badge, { tone: "mute" }, r.plan_kind); } },
+              { key: "title", label: "标题" },
+              { key: "version", label: "版本" },
+              { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "active" ? "ok" : "mute" }, r.status); } },
+            ], rows: plans, empty: "还没有自动计划", emptyHint: "执行自动生产后会生成开发/测试/部署计划。", emptyIcon: "layers" })),
+          h(Card, null,
+            h("div", { className: "ocH" }, "测试流水线与骨架"),
+            h(Table, { columns: [
+              { key: "stage", label: "阶段" },
+              { key: "command", label: "命令" },
+              { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
+              { key: "exit_code", label: "退出码" },
+            ], rows: pipeline, empty: "还没跑过流水线", emptyHint: "自动生产默认会跑仓库既有的 lint/build/test 脚本。", emptyIcon: "flow" })),
+          h(Card, null,
+            h("div", { className: "ocH" }, "测试环境发布"),
+            h("div", { className: "ocRow" },
+              h(Btn, { kind: "primary", disabled: busy, onClick: rerunDeploy }, "发布到测试环境")),
+            h(Table, { columns: [
+              { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
+              { key: "release_id", label: "发布单" },
+              { key: "exit_code", label: "退出码" },
+              { key: "health_url", label: "健康检查" },
+            ], rows: deploy, empty: "还没发布过测试环境", emptyHint: "配置 OPC_TEST_DEPLOY_CMD 后可自动发布。", emptyIcon: "layers" })),
+          h(Card, null,
+            h("div", { className: "ocH" }, "待裁决（" + pending.length + "）"),
+            pending.length ? pending.map(function (d) {
+              var editing = deciding && deciding.id === d.id;
+              return h("div", { key: d.id, className: "ocSection" },
+                h("div", { className: "ocRow" },
+                  h(Badge, { tone: d.risk_level === "high" ? "bad" : d.risk_level === "medium" ? "warn" : "mute" }, d.risk_level || "low"),
+                  h("b", null, d.topic),
+                  h("span", { style: { flex: 1 } }, d.question),
+                  h(Btn, { onClick: function () { setDeciding(editing ? null : { id: d.id, text: "" }); } }, editing ? "取消" : "裁决")),
+                editing ? h("div", { className: "ocFormRow" },
+                  h(Field, { label: "裁决内容", value: deciding.text, onChange: function (v) { setDeciding({ id: d.id, text: v }); } }),
+                  h(Btn, { kind: "primary", onClick: function () { submitDecision(d.id); } }, "确认裁决")) : null);
+            }) : h("div", { className: "ocMuted" }, "没有待裁决事项：自动化不需要你拍板。"))));
+    }
+
     // ================= 主控制台 =================
     // 导航按“概览 / 经营 / 治理 / 知识 / 系统”分组，降低 12 个页签的认知负担。
     var NAV_GROUPS = [
       { title: "概览", items: [{ id: "cockpit", label: "驾驶舱", icon: "gauge" }, { id: "domains", label: "业务域", icon: "grid" }] },
-      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "projects", label: "项目管理", icon: "layers" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
+      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "projects", label: "项目管理", icon: "layers" }, { id: "autopilot", label: "自动驾驶", icon: "target" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
       { title: "治理", items: [{ id: "audits", label: "审计", icon: "shield" }, { id: "conflicts", label: "冲突", icon: "alert" }, { id: "inbox", label: "收件箱", icon: "inbox" }] },
       { title: "知识", items: [{ id: "memory", label: "记忆", icon: "book" }, { id: "hindsight", label: "记忆同步", icon: "sync" }, { id: "radar", label: "雷达", icon: "radar" }, { id: "intel", label: "情报管理", icon: "target" }] },
       { title: "系统", items: [{ id: "settings", label: "设置", icon: "settings" }] },
@@ -2039,6 +2176,7 @@ window.__ModuleLoader__.load({
       if (tab === "cockpit") body = h(CockpitTab, { flash: flashMsg });
       else if (tab === "employees") body = h(EmployeesTab, { flash: flashMsg });
       else if (tab === "projects") body = h(ProjectsTab, { flash: flashMsg });
+      else if (tab === "autopilot") body = h(AutopilotTab, { flash: flashMsg });
       else if (tab === "intel") body = h(IntelTab, { flash: flashMsg });
       else if (tab === "domains") body = h(DomainsTab, { flash: flashMsg });
       else if (tab === "workflows") body = h(WorkflowsTab, { flash: flashMsg });

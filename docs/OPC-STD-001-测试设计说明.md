@@ -638,6 +638,18 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.16 增量，基线核算（5.1）只统计基线 68 例；自动驾驶用例在 `OPC-STR-001` §12 登记。
 
+### 4.27 TC-AUTO-005 … TC-AUTO-007 · 自动化生产（v2.17 增量）
+
+**追溯**：REQ-PRJ-031..033；`test/integration/autopilot.test.ts`；实体 ProjectScaffold、ProjectPipelineRun、ProjectDeployRun。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-AUTO-005 | 自动生成代码骨架 | 空仓库（仅 package.json + README）：`scaffold.status=committed`、分支前缀 `opc/autopilot-`、created 为 `.gitignore/Dockerfile/src/index.js/test/smoke.test.js` 四项；`stat.project_scaffold` 落库一条 |
+| TC-AUTO-006 | 自动跑测试流水线 | 夹具 `test=node --test`：`pipeline.status=ok`、逐阶段全 ok 且含 `stage=test`；`stat.project_pipeline_run` 有 `stage=test,status=ok,exit_code=0` |
+| TC-AUTO-007 | 自动发布测试环境 | 设置 `OPC_TEST_DEPLOY_CMD` → `deploy.status=ok` 且发布单 `approved/executed_at` 非空；未配置 → `pending` 且出现 `deploy_executor` 裁决 |
+
+**结论口径**：本章为 v2.17 增量，基线核算（5.1）只统计基线 68 例；自动化生产用例在 `OPC-STR-001` §13 登记。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -675,6 +687,9 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-AUTO-002 | UC-025 / REQ-PRJ-029 | `test/integration/autopilot.test.ts` | dev/test/deploy 三计划；5 里程碑；3 基线用例；测试环境 ssh_user=canetwork |
 | TC-AUTO-003 | UC-025 / REQ-PRJ-030 | `test/integration/autopilot.test.ts` | 三条裁决全 pending；裁决后 decided；重复裁决 404 |
 | TC-AUTO-004 | UC-024 / REQ-PRJ-027 | `test/integration/autopilot.test.ts` | 非法协议 400；坏仓库 502；失败检出留痕 |
+| TC-AUTO-005 | UC-026 / REQ-PRJ-031 | `test/integration/autopilot.test.ts` | 骨架只补缺失并提交本地分支 |
+| TC-AUTO-006 | UC-026 / REQ-PRJ-032 | `test/integration/autopilot.test.ts` | 流水线逐阶段 ok，含 test 阶段 exit 0 |
+| TC-AUTO-007 | UC-026 / REQ-PRJ-033 | `test/integration/autopilot.test.ts` | 有命令则发布 ok；无命令 pending + 裁决 |
 
 ### 5.1 覆盖核算（60 + 8 = 68）
 

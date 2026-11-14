@@ -1,7 +1,7 @@
 ---
 doc_id: OPC-SRS-105
 title: 项目监理 员工需求规格说明
-version: 0.5
+version: 0.6
 status: 评审稿
 stage: D1
 owner: 玄机文档组
@@ -462,6 +462,45 @@ updated: 2026-11-14
 
 追溯：AC 直验 / `UC-025`
 
+### 3.31 REQ-PRJ-031 自动生成代码骨架
+
+**需求陈述**：检出扫描后，按技术栈为**缺失的部分**补最小可用骨架（入口、冒烟用例、忽略规则、Dockerfile），提交到本地分支，不推送远端。
+
+**验收标准**：
+
+- **AC-1** 仅创建缺失文件，已存在的文件绝不覆盖；Node 栈补 `src/index.js`、`test/smoke.test.js`、`.gitignore`、`Dockerfile`，Python 栈补 `src/main.py`、`tests/test_smoke.py`、`.gitignore`。
+- **AC-2** 生成结果提交到 `opc/autopilot-<时间戳>` 本地分支（提交身份 `opc-autopilot`），**不 push 远端**。
+- **AC-3** 落 `stat.project_scaffold`（branch/files/status/error），并生成「骨架是否合并」裁决（low）。
+- **AC-4** 提交失败时状态记 `generated` 且保留错误，不假装成功。
+
+追溯：AC 直验 / `UC-026`
+
+### 3.32 REQ-PRJ-032 自动跑测试流水线
+
+**需求陈述**：识别仓库既有的 lint/build/test 脚本并依次执行，结果逐阶段留痕；失败不阻塞后续计划生成，但必须转裁决。
+
+**验收标准**：
+
+- **AC-1** 从 `package.json` 的 `lint`/`build`/`test` 脚本、`go.mod`、`pyproject.toml`/`requirements.txt` 识别步骤，最多 3 步。
+- **AC-2** 每步 300s 超时、最小环境变量、输出截断留 `log_tail`；结果落 `stat.project_pipeline_run`（stage/command/exit_code/status/duration_ms）。
+- **AC-3** 默认**不安装依赖**；显式 `install=true` 时才执行 `npm install --ignore-scripts --no-audit --no-fund`。
+- **AC-4** 任一步失败 → 流水线状态 `failed` 并生成「流水线失败」裁决（high）；无可用脚本 → `skipped` 并如实记录。
+
+追溯：AC 直验 / `UC-026`
+
+### 3.33 REQ-PRJ-033 自动发布测试环境
+
+**需求陈述**：自动为项目创建测试环境发布单并执行发布；有执行命令则发布并做健康检查，没有则转裁决等待，绝不伪造成功。
+
+**验收标准**：
+
+- **AC-1** 复用部署计划生成的测试环境（`ref.deploy_environment.env_type='test'`），无测试环境时 400（`ERR-AUTO-001`）。
+- **AC-2** 创建发布单（`approved`，`requested_by/approved_by=autopilot:test`），执行 `OPC_TEST_DEPLOY_CMD` 或显式命令，300s 超时，结果落 `stat.project_deploy_run`。
+- **AC-3** 配置健康检查 URL 时发布后探测；非 2xx/不可达记 `failed` 并转「发布失败」裁决（high）。
+- **AC-4** 未配置执行命令 → 状态 `pending` 并生成「发布执行方式」裁决（high）；生产环境仍只走人工审批，不自动发布。
+
+追溯：AC 直验 / `UC-026`
+
 ## 4. 数据对象与视图（需求层）
 
 | 数据对象 | 用途 |
@@ -499,9 +538,9 @@ updated: 2026-11-14
 
 ## 6. 验收与追溯
 
-- 本文 30 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
+- 本文 33 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
 - 单员工流程：`project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`、`project_release_flow`、`project_test_review`；跨员工 `project_acceptance_flow` 含验收终审 human gate。
-- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.30（含基础资源配置 §3.23–§3.26、项目自动驾驶 §3.27–§3.30）。
+- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.33（含基础资源配置 §3.23–§3.26、项目自动驾驶 §3.27–§3.33）。
 - 版本库/制品库/SSH 环境/测试管理为软件研发项目增量，契约与 DDL 在 Phase 2 落地；落地前 manifest 只声明工具族与写目标，不宣称已实现。
 - 插件可插拔验收：manifest 完整、启用/停用可逆、停用后不派工、卸载不误删项目数据。
 
@@ -518,6 +557,7 @@ updated: 2026-11-14
 - [x] 公司基础资源（六类）可登记、可绑定、默认选型可覆盖；远程管理方式与默认口径（debian/ssh/canetwork）明确，口令只以引用登记。
 - [x] 建项目填版本库即可自动检出、静态扫描、回填档案并生成三份计划；只读扫描不执行仓库代码，失败不伪造档案。
 - [x] 仅需老板拍板的事项进入裁决队列；未裁决不放行生产，裁决全程留痕。
+- [x] 自动生产含骨架生成、测试流水线、测试环境发布三步；只补缺失骨架、不推送远端、发布失败不伪造。
 
 ## 与其他文档的关系
 

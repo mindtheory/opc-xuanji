@@ -793,14 +793,14 @@ export class AdminService {
     }
     // 新建项目时填写版本库 → 自动检出、扫描、回填档案、生成计划、裁决项入队
     if (input.repository !== undefined && input.repository !== null) {
-      row.autopilot = await this.bootstrapProject(projectId, input.repository as Row);
+      row.autopilot = await this.bootstrapProject(projectId, input.repository as Row, (input.autopilotOptions as Row) ?? {});
     }
     return row;
   }
 
   // ---------------- 项目自动驾驶（检出 → 扫描 → 计划 → 裁决） ----------------
 
-  async bootstrapProject(projectId: number, repository: Row): Promise<Row> {
+  async bootstrapProject(projectId: number, repository: Row, options: Row = {}): Promise<Row> {
     if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
     return this.autopilot.bootstrap(projectId, {
       url: String(repository.url ?? repository.repositoryUrl ?? ""),
@@ -808,7 +808,12 @@ export class AdminService {
       authRef: repository.authRef === undefined ? undefined : String(repository.authRef),
       kind: repository.kind === undefined ? undefined : String(repository.kind),
       name: repository.name === undefined ? undefined : String(repository.name),
-    });
+    }, options);
+  }
+
+  async deployProjectTest(projectId: number, input: Row = {}): Promise<Row> {
+    if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
+    return this.autopilot.deployTestEnvironment(projectId, input);
   }
 
   async autopilotSummary(projectId: number): Promise<Row> {

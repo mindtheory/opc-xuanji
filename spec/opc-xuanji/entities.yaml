@@ -2713,6 +2713,114 @@ entities:
       - name: created_at
         type: timestamptz
         nullable: true
+  - name: ProjectScaffold
+    table: stat.project_scaffold
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: checkout_id
+        type: bigint
+        nullable: true
+      - name: branch
+        type: varchar(128)
+        nullable: true
+      - name: files
+        type: jsonb
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: error
+        type: text
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
+  - name: ProjectPipelineRun
+    table: stat.project_pipeline_run
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: checkout_id
+        type: bigint
+        nullable: true
+      - name: stage
+        type: varchar(16)
+        nullable: false
+      - name: command
+        type: text
+        nullable: false
+      - name: exit_code
+        type: integer
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: log_tail
+        type: text
+        nullable: true
+      - name: duration_ms
+        type: integer
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
+  - name: ProjectDeployRun
+    table: stat.project_deploy_run
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: release_id
+        type: bigint
+        nullable: true
+      - name: environment_id
+        type: bigint
+        nullable: true
+      - name: command
+        type: text
+        nullable: true
+      - name: health_url
+        type: text
+        nullable: true
+      - name: exit_code
+        type: integer
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: log_tail
+        type: text
+        nullable: true
+      - name: started_at
+        type: timestamptz
+        nullable: true
+      - name: ended_at
+        type: timestamptz
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
   - name: SharedResource
     table: ref.shared_resource
     module: platform

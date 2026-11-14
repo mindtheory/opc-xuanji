@@ -132,7 +132,7 @@ flowchart LR
 
 跨 schema 的引用只存 id、不建 FK 的三处代表：`audit.audit_log.workflow_instance_id`（审计在实例删除后仍需可读）、`biz.conflict_queue.frozen_unit_id`（多态冻结单元：ledger/contract/stock_txn/vehicle_log 四选一）、`biz.ledger.project_id`（业务弱引用，避免跨域锁）。
 
-### 2.3 83 张表清单总览
+### 2.3 86 张表清单总览
 
 基线列数合计 272（37 表）；v2.10 Web 层新增 8 表另计。下表是第 3 章的索引页：先看清单定位，再进 3.x 看列级定义。
 
@@ -221,11 +221,14 @@ flowchart LR
 | 81 | `stat.project_scan` | 仓库静态扫描 | 11 | `status` CHECK；`index(project_id,created_at DESC)` |
 | 82 | `stat.project_plan` | 自动生成计划 | 8 | `plan_kind/status` CHECK；`UNIQUE(project_id,plan_kind,version)` |
 | 83 | `stat.project_decision` | 项目裁决队列 | 12 | `status/risk_level` CHECK；`index(project_id,status)` |
+| 84 | `stat.project_scaffold` | 代码骨架记录 | 7 | `status` CHECK；`index(project_id,created_at DESC)` |
+| 85 | `stat.project_pipeline_run` | 测试流水线阶段 | 9 | `stage/status` CHECK；`index(project_id,created_at DESC)` |
+| 86 | `stat.project_deploy_run` | 测试环境发布记录 | 11 | `status` CHECK；`index(project_id,created_at DESC)` |
 
-清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，明细见 3.6–3.11）：
+清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，明细见 3.6–3.12）：
 
 ```sql
--- 按 schema 统计表与列（v2.16 后：biz 44、ref 15、audit 6、stat 17、vec 1；列数随增量表变化）
+-- 按 schema 统计表与列（v2.17 后：biz 44、ref 15、audit 6、stat 20、vec 1；列数随增量表变化）
 SELECT table_schema AS schema,
        count(DISTINCT table_name) AS tables,
        count(*)                   AS columns
@@ -234,7 +237,7 @@ WHERE table_schema IN ('biz','ref','audit','stat','vec')
 GROUP BY table_schema ORDER BY table_schema;
 ```
 
-## 3. 表结构（83 张）
+## 3. 表结构（86 张）
 
 本章按 schema 分节。每张表给出列级定义（列名 / 类型 / 可空 / 默认 / 说明）与索引约束，字段口径见 1.2。所有表主键均为 `id bigint GENERATED ALWAYS AS IDENTITY`，为避免重复，下文不再逐行标注主键列，只在“索引与约束”里写明主键名。
 
@@ -883,9 +886,21 @@ GROUP BY table_schema ORDER BY table_schema;
 
 **自动驾驶口径**：建项目填写 `repository` 即触发「浅克隆 → 静态扫描 → 回填 `biz.project.tech_stack/software_profile` → 生成三份计划 → 裁决项入队」；检出上限 2000 文件，跳过 `.git/node_modules/dist` 等目录；生产发布仍需人工审批。
 
+### 3.12 自动驾驶·自动化生产（v2.17 新增 3 张）
+
+> 迁移：`migrations/0010_autopilot_production.sql`；实体：`ProjectScaffold`、`ProjectPipelineRun`、`ProjectDeployRun`。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `stat.project_scaffold` | `project_id, checkout_id, branch, files, status, error, created_at` | `status` CHECK（generated/committed/skipped/failed）；`index(project_id,created_at DESC)` | 骨架生成记录：只补缺失文件，提交到本地分支（不推送远端） |
+| `stat.project_pipeline_run` | `project_id, checkout_id, stage, command, exit_code, status, log_tail, duration_ms, created_at` | `stage` CHECK（install/build/test/lint/other）；`status` CHECK；`index(project_id,created_at DESC)` | 测试流水线逐阶段事实：300s 超时、最小环境、日志截断 |
+| `stat.project_deploy_run` | `project_id, release_id, environment_id, command, health_url, exit_code, status, log_tail, started_at, ended_at, created_at` | `status` CHECK（pending/ok/failed/skipped）；`index(project_id,created_at DESC)` | 测试环境发布记录：无执行命令记 pending 并转裁决，不伪造成功 |
+
+**自动化生产口径**：骨架只补缺失文件并提交本地分支；流水线默认不装依赖（显式 `install=true` 才 `npm install --ignore-scripts`）；测试环境发布需 `OPC_TEST_DEPLOY_CMD` 或显式命令，生产仍走人工审批。
+
 ## 4. 关键索引设计
 
-基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）。
+基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）；v2.17 自动化生产另增 3 个主键与 3 个显式索引（明细见 3.12）。
 
 ### 4.1 audit_log 复合主键与分区预留
 

@@ -55,6 +55,7 @@ errorCodes:
   - ERR-AUTO-002
   - ERR-AUTO-003
   - ERR-AUTO-004
+  - ERR-AUTO-005
   - ERR-SYS-001
 
 paths:
@@ -1739,6 +1740,18 @@ paths:
       responses:
         '200': { description: OK }
         '404': { description: ERR-AUTO-004 裁决项不存在或已处理 }
+
+  /api/v1/admin/projects/{projectId}/deploy-test:
+    post:
+      operationId: deployProjectTest
+      tags: [admin]
+      summary: 自动发布到测试环境（建发布单；配置了 OPC_TEST_DEPLOY_CMD 则执行并健康检查，否则转裁决）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '202': { description: Accepted }
+        '400': { description: ERR-AUTO-001 缺少测试环境 }
+        '502': { description: ERR-AUTO-005 执行失败 }
 
 components:
   schemas:

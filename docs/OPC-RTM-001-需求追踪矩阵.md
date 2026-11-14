@@ -54,9 +54,9 @@ updated: 2026-11-14
 | 对象 | 数量 | 来源 |
 | :--- | :--- | :--- |
 | 主文档功能需求 | 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7） | SRS §4 |
-| 员工需求 | 153 条（11 份分册，v2.16 项目监理 +4） | `docs/员工需求/` |
+| 员工需求 | 156 条（11 份分册，v2.17 项目监理 +3） | `docs/员工需求/` |
 | 非功能需求 | 26 条（NFR-001..022 + NFR-WEB-001..004） | SRS §10 |
-| 用例 | 25 条（UC-001..025） | `usecases.yaml` |
+| 用例 | 26 条（UC-001..026） | `usecases.yaml` |
 | HTTP operation | 62 个 | `api.yaml` |
 | DSH 工具 | 31 个 | `src/plugin/index.ts` |
 | 实体 | 76 个 | `entities.yaml` / `migrations/` |
@@ -128,6 +128,9 @@ updated: 2026-11-14
 | REQ-PRJ-028 | 仓库静态扫描与档案回填 | UC-024 | TC-AUTO-001 | getProjectAutopilot | `domains/project/autopilot.ts` | `autopilot.test.ts` |
 | REQ-PRJ-029 | 自动生成开发/测试/部署计划 | UC-025 | TC-AUTO-002 | listProjectPlans | `domains/project/autopilot.ts` | `autopilot.test.ts` |
 | REQ-PRJ-030 | 裁决队列与人工放行 | UC-025 | TC-AUTO-003、004 | listProjectDecisions / decideProjectDecision | `domains/project/autopilot.ts` | `autopilot.test.ts` |
+| REQ-PRJ-031 | 自动生成代码骨架 | UC-026 | TC-AUTO-005 | bootstrapProjectAutopilot | `domains/project/autopilot.ts` | `autopilot.test.ts` |
+| REQ-PRJ-032 | 自动跑测试流水线 | UC-026 | TC-AUTO-006 | bootstrapProjectAutopilot | `domains/project/autopilot.ts` | `autopilot.test.ts` |
+| REQ-PRJ-033 | 自动发布测试环境 | UC-026 | TC-AUTO-007 | deployProjectTest | `domains/project/autopilot.ts` | `autopilot.test.ts` |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list | `employees/catalog.ts` | `employees.test.ts`、`unit/employees.test.ts` |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle | `employees/index.ts` | `employees.test.ts` |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 | `employees/catalog.ts`、`plugin/index.ts` | `employees.test.ts` |
@@ -217,6 +220,7 @@ updated: 2026-11-14
 | UC-023 | 新建项目按公司默认资源选型 | REQ-PRJ-025 | TC-RES-002、003 | `test/integration/admin-shared.test.ts` |
 | UC-024 | 建项目填写版本库并自动检出入档 | REQ-PRJ-027 | TC-AUTO-001 | `test/integration/autopilot.test.ts` |
 | UC-025 | 自动生成计划并推送裁决 | REQ-PRJ-029 | TC-AUTO-002、003、004 | `test/integration/autopilot.test.ts` |
+| UC-026 | 自动化生产（骨架/流水线/测试环境） | REQ-PRJ-031 | TC-AUTO-005、006、007 | `test/integration/autopilot.test.ts` |
 
 ## 7. 缺口与处置
 

@@ -200,6 +200,23 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：自动驾驶在迁移、接口、扫描、计划生成、裁决闭环与门禁五个层面均已验证；生产发布仍需人工审批，不因自动化放行。
 
+## 13. v2.17 自动化生产增量验证（2026-11-14）
+
+本节追加记录自动化生产（REQ-PRJ-031..033）的验证结果，不覆盖第 1–12 节。
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0010_autopilot_production.sql` | 业务库 applied 1 / 测试库 applied 1 | `npm run migrate`、`npm run migrate:test` 均 exit 0 |
+| 自动化生产用例（`autopilot.test.ts`） | **7/7 pass** | TC-AUTO-001..007；骨架/流水线/发布链路均用本地夹具，无外网依赖 |
+| 全量测试（`npm test`） | **110/110 pass** | v2.16 基线 107 + v2.17 增量 3 |
+| 类型检查 | exit 0 | `npm run typecheck` 无输出 |
+| 规格门禁 | PASS（86 实体 / 26 用例 / 21 模块；103 operation / 30 errorCodes） | `npm run spec:check` |
+| 文档门禁 | PASS（28 份文档） | `npm run docs:check` |
+| 安全项 | 骨架不推送远端、默认不装依赖、发布无命令转裁决 | 流水线最小 env + 300s 超时；发布仅执行显式配置的命令 |
+| 磁盘 | `/tmp` 曾满（2.7G tmpfs），已清理陈旧临时产物；克隆默认落 `~/.opc-workspaces` | 可用 `OPC_WORKSPACE_ROOT` 覆盖 |
+
+**结论**：自动化生产在迁移、接口、骨架、流水线、测试环境发布与门禁六个层面均已验证；生产发布仍只走人工审批。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写

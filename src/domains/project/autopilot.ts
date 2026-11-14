@@ -10,8 +10,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, readdir, readFile, rm, writeFile, stat as fsStat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { extname, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, extname, join } from "node:path";
 import type { Pool } from "../../db/pool.ts";
 import type { AuditService } from "../../audit/audit.ts";
 import { OpcError, ERR } from "../../platform/errors.ts";
@@ -98,7 +98,8 @@ export class ProjectAutopilotService {
   }
 
   private workspaceRoot(): string {
-    return process.env.OPC_WORKSPACE_ROOT?.trim() || join(tmpdir(), "opc-workspaces");
+    // 默认落在用户目录（根分区），避免 /tmp 这类小分区被克隆撑满；可用 OPC_WORKSPACE_ROOT 覆盖
+    return process.env.OPC_WORKSPACE_ROOT?.trim() || join(homedir(), ".opc-workspaces");
   }
 
   // ---------------------------------------------------------------- 版本库登记
@@ -381,7 +382,7 @@ export class ProjectAutopilotService {
 
   // ---------------------------------------------------------------- 裁决队列
 
-  private async createDecisions(projectId: number, repo: RepositoryInput, scan: Row): Promise<Row[]> {
+  private async createDecisions(projectId: number, repo: RepositoryInput, scan: Row, extra: Row = {}): Promise<Row[]> {
     const findings: Array<{ topic: string; question: string; riskLevel: string; options: Array<{ label: string; impact: string }>; payload?: Row }> = [];
     const manifests = scan.manifests as string[];
     const hasLicense = manifests.some((item) => item === "LICENSE" || item === "LICENSE.md");
@@ -400,6 +401,21 @@ export class ProjectAutopilotService {
     const prod = await this.pool.query("SELECT 1 FROM ref.shared_resource WHERE kind = 'public_server' AND status = 'active' LIMIT 1");
     if (prod.rows.length === 0) findings.push({ topic: "deploy_target", riskLevel: "high", question: "尚未登记可用的公网/生产服务器：生产部署目标待老板裁决。", options: [{ label: "登记生产服务器", impact: "补齐 ref.shared_resource 后方可发布" }, { label: "先只上测试环境", impact: "发布延后" }] });
 
+    const scaffold = (extra.scaffold ?? undefined) as Row | undefined;
+    const pipeline = (extra.pipeline ?? undefined) as Row | undefined;
+    const deploy = (extra.deploy ?? undefined) as Row | undefined;
+    if (scaffold !== undefined && scaffold.status === "committed") {
+      findings.push({ topic: "scaffold_review", riskLevel: "low", question: "自动驾驶已生成本地分支骨架，是否合并为项目基线？", options: [{ label: "合并骨架", impact: "补全目录与冒烟用例" }, { label: "丢弃骨架", impact: "保持仓库原样" }] });
+    }
+    if (pipeline !== undefined && pipeline.status === "failed") {
+      findings.push({ topic: "pipeline_failed", riskLevel: "high", question: "自动测试流水线未通过：先修代码还是调整流水线？", options: [{ label: "修复后重跑", impact: "阻塞发布" }, { label: "调整为人工验收", impact: "风险由老板承担" }] });
+    }
+    if (deploy !== undefined && deploy.status === "pending") {
+      findings.push({ topic: "deploy_executor", riskLevel: "high", question: "测试环境发布未配置执行命令：如何自动发布？", options: [{ label: "配置 OPC_TEST_DEPLOY_CMD", impact: "后续自动发布测试环境" }, { label: "人工发布", impact: "自动化止步于发布单" }] });
+    }
+    if (deploy !== undefined && deploy.status === "failed") {
+      findings.push({ topic: "deploy_failed", riskLevel: "high", question: "测试环境发布失败：回滚还是修复后重发？", options: [{ label: "修复后重发", impact: "保留发布单记录" }, { label: "回滚上一版本", impact: "按部署计划回滚" }] });
+    }
     const created: Row[] = [];
     for (const item of findings) {
       const result = await this.pool.query(
@@ -413,9 +429,212 @@ export class ProjectAutopilotService {
     return created;
   }
 
+  // ---------------------------------------------------------------- 代码骨架
+
+  private async scaffoldTemplates(scan: Row): Promise<Array<{ path: string; content: string }>> {
+    const manifests = scan.manifests as string[];
+    const node = manifests.includes("package.json");
+    const python = manifests.includes("pyproject.toml") || manifests.includes("requirements.txt");
+    if (node) {
+      return [
+        { path: "src/index.js", content: "// 由 OPC 自动驾驶生成的骨架入口\nfunction main() {\n  console.log(\"hello from opc scaffold\");\n}\n\nmain();\n" },
+        { path: "test/smoke.test.js", content: "import assert from 'node:assert';\nimport test from 'node:test';\n\ntest('smoke', () => { assert.ok(true); });\n" },
+        { path: ".gitignore", content: "node_modules/\ndist/\ncoverage/\n.env\n" },
+        { path: "Dockerfile", content: "FROM node:24-alpine\nWORKDIR /app\nCOPY . .\nCMD [\"node\", \"src/index.js\"]\n" },
+      ];
+    }
+    if (python) {
+      return [
+        { path: "src/main.py", content: "def main() -> None:\n    print(\"hello from opc scaffold\")\n\n\nif __name__ == \"__main__\":\n    main()\n" },
+        { path: "tests/test_smoke.py", content: "def test_smoke() -> None:\n    assert True\n" },
+        { path: ".gitignore", content: "__pycache__/\n.venv/\n.env\n" },
+      ];
+    }
+    return [];
+  }
+
+  /** 只在缺失时补骨架；生成后提交到本地分支（不推送远端）。 */
+  private async generateScaffold(projectId: number, checkoutId: number, dir: string, scan: Row): Promise<Row> {
+    const templates = await this.scaffoldTemplates(scan);
+    const created: string[] = [];
+    const skipped: string[] = [];
+    for (const item of templates) {
+      const full = join(dir, item.path);
+      const exists = await fsStat(full).then(() => true).catch(() => false);
+      if (exists) {
+        skipped.push(item.path);
+        continue;
+      }
+      await mkdir(dirname(full), { recursive: true });
+      await writeFile(full, item.content);
+      created.push(item.path);
+    }
+    let status = created.length === 0 ? "skipped" : "generated";
+    let branch: string | null = null;
+    let error: string | null = null;
+    if (created.length > 0) {
+      branch = `opc/autopilot-${Date.now()}`;
+      try {
+        await exec("git", ["-C", dir, "checkout", "-q", "-b", branch]);
+        await exec("git", ["-C", dir, "add", ...created]);
+        await exec("git", ["-C", dir, "-c", "user.name=opc-autopilot", "-c", "user.email=autopilot@opc.local", "commit", "-q", "-m", "chore(autopilot): 生成代码骨架"]);
+        status = "committed";
+      } catch (err) {
+        error = (err instanceof Error ? err.message : String(err)).split("\n")[0].slice(0, 300);
+      }
+    }
+    const row = await this.pool.query(
+      `INSERT INTO stat.project_scaffold (project_id, checkout_id, branch, files, status, error)
+       VALUES ($1,$2,$3,$4::jsonb,$5,$6) RETURNING id, branch, files, status, error`,
+      [projectId, checkoutId, branch, JSON.stringify({ created, skipped }), status, error],
+    );
+    await this.record("project.autopilot.scaffold", projectId, { created, skipped, status, branch });
+    return { id: String((row.rows[0] as Row).id), branch, files: { created, skipped }, status, error };
+  }
+
+  // ---------------------------------------------------------------- 测试流水线
+
+  private async pipelineSteps(scan: Row, dir: string): Promise<Array<{ stage: string; command: string; args: string[] }>> {
+    const manifests = scan.manifests as string[];
+    const steps: Array<{ stage: string; command: string; args: string[] }> = [];
+    if (manifests.includes("package.json")) {
+      const raw = await readFile(join(dir, "package.json"), "utf8").catch(() => "");
+      try {
+        const pkg = JSON.parse(raw) as { scripts?: Record<string, string> };
+        const scripts = pkg.scripts ?? {};
+        if (scripts.lint !== undefined) steps.push({ stage: "lint", command: "npm", args: ["run", "lint", "--silent"] });
+        if (scripts.build !== undefined) steps.push({ stage: "build", command: "npm", args: ["run", "build", "--silent"] });
+        if (scripts.test !== undefined) steps.push({ stage: "test", command: "npm", args: ["test", "--silent"] });
+      } catch { /* 清单损坏时跳过 node 步骤 */ }
+    }
+    if (manifests.includes("go.mod")) steps.push({ stage: "test", command: "go", args: ["test", "./..."] });
+    if (manifests.includes("pyproject.toml") || manifests.includes("requirements.txt")) steps.push({ stage: "test", command: "python3", args: ["-m", "pytest", "-q"] });
+    return steps.slice(0, 3);
+  }
+
+  private async runPipelineStep(projectId: number, checkoutId: number, dir: string, step: { stage: string; command: string; args: string[] }): Promise<Row> {
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: process.env.HOME ?? dir,
+      LANG: "C.UTF-8",
+      CI: "1",
+    };
+    const started = Date.now();
+    const commandText = `${step.command} ${step.args.join(" ")}`;
+    try {
+      const out = await exec(step.command, step.args, { cwd: dir, timeout: 300_000, maxBuffer: 4 * 1024 * 1024, env });
+      const row = await this.pool.query(
+        `INSERT INTO stat.project_pipeline_run (project_id, checkout_id, stage, command, exit_code, status, log_tail, duration_ms)
+         VALUES ($1,$2,$3,$4,0,'ok',$5,$6) RETURNING id, stage, command, status, exit_code`,
+        [projectId, checkoutId, step.stage, commandText, `${out.stdout}\n${out.stderr}`.trim().slice(-2000), Date.now() - started],
+      );
+      return row.rows[0] as Row;
+    } catch (err) {
+      const detail = (err instanceof Error ? err.message : String(err)).slice(-2000);
+      const row = await this.pool.query(
+        `INSERT INTO stat.project_pipeline_run (project_id, checkout_id, stage, command, exit_code, status, log_tail, duration_ms)
+         VALUES ($1,$2,$3,$4,$5,'failed',$6,$7) RETURNING id, stage, command, status, exit_code`,
+        [projectId, checkoutId, step.stage, commandText, typeof (err as { code?: number }).code === "number" ? (err as { code?: number }).code : null, detail, Date.now() - started],
+      );
+      return row.rows[0] as Row;
+    }
+  }
+
+  private async runPipeline(projectId: number, checkoutId: number, dir: string, scan: Row, options: Row): Promise<Row> {
+    const runs: Row[] = [];
+    const steps = await this.pipelineSteps(scan, dir);
+    if (steps.length === 0) {
+      const row = await this.pool.query(
+        `INSERT INTO stat.project_pipeline_run (project_id, checkout_id, stage, command, status, log_tail)
+         VALUES ($1,$2,'other','（无可用测试/构建脚本）','skipped','未识别到可执行的构建或测试脚本') RETURNING id, stage, command, status`,
+        [projectId, checkoutId],
+      );
+      await this.record("project.autopilot.pipeline", projectId, { status: "skipped" });
+      return { status: "skipped", runs: [row.rows[0]] };
+    }
+    if (options.install === true && (scan.manifests as string[]).includes("package.json")) {
+      runs.push(await this.runPipelineStep(projectId, checkoutId, dir, { stage: "install", command: "npm", args: ["install", "--ignore-scripts", "--no-audit", "--no-fund"] }));
+    }
+    for (const step of steps) runs.push(await this.runPipelineStep(projectId, checkoutId, dir, step));
+    const status = runs.some((run) => run.status === "failed" || run.status === "pending") ? "failed" : "ok";
+    await this.record("project.autopilot.pipeline", projectId, { status, runs: runs.map((run) => ({ stage: run.stage, status: run.status })) });
+    return { status, runs };
+  }
+
+  // ---------------------------------------------------------------- 发布测试环境
+
+  private deployEnv(): NodeJS.ProcessEnv {
+    return {
+      PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: process.env.HOME ?? "/tmp",
+      LANG: "C.UTF-8",
+    };
+  }
+
+  async deployTestEnvironment(projectId: number, input: Row = {}): Promise<Row> {
+    await this.assertProject(projectId);
+    const env = await this.pool.query<{ id: string; name: string; host: string }>(
+      "SELECT id, name, host FROM ref.deploy_environment WHERE project_id = $1 AND env_type = 'test' ORDER BY id DESC LIMIT 1",
+      [projectId],
+    );
+    if (env.rows.length === 0) throw new OpcError(ERR.AUTO_INVALID, "项目还没有测试环境：先执行自动驾驶生成部署计划", 400);
+    const envId = env.rows[0].id;
+    const checkout = await this.pool.query<{ commit_sha: string | null }>(
+      "SELECT commit_sha FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1",
+      [projectId],
+    );
+    const version = typeof input.version === "string" ? input.version : String(checkout.rows[0]?.commit_sha ?? "0").slice(0, 12);
+    const release = await this.pool.query(
+      `INSERT INTO biz.release_order (project_id, environment_id, version, change_note, rollback_version, requested_by, approved_by, status)
+       VALUES ($1,$2,$3,'autopilot 自动发布到测试环境','previous','autopilot:test','autopilot:test','approved') RETURNING id`,
+      [projectId, Number(envId), version],
+    );
+    const releaseId = Number((release.rows[0] as Row).id);
+    const command = typeof input.command === "string" && input.command.trim() !== "" ? input.command : (process.env.OPC_TEST_DEPLOY_CMD?.trim() || null);
+    const healthUrl = typeof input.healthUrl === "string" && input.healthUrl.trim() !== "" ? input.healthUrl : (process.env.OPC_TEST_DEPLOY_HEALTH_URL?.trim() || null);
+    const started = new Date();
+    let exitCode: number | null = null;
+    let status = "pending";
+    let log = command === null ? "未配置部署命令（OPC_TEST_DEPLOY_CMD 或 command），已转裁决等待执行方式" : "";
+    if (command !== null) {
+      try {
+        const out = await exec("bash", ["-c", command], { cwd: this.workspaceRoot(), timeout: 300_000, maxBuffer: 4 * 1024 * 1024, env: this.deployEnv() });
+        status = "ok";
+        exitCode = 0;
+        log = `${out.stdout}\n${out.stderr}`.trim().slice(-2000);
+      } catch (err) {
+        status = "failed";
+        const code = (err as { code?: number }).code;
+        exitCode = typeof code === "number" ? code : null;
+        log = (err instanceof Error ? err.message : String(err)).slice(-2000);
+      }
+      if (status === "ok" && healthUrl !== null) {
+        try {
+          const response = await fetch(healthUrl, { signal: AbortSignal.timeout(10_000) });
+          if (!response.ok) status = "failed";
+          log = `${log}\n[health] ${healthUrl} -> ${response.status}`.slice(-2000);
+        } catch (err) {
+          status = "failed";
+          log = `${log}\n[health] ${healthUrl} 不可达：${err instanceof Error ? err.message : String(err)}`.slice(-2000);
+        }
+      }
+      await this.pool.query(
+        "UPDATE biz.release_order SET executed_at = now(), health_check = $2::jsonb WHERE id = $1",
+        [releaseId, JSON.stringify({ status, healthUrl })],
+      );
+    }
+    const row = await this.pool.query(
+      `INSERT INTO stat.project_deploy_run (project_id, release_id, environment_id, command, health_url, exit_code, status, log_tail, started_at, ended_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, status, exit_code, release_id, command, health_url`,
+      [projectId, releaseId, Number(envId), command, healthUrl, exitCode, status, log, started, new Date()],
+    );
+    await this.record("project.autopilot.deploy-test", projectId, { releaseId, environmentId: envId, status, exitCode });
+    return { id: String((row.rows[0] as Row).id), releaseId, environmentId: envId, status, exitCode, healthUrl, logTail: log.slice(-500) };
+  }
+
   // ---------------------------------------------------------------- 对外入口
 
-  async bootstrap(projectId: number, repo: RepositoryInput): Promise<Row> {
+  async bootstrap(projectId: number, repo: RepositoryInput, options: Row = {}): Promise<Row> {
     await this.assertProject(projectId);
     if (repo === undefined || repo === null || typeof repo.url !== "string") {
       throw new OpcError(ERR.AUTO_INVALID, "repositoryUrl 必须提供", 400);
@@ -424,8 +643,12 @@ export class ProjectAutopilotService {
     const checkout = await this.checkout(projectId, Number(registered.id), repo);
     const scan = await this.scan(String(checkout.dir));
     await this.applyProfile(projectId, repo, checkout, scan);
+    const checkoutId = Number(checkout.id);
+    const scaffold = options.scaffold === false ? null : await this.generateScaffold(projectId, checkoutId, String(checkout.dir), scan);
+    const pipeline = options.pipeline === false ? null : await this.runPipeline(projectId, checkoutId, String(checkout.dir), scan, options);
     const plans = await this.generatePlans(projectId, repo, scan);
-    const decisions = await this.createDecisions(projectId, repo, scan);
+    const deploy = options.deployTest === false ? null : await this.deployTestEnvironment(projectId, { healthUrl: options.healthUrl });
+    const decisions = await this.createDecisions(projectId, repo, scan, { scaffold, pipeline, deploy });
     await this.pool.query(
       `INSERT INTO stat.project_scan (project_id, checkout_id, languages, manifests, structure, tests, ci, findings, status)
        VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,'ok')`,
@@ -436,7 +659,10 @@ export class ProjectAutopilotService {
       repository: { id: registered.id, url: repo.url, branch: checkout.branch },
       checkout: { commit: checkout.commitSha, files: checkout.files, bytes: checkout.bytes, status: checkout.status },
       scan: { languages: scan.languages, frameworks: (scan.stack as Row).frameworks, packageManager: (scan.stack as Row).packageManager, tests: scan.tests, ci: scan.ci, loc: scan.loc },
+      scaffold,
+      pipeline,
       plans,
+      deploy,
       decisions,
       readyForProduction: false,
     };
@@ -444,12 +670,15 @@ export class ProjectAutopilotService {
 
   async summary(projectId: number): Promise<Row> {
     await this.assertProject(projectId);
-    const [checkout, scan, plans, decisions, project] = await Promise.all([
+    const [checkout, scan, plans, decisions, project, scaffold, pipeline, deploy] = await Promise.all([
       this.pool.query("SELECT * FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
       this.pool.query("SELECT * FROM stat.project_scan WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
       this.pool.query("SELECT id, plan_kind, version, title, status, generated_at FROM stat.project_plan WHERE project_id = $1 ORDER BY id", [projectId]),
       this.pool.query("SELECT id, topic, question, risk_level, status, decision, decided_by, decided_at FROM stat.project_decision WHERE project_id = $1 ORDER BY id", [projectId]),
       this.pool.query("SELECT tech_stack, software_profile FROM biz.project WHERE id = $1", [projectId]),
+      this.pool.query("SELECT * FROM stat.project_scaffold WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
+      this.pool.query("SELECT * FROM stat.project_pipeline_run WHERE project_id = $1 ORDER BY id DESC LIMIT 10", [projectId]),
+      this.pool.query("SELECT * FROM stat.project_deploy_run WHERE project_id = $1 ORDER BY id DESC LIMIT 5", [projectId]),
     ]);
     return {
       projectId,
@@ -459,6 +688,9 @@ export class ProjectAutopilotService {
       decisions: decisions.rows,
       pendingDecisions: (decisions.rows as Array<{ status: string }>).filter((item) => item.status === "pending").length,
       profile: project.rows[0] ?? null,
+      scaffold: scaffold.rows[0] ?? null,
+      pipeline: pipeline.rows,
+      deploy: deploy.rows,
     };
   }
 

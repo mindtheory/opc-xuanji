@@ -91,9 +91,10 @@ updated: 2026-11-14
 | ERR-AUTO-002 | 502 | 版本库检出失败（地址不可达/非仓库/超时） | bootstrapProjectAutopilot |
 | ERR-AUTO-003 | 400 | 检出凭据不是可用的 env: 引用 | bootstrapProjectAutopilot |
 | ERR-AUTO-004 | 404 | 裁决项不存在或已处理 | decideProjectDecision |
+| ERR-AUTO-005 | 502 | 测试环境发布执行失败（命令/健康检查） | deployProjectTest |
 | ERR-SYS-001 | 500 / 503 | 未分类系统错误；依赖不可用 | 全部接口（兜底） |
 
-错误码以 `api.yaml` 的 `errorCodes`（当前 29 个）为唯一事实来源，本表登记平台与基础资源主要码；项目/情报/员工码见 §7.5、§7.6 与 §9.1。新增错误码必须先登记 `api.yaml` 再实现。
+错误码以 `api.yaml` 的 `errorCodes`（当前 30 个）为唯一事实来源，本表登记平台与基础资源主要码；项目/情报/员工码见 §7.5、§7.6 与 §9.1。新增错误码必须先登记 `api.yaml` 再实现。
 
 ### 1.3 调用方与鉴权约定
 
@@ -150,9 +151,9 @@ updated: 2026-11-14
 - 新增/修改接口、字段、枚举、错误码，必须先改 `api.yaml`，再改本文，再改实现，同一需求同一提交序列（不允许先改代码后补 spec）。
 - 破坏性变更（删字段、改语义、收紧必填）须在本文"与其他文档的关系"记录变更点并升 `version`。
 
-## 2. 接口清单（102 个 /api/v1 operation）
+## 2. 接口清单（103 个 /api/v1 operation）
 
-> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P89 管理面（项目/情报 Web 控制台、公司基础资源与项目自动驾驶）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P90 管理面（项目/情报 Web 控制台、公司基础资源、项目自动驾驶与自动化生产）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -833,7 +834,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
-### 7.6 管理面接口（P50–P89，Web 控制台）
+### 7.6 管理面接口（P50–P90，Web 控制台）
 
 管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
 
@@ -847,6 +848,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 情报条目/日报/流水线 | `GET /admin/intel/items`、`PUT /admin/intel/items/{itemId}`、`GET /admin/intel/briefs[/{briefId}]`、`GET /admin/intel/runs`、`POST /admin/intel/run/{stage}`、`GET /admin/intel/summary` | 条目状态、日报详情、运行记录、手动触发 analyze/aggregate/brief/push 与 KPI |
 | 公司基础资源 | `GET/POST /admin/shared-resources`、`GET /admin/shared-resources/defaults`、`PUT/DELETE /admin/shared-resources/{resourceId}`、`GET/POST /admin/projects/{projectId}/shared-resources`、`DELETE /admin/projects/{projectId}/shared-resources/{resourceId}` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记与默认口径（debian/ssh/canetwork）；新建项目默认选型绑定；明文凭据 400 `ERR-RES-002`，被绑定删除 409 `ERR-RES-004` |
 | 项目自动驾驶 | `POST/GET /admin/projects/{projectId}/autopilot`、`GET /admin/projects/{projectId}/plans`、`GET /admin/projects/{projectId}/decisions`、`POST /admin/projects/{projectId}/decisions/{decisionId}/decide` | 建项目填版本库即浅克隆 → 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 仅裁决项入队；检出失败 502 `ERR-AUTO-002`，裁决重复 404 `ERR-AUTO-004` |
+| 自动化生产 | `POST /admin/projects/{projectId}/deploy-test` | 自动发布测试环境：建发布单 → 执行 `OPC_TEST_DEPLOY_CMD` 或显式命令 → 健康检查；无命令 202 转裁决，执行失败 502 `ERR-AUTO-005` |
 
 **失败语义**：项目侧复用 `ERR-PRJ-001..003`；情报侧新增 `ERR-INT-001`（参数/状态非法）与 `ERR-INT-002`（资源不存在）；基础资源侧 `ERR-RES-001`（参数/类型非法）、`ERR-RES-002`（凭据非引用）、`ERR-RES-003`（资源/绑定不存在）、`ERR-RES-004`（仍被项目绑定）。所有写操作记录 `actor=boss` 审计；不返回明文凭据。
 
@@ -1061,6 +1063,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P87 listProjectPlans |  |  |  |  |
 | P88 listProjectDecisions |  |  |  |  |
 | P89 decideProjectDecision |  |  |  | ✓ |
+| P90 deployProjectTest |  |  |  |  |
 
 ### 9.2 失败语义三原则
 
@@ -1138,6 +1141,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P87 | REQ-PRJ-029 | UC-025 | TC-AUTO-002 | 返回 dev/test/deploy 三份计划 |
 | P88 | REQ-PRJ-030 | UC-025 | TC-AUTO-003 | 默认全部；`status=pending` 仅待裁决 |
 | P89 | REQ-PRJ-030 | UC-025 | TC-AUTO-003、004 | 非 pending 404 `ERR-AUTO-004`；裁决写审计 |
+| P90 | REQ-PRJ-033 | UC-026 | TC-AUTO-007 | 建发布单并执行发布；无命令 202 pending 转裁决；失败 502 `ERR-AUTO-005` |
 
 ### 10.2 G2 契约门禁验收命令
 
@@ -1170,14 +1174,14 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 
 - [ ] frontmatter 九字段齐全，`doc_id` 为 `OPC-IRS-001` 且与 SRS 不重号，`updated` 为 2026-11-06。
 - [ ] 首段写明"解决什么问题/谁何时用"，`## 目录` 覆盖 9 章且锚点可跳转。
-- [ ] 102 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
+- [ ] 103 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
 - [ ] 每个接口六项齐全：用途、调用方、入参、出参、错误码、幂等与重试 + 审计。
 - [ ] Result 口径写死为"成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`"，并有成功/失败两个可复制示例。
-- [ ] 29 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应（含 ERR-RES-001..004 与 ERR-AUTO-001..004）。
+- [ ] 30 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应（含 ERR-RES-001..004 与 ERR-AUTO-001..005）。
 - [ ] 工具契约表含工具名、用途、必填参数、返回结构、失败语义五列，覆盖 `hub` + 十一族共 31 个实现工具（含员工目录/员工包）。
 - [ ] TI-1..TI-8 八条"工具即接口"约定齐备，且明确与 Java/TS 实现语言无关。
 - [ ] §8.1 矩阵中每个接口的 ✓ 与 §3~§6 各接口错误码表述一致。
-- [ ] §10.1 映射覆盖 UC-001..025 全部二十五个用例与 102 个接口（管理面 40 个见 §7.6）。
+- [ ] §10.1 映射覆盖 UC-001..026 全部二十六个用例与 103 个接口（管理面 41 个见 §7.6）。
 - [ ] 全文无未决占位标记，无 `api.yaml` 与设计文档之外的新增数值或字段。
 - [ ] 文末两节齐备，`## 与其他文档的关系` 位于全文最后。
 

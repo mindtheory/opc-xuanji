@@ -11,6 +11,9 @@ export const config = loadConfig();
 export const testDsn = config.testDsn;
 
 const TABLES = [
+  "stat.project_deploy_run",
+  "stat.project_pipeline_run",
+  "stat.project_scaffold",
   "stat.project_decision",
   "stat.project_plan",
   "stat.project_scan",

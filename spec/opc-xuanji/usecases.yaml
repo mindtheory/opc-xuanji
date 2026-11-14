@@ -635,3 +635,33 @@ usecases:
       - 部署计划复用公司默认测试服务器登记测试环境，生产目标标 waiting-for-decision
       - 无 LICENSE / 无 CI / 无公网服务器 / 技术栈歧义 → 写入裁决队列 pending
       - 老板裁决后置 decided 并写审计，其余事项不打扰老板
+
+  - id: UC-026
+    title: 自动化生产（代码骨架、测试流水线、测试环境发布）
+    requirement: REQ-PRJ-031
+    actors:
+      - 老板
+      - 项目监理
+    goal: 在检出工作区自动补骨架、跑既有测试流水线并发布测试环境；只在需要拍板时转裁决
+    entities:
+      - Project
+      - ProjectScaffold
+      - ProjectPipelineRun
+      - ProjectDeployRun
+      - ReleaseOrder
+      - ProjectDecision
+      - AuditLog
+    api:
+      - bootstrapProjectAutopilot
+      - deployProjectTest
+      - decideProjectDecision
+    tests:
+      - TC-AUTO-005
+      - TC-AUTO-006
+      - TC-AUTO-007
+    preconditions: 项目已完成检出与扫描，仓库有可识别的构建/测试脚本（或可自动补骨架）
+    steps:
+      - 仅对缺失文件补 src/test/.gitignore/Dockerfile 等骨架，提交到本地分支（不推送远端）
+      - 识别 lint/build/test 脚本并逐个执行（300s 超时、最小环境、安装默认跳过，可显式开启且 --ignore-scripts）
+      - 发布测试环境：建发布单 → 有 OPC_TEST_DEPLOY_CMD 则执行并健康检查 → 无配置则 pending 转裁决
+      - 骨架合并、流水线失败、发布失败均进入裁决队列，等待老板拍板

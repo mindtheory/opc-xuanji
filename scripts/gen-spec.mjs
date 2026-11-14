@@ -206,6 +206,12 @@ const ENTITIES = [
     [S("project_id", "bigint", false), S("plan_kind", "varchar(8)", false), S("version", "integer", false), S("title", "varchar(128)", false), S("content", "jsonb", false), S("status", "varchar(16)", false), S("generated_at", "timestamptz")], []],
   ["ProjectDecision", "stat.project_decision", "project", "entity",
     [S("project_id", "bigint", false), S("topic", "varchar(32)", false), S("question", "text", false), S("options", "jsonb"), S("risk_level", "varchar(8)", false), S("status", "varchar(16)", false), S("decision", "text"), S("decided_by", "varchar(64)"), S("decided_at", "timestamptz"), S("payload", "jsonb"), S("created_at", "timestamptz")], []],
+  ["ProjectScaffold", "stat.project_scaffold", "project", "entity",
+    [S("project_id", "bigint", false), S("checkout_id", "bigint"), S("branch", "varchar(128)"), S("files", "jsonb"), S("status", "varchar(16)", false), S("error", "text"), S("created_at", "timestamptz")], []],
+  ["ProjectPipelineRun", "stat.project_pipeline_run", "project", "entity",
+    [S("project_id", "bigint", false), S("checkout_id", "bigint"), S("stage", "varchar(16)", false), S("command", "text", false), S("exit_code", "integer"), S("status", "varchar(16)", false), S("log_tail", "text"), S("duration_ms", "integer"), S("created_at", "timestamptz")], []],
+  ["ProjectDeployRun", "stat.project_deploy_run", "project", "entity",
+    [S("project_id", "bigint", false), S("release_id", "bigint"), S("environment_id", "bigint"), S("command", "text"), S("health_url", "text"), S("exit_code", "integer"), S("status", "varchar(16)", false), S("log_tail", "text"), S("started_at", "timestamptz"), S("ended_at", "timestamptz"), S("created_at", "timestamptz")], []],
   // ---------------- 基础资源配置（v2.14 公司共享资产） ----------------
   ["SharedResource", "ref.shared_resource", "platform", "entity",
     [S("kind", "varchar(24)", false), S("code", "varchar(64)"), S("name", "varchar(128)", false), S("endpoint", "text"), S("access_method", "varchar(24)", false), S("default_account", "varchar(64)"), S("credential_ref", "varchar(128)"), S("os", "varchar(64)"), S("location", "varchar(128)"), S("capacity", "varchar(128)"), S("specs", "jsonb"), S("tags", "jsonb"), S("is_default", "boolean", false), S("status", "varchar(16)", false), S("notes", "text"), S("created_at", "timestamptz"), S("updated_at", "timestamptz")], []],

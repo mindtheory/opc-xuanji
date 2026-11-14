@@ -1073,7 +1073,8 @@ export const ROUTES: Route[] = [
     async handler(ctx, params, body) {
       const projectId = requireId(params, "projectId");
       const repository = body.repository ?? body;
-      return { status: 201, data: await requireAdmin(ctx).bootstrapProject(projectId, repository as Record<string, unknown>) };
+      const options = (body.options ?? {}) as Record<string, unknown>;
+      return { status: 201, data: await requireAdmin(ctx).bootstrapProject(projectId, repository as Record<string, unknown>, options) };
     },
   },
   {
@@ -1082,6 +1083,14 @@ export const ROUTES: Route[] = [
     keys: ["projectId"],
     async handler(ctx, params) {
       return { status: 200, data: await requireAdmin(ctx).autopilotSummary(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/deploy-test$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 202, data: await requireAdmin(ctx).deployProjectTest(requireId(params, "projectId"), body as Record<string, unknown>) };
     },
   },
   {

@@ -64,6 +64,17 @@ async function makeFixtureRepo(): Promise<string> {
   return dir;
 }
 
+/** 只有 package.json 的「空」仓库：用于验证骨架生成。 */
+async function makeBareRepo(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "opc-bare-"));
+  await writeFile(join(dir, "package.json"), JSON.stringify({ name: "bare-app", version: "0.1.0", scripts: { test: "node --test" } }, null, 2));
+  await writeFile(join(dir, "README.md"), "# bare-app\n\n空仓库夹具。\n");
+  await exec("git", ["init", "-q", "-b", "main", dir]);
+  await exec("git", ["-C", dir, "-c", "user.name=fixture", "-c", "user.email=fixture@example.com", "add", "-A"]);
+  await exec("git", ["-C", dir, "-c", "user.name=fixture", "-c", "user.email=fixture@example.com", "commit", "-q", "-m", "init"]);
+  return dir;
+}
+
 before(async () => {
   pool = makePool();
   workspaceRoot = await mkdtemp(join(tmpdir(), "opc-autopilot-ws-"));
@@ -179,8 +190,8 @@ test("TC-AUTO-003 仅裁决项入队，老板裁决后关闭", async () => {
   const pending = await call("GET", `/api/v1/admin/projects/${projectId}/decisions?status=pending`);
   assert.equal(pending.status, 200);
   const topics = pending.json.data.items.map((item: any) => item.topic).sort();
-  // 无 LICENSE、无 CI、无公网服务器 → 三条裁决；测试目录存在，故不产生 test_baseline
-  assert.deepEqual(topics, ["ci", "deploy_target", "license"]);
+  // 无 LICENSE、无 CI、无公网服务器、未配置测试环境部署命令、生成了骨架分支 → 五条裁决
+  assert.deepEqual(topics, ["ci", "deploy_executor", "deploy_target", "license", "scaffold_review"]);
   assert.equal(pending.json.data.items.every((item: any) => item.status === "pending"), true);
 
   const target = pending.json.data.items.find((item: any) => item.topic === "license");
@@ -212,4 +223,75 @@ test("TC-AUTO-004 非法地址与非仓库路径被拒且留失败检出记录",
   const failed = await pool.query("SELECT status, error FROM ref.project_checkout WHERE status = 'failed' ORDER BY id DESC LIMIT 1");
   assert.equal(failed.rows.length, 1);
   assert.match(failed.rows[0].error, /检出失败/);
+});
+
+test("TC-AUTO-005 自动生成代码骨架并提交本地分支", async () => {
+  const bare = await makeBareRepo();
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "骨架生成项目",
+    stage: "planning",
+    repository: { url: `file://${bare}` },
+    autopilotOptions: { pipeline: false, deployTest: false },
+  });
+  assert.equal(created.status, 201);
+  const scaffold = created.json.data.autopilot.scaffold;
+  assert.equal(scaffold.status, "committed");
+  assert.match(scaffold.branch, /^opc\/autopilot-/);
+  const createdFiles = scaffold.files.created.sort();
+  assert.deepEqual(createdFiles, [".gitignore", "Dockerfile", "src/index.js", "test/smoke.test.js"]);
+
+  const rows = await pool.query("SELECT status, branch, files FROM stat.project_scaffold WHERE project_id = $1", [created.json.data.id]);
+  assert.equal(rows.rows.length, 1);
+  assert.equal(rows.rows[0].status, "committed");
+  const branch = await pool.query("SELECT name FROM ref.code_repository WHERE project_id = $1", [created.json.data.id]);
+  assert.equal(branch.rows.length, 1);
+});
+
+test("TC-AUTO-006 自动跑测试流水线并记录逐阶段结果", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "流水线项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, deployTest: false },
+  });
+  assert.equal(created.status, 201);
+  const pipeline = created.json.data.autopilot.pipeline;
+  assert.equal(pipeline.status, "ok");
+  assert.equal(pipeline.runs.length >= 1, true);
+  assert.equal(pipeline.runs.every((run: any) => run.status === "ok"), true);
+  assert.equal(pipeline.runs.some((run: any) => run.stage === "test"), true);
+
+  const rows = await pool.query("SELECT stage, status, exit_code FROM stat.project_pipeline_run WHERE project_id = $1 ORDER BY id", [created.json.data.id]);
+  assert.equal(rows.rows.some((row: any) => row.stage === "test" && row.status === "ok" && row.exit_code === 0), true);
+});
+
+test("TC-AUTO-007 自动发布测试环境：有命令则执行，无命令转裁决", async () => {
+  process.env.OPC_TEST_DEPLOY_CMD = "node -e \"process.exit(0)\"";
+  try {
+    const created = await call("POST", "/api/v1/admin/projects", {
+      name: "自动发布项目",
+      stage: "planning",
+      repository: { url: `file://${fixtureRepo}` },
+      autopilotOptions: { scaffold: false, pipeline: false },
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.json.data.autopilot.deploy.status, "ok");
+    const releases = await pool.query("SELECT status, executed_at FROM biz.release_order WHERE project_id = $1", [created.json.data.id]);
+    assert.equal(releases.rows.length, 1);
+    assert.equal(releases.rows[0].status, "approved");
+    assert.notEqual(releases.rows[0].executed_at, null);
+  } finally {
+    delete process.env.OPC_TEST_DEPLOY_CMD;
+  }
+
+  const manual = await call("POST", "/api/v1/admin/projects", {
+    name: "未配置发布命令项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false },
+  });
+  assert.equal(manual.status, 201);
+  assert.equal(manual.json.data.autopilot.deploy.status, "pending");
+  const decisions = await call("GET", `/api/v1/admin/projects/${manual.json.data.id}/decisions?status=pending`);
+  assert.equal(decisions.json.data.items.some((item: any) => item.topic === "deploy_executor"), true);
 });
