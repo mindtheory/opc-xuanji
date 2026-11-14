@@ -655,6 +655,24 @@ export function createHub(options: HubConfig = {}): Hub {
       },
     }),
     tool({
+      name: "opc_project_from_idea",
+      description: "输入创意（文本或文档）后由 AI 解析并自动建项目、进入自动驾驶；无仓库时转裁决等待补仓库。",
+      parameters: OBJECT(
+        {
+          idea: { type: "string" },
+          files: { type: "array", items: { type: "object", properties: { name: { type: "string" }, contentBase64: { type: "string" } }, required: ["name", "contentBase64"] } },
+          name: { type: "string" },
+          repositoryUrl: { type: "string" },
+          branch: { type: "string" },
+          authRef: { type: "string" },
+        },
+        [],
+      ),
+      async execute(args) {
+        return jsonText(await admin.createProjectFromIdea(args as Record<string, unknown>));
+      },
+    }),
+    tool({
       name: "opc_ops_usage_summary",
       description: "用量回顾：近 N 天接口/页签调用、错误率与慢操作聚合（只含动作与状态，不含业务内容）。",
       parameters: OBJECT({ days: { type: "integer" } }),

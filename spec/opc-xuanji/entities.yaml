@@ -2938,6 +2938,39 @@ entities:
       - name: filed_at
         type: timestamptz
         nullable: true
+  - name: ProjectIdea
+    table: stat.project_idea
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: idea
+        type: text
+        nullable: false
+      - name: analysis
+        type: jsonb
+        nullable: true
+      - name: source
+        type: varchar(8)
+        nullable: false
+      - name: model
+        type: varchar(64)
+        nullable: true
+      - name: status
+        type: varchar(24)
+        nullable: false
+      - name: error
+        type: text
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
   - name: SharedResource
     table: ref.shared_resource
     module: platform

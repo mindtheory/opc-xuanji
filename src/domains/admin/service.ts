@@ -4,6 +4,8 @@ import { OpcError, ERR, type ErrorCode } from "../../platform/errors.ts";
 import type { ProjectSoftwareService } from "../project/software.ts";
 import type { IntelPipelineService } from "../intel/daily.ts";
 import type { ProjectAutopilotService } from "../project/autopilot.ts";
+import { IdeaService } from "../project/idea.ts";
+import { extractDocuments, type ExtractedDocument } from "../../platform/documents.ts";
 
 type Row = Record<string, unknown>;
 type Domain = "project" | "intel" | "admin";
@@ -497,6 +499,7 @@ export class AdminService {
   private readonly intel: IntelPipelineService;
 
   private readonly autopilot: ProjectAutopilotService | undefined;
+  private readonly ideas: IdeaService;
 
   constructor(
     pool: Pool,
@@ -510,6 +513,7 @@ export class AdminService {
     this.software = software;
     this.intel = intel;
     this.autopilot = autopilot;
+    this.ideas = new IdeaService(pool, audit);
   }
 
   private async record(action: string, object: string, objectId: number | string, payload: unknown): Promise<void> {
@@ -814,6 +818,104 @@ export class AdminService {
   async deployProjectTest(projectId: number, input: Row = {}): Promise<Row> {
     if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
     return this.autopilot.deployTestEnvironment(projectId, input);
+  }
+
+  /** 创意合并：文本 + 上传文档抽取文本（支持多文件、常用格式）。 */
+  private mergeIdea(input: Row): { text: string; documents: ExtractedDocument[] } {
+    const raw = typeof input.idea === "string" ? input.idea.trim() : "";
+    const documents = extractDocuments(input.files as Array<{ name: string; contentBase64: string }> | undefined);
+    const parts: string[] = [];
+    if (raw !== "") parts.push(raw);
+    for (const document of documents) {
+      parts.push(`【文档：${document.name}】\n${document.text}`);
+    }
+    const text = parts.join("\n\n").trim();
+    if (text === "") throw new OpcError(ERR.IDEA_INVALID, "请提供创意文本或上传至少一个文档", 400);
+    if (text.length > 40_000) throw new OpcError(ERR.IDEA_INVALID, "创意内容过长（≤40000 字，文档可拆分）", 400);
+    return { text, documents };
+  }
+
+  /** 只解析不建项目：返回 AI/规则解析结果 + 文档解析摘要，供前端预览与微调。 */
+  async analyzeIdea(input: Row): Promise<Row> {
+    const merged = this.mergeIdea(input);
+    return {
+      analysis: await this.ideas.analyze(merged.text),
+      documents: merged.documents.map((document) => ({ name: document.name, kind: document.kind, bytes: document.bytes, chars: document.chars, warnings: document.warnings })),
+      chars: merged.text.length,
+    };
+  }
+
+  /**
+   * 创意转项目：AI 解析 → 建项目（自动绑定公司默认资源）→ 有仓库则进自动驾驶，
+   * 无仓库则转裁决等待老板补仓库地址。
+   */
+  async createProjectFromIdea(input: Row): Promise<Row> {
+    const merged = this.mergeIdea(input);
+    const idea = merged.text;
+    const analysis = await this.ideas.analyze(idea);
+    analysis.documents = merged.documents.map((document) => ({ name: document.name, kind: document.kind, chars: document.chars }));
+    const name = typeof input.name === "string" && input.name.trim() !== "" ? input.name.trim().slice(0, 120) : analysis.name;
+    const project = await this.insert(PROJECT_DEF, null, {
+      name,
+      projectType: analysis.projectType,
+      stage: analysis.stage,
+      softwareProfile: {
+        idea,
+        ideaAnalysis: { scope: analysis.scope, goals: analysis.goals, risks: analysis.risks, openQuestions: analysis.openQuestions, weeks: analysis.weeks, confidence: analysis.confidence, source: analysis.source },
+      },
+    });
+    const projectId = asInt(project.id, "projectId", "admin");
+    await this.bindProjectSharedResources(projectId, null, true);
+
+    const repositoryInput = (input.repository as Row | undefined) ?? null;
+    const repositoryUrl = typeof input.repositoryUrl === "string" && input.repositoryUrl.trim() !== ""
+      ? input.repositoryUrl.trim()
+      : (typeof analysis.suggestedRepository === "string" && analysis.suggestedRepository !== "" ? analysis.suggestedRepository : null);
+
+    let status = "created";
+    let autopilotResult: Row | null = null;
+    let error: string | null = null;
+    if (repositoryUrl !== null) {
+      try {
+        autopilotResult = await this.bootstrapProject(projectId, {
+          url: repositoryUrl,
+          branch: repositoryInput?.branch,
+          authRef: repositoryInput?.authRef,
+        }, (input.options as Row) ?? {});
+        status = "autopilot";
+      } catch (caught) {
+        status = "failed";
+        error = caught instanceof Error ? caught.message.slice(0, 500) : String(caught).slice(0, 500);
+      }
+    } else {
+      status = "waiting-repository";
+      if (this.autopilot !== undefined) {
+        await this.autopilot.recordDecision(projectId, {
+          topic: "repository",
+          question: "创意项目还没有版本库：提供仓库地址后即可进入自动驾驶。",
+          riskLevel: "high",
+          options: [
+            { label: "提供仓库地址", impact: "立即可检出并生成计划" },
+            { label: "先立项不建仓", impact: "保持手工管理" },
+          ],
+          payload: { idea: idea.slice(0, 500), analysis: { scope: analysis.scope } },
+        });
+      }
+    }
+    const saved = await this.ideas.save(projectId, idea, analysis, status, error);
+    return {
+      project,
+      idea: saved,
+      analysis,
+      documents: merged.documents.map((document) => ({ name: document.name, kind: document.kind, bytes: document.bytes, chars: document.chars, warnings: document.warnings })),
+      autopilot: autopilotResult,
+      status,
+      error,
+    };
+  }
+
+  async listProjectIdeas(projectId: number): Promise<Row[]> {
+    return this.ideas.list(projectId);
   }
 
   async autopilotSummary(projectId: number): Promise<Row> {

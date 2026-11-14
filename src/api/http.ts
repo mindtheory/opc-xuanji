@@ -1027,6 +1027,31 @@ export const ROUTES: Route[] = [
       return { status: 200, data: await requireAdmin(ctx).removeIntelResource(params.resource, optionalId(query.get("projectId"), "projectId"), requireId(params, "resourceId")) };
     },
   },
+  // ---------------- 创意转项目（文本 + 文档） ----------------
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/ideas\/analyze$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 200, data: await requireAdmin(ctx).analyzeIdea(body as Record<string, unknown>) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/from-idea$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 201, data: await requireAdmin(ctx).createProjectFromIdea(body as Record<string, unknown>) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/ideas$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listProjectIdeas(requireId(params, "projectId")) } };
+    },
+  },
   // ---------------- 运维闭环（用量遥测 / Issue 自动投递） ----------------
   {
     method: "GET",

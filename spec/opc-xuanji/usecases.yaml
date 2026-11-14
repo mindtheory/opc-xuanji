@@ -743,3 +743,34 @@ usecases:
       - 执行 POST /admin/projects/{id}/autopilot：检出 → 扫描 → 回填档案 → 生成计划
       - 重复执行时复用版本库/测试环境，里程碑与测试计划用例去重，裁决同 topic 不再追问
       - 计划按 (project_id, plan_kind) 版本递增，保留历史
+
+  - id: UC-030
+    title: 创意（文本/文档）转项目并进入自动驾驶
+    requirement: REQ-PRJ-035
+    actors:
+      - 老板
+    goal: 输入创意或上传文档，经 AI 解析完善后自动建项目并进入自动驾驶；缺仓库时转裁决
+    entities:
+      - Project
+      - ProjectIdea
+      - CodeRepository
+      - ProjectDecision
+      - AuditLog
+    api:
+      - analyzeIdea
+      - createProjectFromIdea
+      - listProjectIdeas
+      - bootstrapProjectAutopilot
+    tests:
+      - TC-IDEA-001
+      - TC-IDEA-002
+      - TC-IDEA-003
+      - TC-IDEA-004
+      - TC-IDEA-005
+    preconditions: 迁移 0012 已应用；可选配置 AI（OPC_AI_API_KEY / DEEPSEEK_API_KEY）
+    steps:
+      - 老板输入创意文本或上传文档（txt/md/docx/xlsx/pdf，可多选，单文件 ≤10MB、总量 ≤20MB）
+      - 文档抽取为纯文本后与文本创意合并
+      - AI 解析出项目名、类型、范围、目标、技术栈提示、风险、待确认问题与工期；AI 不可用时规则兜底
+      - 自动建项目并绑定公司默认基础资源；有仓库则执行自动驾驶（检出/扫描/计划），无仓库则生成 repository 裁决
+      - 解析原文与结果写入 stat.project_idea；无 AI 或解析失败降级不阻塞建项目

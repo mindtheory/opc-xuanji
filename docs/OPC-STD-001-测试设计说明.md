@@ -675,6 +675,20 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.19 增量，基线核算（5.1）只统计基线 68 例。
 
+### 4.30 TC-IDEA-001 … TC-IDEA-005 · 创意转项目（v2.20 增量）
+
+**追溯**：REQ-PRJ-035；`test/integration/idea.test.ts`；实体 ProjectIdea。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-IDEA-001 | 文本创意 AI 解析 | mock AI 返回结构化档案：`source=ai`、name/projectType/goals 与 mock 一致、documents 为空 |
+| TC-IDEA-002 | 多格式文档同传 | txt/docx/xlsx/pdf 四文件：各 `chars>0`、kind 覆盖四种、合并 chars>30、解析 source=ai |
+| TC-IDEA-003 | 创意建项目进自动驾驶 | 带仓库：201、status=autopilot、项目名取 AI、检出 ok、3 份计划；`/ideas` 记录 status=autopilot |
+| TC-IDEA-004 | 无仓库转裁决 | status=waiting-repository、autopilot=null、项目裁决含 `repository`（pending） |
+| TC-IDEA-005 | 非法格式/空创意 | `.exe` → 415 `ERR-IDEA-002`；空请求 → 400 `ERR-IDEA-001` |
+
+**结论口径**：本章为 v2.20 增量，基线核算（5.1）只统计基线 68 例。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -722,6 +736,11 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-OPS-005 | UC-028 / REQ-OPS-001 | `test/integration/ops.test.ts` | Issue 列表按状态过滤 |
 | TC-AUTO-008 | UC-029 / REQ-PRJ-034 | `test/integration/autopilot.test.ts` | 已建项目接入：检出/扫描/档案/3 计划 |
 | TC-AUTO-009 | UC-029 / REQ-PRJ-034 | `test/integration/autopilot.test.ts` | 重复执行：复用资源、计划版本递增、裁决去重 |
+| TC-IDEA-001 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 文本创意 AI 解析 |
+| TC-IDEA-002 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | txt/docx/xlsx/pdf 多文件解析 |
+| TC-IDEA-003 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 建项目并进自动驾驶 |
+| TC-IDEA-004 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 无仓库转裁决 |
+| TC-IDEA-005 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 非法格式/空创意拒绝 |
 
 ### 5.1 覆盖核算（60 + 8 = 68）
 

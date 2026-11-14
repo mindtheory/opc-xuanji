@@ -2006,6 +2006,12 @@ window.__ModuleLoader__.load({
       var busy = busyS[0], setBusy = busyS[1];
       var decideS = react.useState(null);
       var deciding = decideS[0], setDeciding = decideS[1];
+      var ideaS = react.useState({ idea: "", repositoryUrl: "", branch: "", authRef: "" });
+      var ideaForm = ideaS[0], setIdeaForm = ideaS[1];
+      var filesS = react.useState([]);
+      var ideaFiles = filesS[0], setIdeaFiles = filesS[1];
+      var analysisS = react.useState(null);
+      var ideaResult = analysisS[0], setIdeaResult = analysisS[1];
       function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
       function knownRepoUrl() {
         if (repos.length > 0 && repos[0].url) return repos[0].url;
@@ -2037,6 +2043,50 @@ window.__ModuleLoader__.load({
           if (r.id) setSelected(String(r.id));
           refreshAll();
         }).catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function upIdea(key, value) { var next = Object.assign({}, ideaForm); next[key] = value; setIdeaForm(next); }
+      function pickIdeaFiles(event) {
+        var list = Array.prototype.slice.call(event.target.files || []);
+        event.target.value = "";
+        var allowed = /[.](txt|md|markdown|csv|tsv|json|yml|yaml|log|docx|xlsx|pdf)$/i;
+        var next = ideaFiles.slice();
+        list.forEach(function (file) {
+          if (!allowed.test(file.name)) { props.flash("不支持的格式：" + file.name, false); return; }
+          if (file.size > 10 * 1024 * 1024) { props.flash("单个文档不能超过 10MB：" + file.name, false); return; }
+          var reader = new FileReader();
+          reader.onload = function () {
+            var dataUrl = String(reader.result || "");
+            var comma = dataUrl.indexOf(",");
+            next.push({ name: file.name, contentBase64: comma >= 0 ? dataUrl.slice(comma + 1) : "" });
+            setIdeaFiles(next.slice());
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+      function submitIdea(create) {
+        if (!ideaForm.idea && ideaFiles.length === 0) { props.flash("请填写创意或上传文档", false); return; }
+        setBusy(true);
+        var payload = {
+          idea: ideaForm.idea,
+          files: ideaFiles.map(function (file) { return { name: file.name, contentBase64: file.contentBase64 }; }),
+          repositoryUrl: ideaForm.repositoryUrl || undefined,
+          branch: ideaForm.branch || undefined,
+          authRef: ideaForm.authRef || undefined,
+        };
+        apiPost(create ? "/admin/projects/from-idea" : "/admin/ideas/analyze", payload)
+          .then(function (r) {
+            setIdeaResult(r.analysis || null);
+            if (create) {
+              var analysis = r.analysis || {};
+              props.flash("已创建「" + ((r.project && r.project.name) || analysis.name) + "」· " + r.status + "（解析来源 " + (analysis.source || "rule") + "）");
+              if (r.project && r.project.id) setSelected(String(r.project.id));
+              refreshAll();
+            } else {
+              props.flash("解析完成：" + (((r.analysis || {}).name) || "创意") + "（来源 " + (((r.analysis || {}).source) || "rule") + "）");
+            }
+          })
+          .catch(function (e) { props.flash(e.message || String(e), false); })
           .then(function () { setBusy(false); });
       }
       function runExisting() {
@@ -2098,6 +2148,34 @@ window.__ModuleLoader__.load({
             h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.pipeline, onChange: function (e) { up("pipeline", e.target.checked); } }), " 跑测试流水线"),
             h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.deployTest, onChange: function (e) { up("deployTest", e.target.checked); } }), " 发测试环境"),
             h(Btn, { kind: "primary", disabled: busy, onClick: run }, busy ? "执行中…" : "开始自动生产"))),
+        h(Card, null,
+          h("div", { className: "ocH" }, "从创意新建项目（AI 解析 → 建项目 → 自动驾驶）"),
+          h("div", { className: "ocMuted" }, "直接写创意，或上传文档（txt/md/docx/xlsx/pdf，可多选，单文件 ≤10MB、总量 ≤20MB）；AI 解析出项目名、范围、目标、风险与待确认问题后自动建项目并进入自动驾驶。"),
+          h(Area, { label: "创意文本", value: ideaForm.idea, onChange: function (v) { upIdea("idea", v); }, rows: 4, placeholder: "一句话或一段创意……" }),
+          h("div", { className: "ocFormRow" },
+            h("label", { className: "ocField" },
+              h("span", { className: "ocFieldLabel" }, "上传文档（可多选）"),
+              h("input", { type: "file", multiple: true, accept: ".txt,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.log,.docx,.xlsx,.pdf", onChange: pickIdeaFiles })),
+            h(Field, { label: "项目名称（可选）", value: ideaForm.name || "", onChange: function (v) { upIdea("name", v); }, placeholder: "留空由 AI 命名" }),
+            h(Field, { label: "版本库（可选）", value: ideaForm.repositoryUrl, onChange: function (v) { upIdea("repositoryUrl", v); }, placeholder: "留空则建项目后转裁决等仓库" }),
+            h(Field, { label: "分支", value: ideaForm.branch, onChange: function (v) { upIdea("branch", v); } })),
+          ideaFiles.length ? h("div", { className: "ocRow" }, ideaFiles.map(function (file, index) {
+            return h("span", { key: file.name + index, className: "ocChip" },
+              file.name,
+              h(Btn, { onClick: function () { var next = ideaFiles.slice(); next.splice(index, 1); setIdeaFiles(next); } }, "移除"));
+          })) : null,
+          h("div", { className: "ocRow" },
+            h(Btn, { onClick: function () { submitIdea(false); }, disabled: busy }, "仅解析预览"),
+            h(Btn, { kind: "primary", onClick: function () { submitIdea(true); }, disabled: busy }, busy ? "执行中…" : "AI 解析并创建")),
+          ideaResult ? h("div", { className: "ocSection" },
+            h("div", { className: "ocMeta" },
+              h(Badge, { tone: ideaResult.source === "ai" ? "ok" : "mute" }, "解析：" + (ideaResult.source === "ai" ? "AI" : "规则")),
+              h("b", null, ideaResult.name || "创意项目"),
+              h("span", { className: "ocMuted" }, "类型 " + (ideaResult.projectType || "-") + " · 置信度 " + Math.round((ideaResult.confidence || 0) * 100) + "% · 工期约 " + (ideaResult.weeks || "-") + " 周")),
+            h("div", { className: "ocMuted" }, "范围：" + (ideaResult.scope || "-")),
+            (ideaResult.goals || []).length ? h("div", { className: "ocMuted" }, "目标：" + ideaResult.goals.join("；")) : null,
+            (ideaResult.risks || []).length ? h("div", { className: "ocMuted" }, "风险：" + ideaResult.risks.join("；")) : null,
+            (ideaResult.openQuestions || []).length ? h("div", { className: "ocMuted" }, "待裁决问题：" + ideaResult.openQuestions.join("；")) : null) : null),
         !selected ? null : h(Card, null,
           h("div", { className: "ocH" }, "对已选项目执行自动驾驶"),
           h("div", { className: "ocMuted" }, "已建项目也能走同一条流水线：检出 → 扫描 → 回填档案 → 计划（版本递增）→ 可选骨架/流水线/测试环境发布；不会重复建版本库、里程碑、测试计划与裁决。"),

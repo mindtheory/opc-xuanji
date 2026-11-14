@@ -11,6 +11,7 @@ export const config = loadConfig();
 export const testDsn = config.testDsn;
 
 const TABLES = [
+  "stat.project_idea",
   "stat.issue_filing",
   "stat.runtime_error",
   "stat.usage_event",

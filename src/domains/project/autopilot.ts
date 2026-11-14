@@ -746,6 +746,20 @@ export class ProjectAutopilotService {
     };
   }
 
+  /** 供其他服务登记单条裁决（如创意项目缺版本库）。同项目同 topic 只登记一次。 */
+  async recordDecision(projectId: number, input: { topic: string; question: string; options?: Array<{ label: string; impact: string }>; riskLevel?: string; payload?: Row }): Promise<Row> {
+    await this.assertProject(projectId);
+    const existing = await this.pool.query("SELECT * FROM stat.project_decision WHERE project_id = $1 AND topic = $2 LIMIT 1", [projectId, input.topic]);
+    if (existing.rows.length > 0) return existing.rows[0] as Row;
+    const result = await this.pool.query(
+      `INSERT INTO stat.project_decision (project_id, topic, question, options, risk_level, status, payload)
+       VALUES ($1,$2,$3,$4::jsonb,$5,'pending',$6::jsonb) RETURNING *`,
+      [projectId, input.topic.slice(0, 32), input.question.slice(0, 1000), JSON.stringify(input.options ?? []), input.riskLevel ?? "medium", JSON.stringify(input.payload ?? {})],
+    );
+    await this.record("project.decision.record", projectId, { topic: input.topic, riskLevel: input.riskLevel ?? "medium" });
+    return result.rows[0] as Row;
+  }
+
   async listPlans(projectId: number): Promise<Row[]> {
     await this.assertProject(projectId);
     const result = await this.pool.query("SELECT * FROM stat.project_plan WHERE project_id = $1 ORDER BY plan_kind, version DESC", [projectId]);

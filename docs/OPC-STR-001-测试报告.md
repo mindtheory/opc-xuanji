@@ -247,6 +247,20 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：已建项目可一键接入自动驾驶；重复执行不产生重复资源，计划保留版本历史。
 
+## 16. v2.20 创意转项目增量验证（2026-11-14）
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0012_project_idea.sql` | 业务库 applied 1 / 测试库 applied 1 | `npm run migrate`、`npm run migrate:test` 均 exit 0 |
+| 新增用例（`idea.test.ts`） | **5/5 pass** | TC-IDEA-001..005；docx/xlsx/pdf 用本地夹具，AI 用本地 mock |
+| 全量测试（`npm test`） | **122/122 pass** | v2.19 基线 117 + v2.20 增量 5 |
+| 类型检查 | exit 0 | `npm run typecheck` |
+| 规格门禁 | PASS（90 实体 / 30 用例 / 21 模块；110 operation / 34 errorCodes） | `npm run spec:check` |
+| 文档门禁 | PASS（28 份文档） | `npm run docs:check` |
+| 降级项 | AI 不可用 → 规则解析；文档解析失败 → 明确错误码 | `ERR-IDEA-002`，不静默返回空 |
+
+**结论**：创意转项目在文档解析、AI 解析、建项目、接入自动驾驶/裁决与降级五个层面均已验证。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写
