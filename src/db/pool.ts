@@ -10,6 +10,11 @@ import pg from "pg";
 export type Pool = pg.Pool;
 export type Client = pg.PoolClient;
 
+// `date` 列（OID 1082）保持 YYYY-MM-DD 字符串：pg 默认按本地时区解析成 Date，
+// 再经 JSON 序列化变成 `2026-12-01T05:00:00.000Z`，破坏契约与前端日期口径。
+// timestamptz（OID 1184）不受影响，仍按 Date → ISO 输出。
+pg.types.setTypeParser(1082, (value: string) => value);
+
 export function createPool(dsn: string, overrides: pg.PoolConfig = {}): Pool {
   const pool = new pg.Pool({
     connectionString: dsn,

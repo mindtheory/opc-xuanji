@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OPC-SVD-001`: v0.1.0 software version description, installation, compatibility, evidence, and known limitations.
 - `PA-OPC-018`: change record for the main-session agent and management documentation additions.
 
+### Fixed
+
+- 项目监理（SRS-105）集成测试修复：`date` 列按 `YYYY-MM-DD` 字符串返回（此前经 `Date` 序列化为 ISO 时间戳）；`jsonb` 列参数显式 `JSON.stringify`（此前进 PG 数组字面量导致 `22P02`）；`test_run` 状态更新改用 `$2::varchar`（此前 PG 无法推导参数类型，`42P08`）。
+- 集成断言同步默认定时任务数 10→15（新增 5 个 `intel_*` 任务）。
+
 ### Changed
 
 - Bumped GitHub Actions dependencies: `actions/checkout@v7`, `actions/setup-node@v7`.

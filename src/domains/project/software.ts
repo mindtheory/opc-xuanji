@@ -57,6 +57,15 @@ function authRef(value: unknown): string | null {
   return text;
 }
 
+/**
+ * jsonb 列必须显式序列化：把 JS 数组/对象直接交给 pg 会被拼成 PG 数组字面量（`{a,b}`），
+ * jsonb 列会以 22P02 拒绝。字符串按已编码内容透传，避免二次转义。
+ */
+function jsonOrNull(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
 function isoDate(value: unknown, field: string): string {
   const text = reqString(value, field);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(text))) {
@@ -97,7 +106,7 @@ export class ProjectSoftwareService {
     const result = await this.pool.query(
       `INSERT INTO biz.project_milestone (project_id, name, stage, target_date, actual_date, status, owner, dependencies, evidence)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [projectId, name, optString(input.stage, "stage"), targetDate, input.actualDate === undefined ? null : isoDate(input.actualDate, "actualDate"), status, optString(input.owner, "owner"), input.dependencies ?? null, optString(input.evidence, "evidence")],
+      [projectId, name, optString(input.stage, "stage"), targetDate, input.actualDate === undefined ? null : isoDate(input.actualDate, "actualDate"), status, optString(input.owner, "owner"), jsonOrNull(input.dependencies), optString(input.evidence, "evidence")],
     );
     const row = camelize(result.rows[0]);
     await this.record("project.milestone.create", "ProjectMilestone", row.id as number, { projectId, name, targetDate });
@@ -140,7 +149,7 @@ export class ProjectSoftwareService {
     const result = await this.pool.query(
       `INSERT INTO ref.artifact_repository (project_id, name, kind, url, namespace, auth_ref, retention_policy, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'active') RETURNING *`,
-      [projectId, name, kind, url, optString(input.namespace, "namespace"), authRef(input.authRef), input.retentionPolicy ?? null],
+      [projectId, name, kind, url, optString(input.namespace, "namespace"), authRef(input.authRef), jsonOrNull(input.retentionPolicy)],
     );
     const row = camelize(result.rows[0]);
     await this.record("project.artifact.register", "ArtifactRepository", row.id as number, { projectId, name, kind });
@@ -195,7 +204,7 @@ export class ProjectSoftwareService {
     const result = await this.pool.query(
       `INSERT INTO biz.release_order (project_id, environment_id, version, artifact_refs, repo_refs, change_note, rollback_version, requested_by, approved_by, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [projectId, environmentId, reqString(input.version, "version"), input.artifactRefs ?? null, input.repoRefs ?? null, optString(input.changeNote, "changeNote"), rollbackVersion, reqString(input.requestedBy, "requestedBy"), auto ? "policy:auto" : null, auto ? "approved" : "pending"],
+      [projectId, environmentId, reqString(input.version, "version"), jsonOrNull(input.artifactRefs), jsonOrNull(input.repoRefs), optString(input.changeNote, "changeNote"), rollbackVersion, reqString(input.requestedBy, "requestedBy"), auto ? "policy:auto" : null, auto ? "approved" : "pending"],
     );
     const row = camelize(result.rows[0]);
     await this.record("project.release.create", "ReleaseOrder", row.id as number, { projectId, environmentId, version: row.version, status: row.status });
@@ -223,7 +232,7 @@ export class ProjectSoftwareService {
     const result = await this.pool.query(
       `INSERT INTO biz.test_plan (project_id, version, scope, test_types, entry_criteria, exit_criteria, environment_id, owner, start_date, end_date, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft') RETURNING *`,
-      [projectId, reqString(input.version, "version"), optString(input.scope, "scope"), input.testTypes ?? null, optString(input.entryCriteria, "entryCriteria"), optString(input.exitCriteria, "exitCriteria"), input.environmentId === undefined ? null : asInt(input.environmentId, "environmentId"), optString(input.owner, "owner"), input.startDate === undefined ? null : isoDate(input.startDate, "startDate"), input.endDate === undefined ? null : isoDate(input.endDate, "endDate")],
+      [projectId, reqString(input.version, "version"), optString(input.scope, "scope"), jsonOrNull(input.testTypes), optString(input.entryCriteria, "entryCriteria"), optString(input.exitCriteria, "exitCriteria"), input.environmentId === undefined ? null : asInt(input.environmentId, "environmentId"), optString(input.owner, "owner"), input.startDate === undefined ? null : isoDate(input.startDate, "startDate"), input.endDate === undefined ? null : isoDate(input.endDate, "endDate")],
     );
     const row = camelize(result.rows[0]);
     await this.record("project.test.plan.create", "TestPlan", row.id as number, { projectId, version: row.version });
@@ -257,7 +266,7 @@ export class ProjectSoftwareService {
     );
     const failed = result === "failed" || result === "blocked";
     await this.pool.query(
-      `UPDATE biz.test_run SET status = $2, ended_at = CASE WHEN $2 IN ('passed','failed','blocked') THEN now() ELSE ended_at END WHERE id = $1`,
+      `UPDATE biz.test_run SET status = $2::varchar, ended_at = CASE WHEN $2::varchar IN ('passed','failed','blocked') THEN now() ELSE ended_at END WHERE id = $1`,
       [runId, failed ? "failed" : "passed"],
     );
     const row = camelize(inserted.rows[0]);
