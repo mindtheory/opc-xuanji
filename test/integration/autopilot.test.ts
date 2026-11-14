@@ -295,3 +295,62 @@ test("TC-AUTO-007 自动发布测试环境：有命令则执行，无命令转�
   const decisions = await call("GET", `/api/v1/admin/projects/${manual.json.data.id}/decisions?status=pending`);
   assert.equal(decisions.json.data.items.some((item: any) => item.topic === "deploy_executor"), true);
 });
+
+test("TC-AUTO-008 已建项目也能接入自动驾驶", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", { name: "已建项目接入", stage: "execution" });
+  assert.equal(created.status, 201);
+  const projectId = created.json.data.id;
+  assert.equal(created.json.data.autopilot, undefined);
+
+  const ran = await call("POST", `/api/v1/admin/projects/${projectId}/autopilot`, {
+    repository: { url: `file://${fixtureRepo}` },
+    options: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  assert.equal(ran.status, 201);
+  assert.equal(ran.json.data.checkout.status, "ok");
+  assert.equal(ran.json.data.scan.languages.javascript >= 1, true);
+
+  const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  assert.equal(summary.status, 200);
+  assert.equal(summary.json.data.profile.tech_stack.primaryLanguage, "javascript");
+  assert.equal(summary.json.data.plans.length, 3);
+  assert.equal(summary.json.data.checkout.status, "ok");
+});
+
+test("TC-AUTO-009 重复执行幂等：不重复建版本库/里程碑/测试计划/环境/裁决，计划版本递增", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", { name: "重复执行项目", stage: "planning" });
+  const projectId = created.json.data.id;
+  const body = { repository: { url: `file://${fixtureRepo}` }, options: { scaffold: false, pipeline: false, deployTest: false } };
+
+  const first = await call("POST", `/api/v1/admin/projects/${projectId}/autopilot`, body);
+  assert.equal(first.status, 201);
+  assert.equal(first.json.data.repository.reused, false);
+  const second = await call("POST", `/api/v1/admin/projects/${projectId}/autopilot`, body);
+  assert.equal(second.status, 201);
+  assert.equal(second.json.data.repository.reused, true);
+
+  const repos = await pool.query("SELECT id FROM ref.code_repository WHERE project_id = $1", [projectId]);
+  assert.equal(repos.rows.length, 1);
+  const milestones = await pool.query("SELECT id FROM biz.project_milestone WHERE project_id = $1", [projectId]);
+  assert.equal(milestones.rows.length, 5);
+  const testPlans = await pool.query("SELECT id FROM biz.test_plan WHERE project_id = $1", [projectId]);
+  assert.equal(testPlans.rows.length, 1);
+  const cases = await pool.query("SELECT case_code FROM biz.test_case WHERE project_id = $1", [projectId]);
+  assert.equal(cases.rows.length, 3);
+  const envs = await pool.query("SELECT id FROM ref.deploy_environment WHERE project_id = $1 AND env_type = 'test'", [projectId]);
+  assert.equal(envs.rows.length, 1);
+
+  const plans = await pool.query("SELECT plan_kind, version FROM stat.project_plan WHERE project_id = $1 ORDER BY plan_kind, version", [projectId]);
+  assert.deepEqual(plans.rows, [
+    { plan_kind: "deploy", version: 1 },
+    { plan_kind: "deploy", version: 2 },
+    { plan_kind: "dev", version: 1 },
+    { plan_kind: "dev", version: 2 },
+    { plan_kind: "test", version: 1 },
+    { plan_kind: "test", version: 2 },
+  ]);
+
+  const decisions = await pool.query<{ topic: string }>("SELECT topic FROM stat.project_decision WHERE project_id = $1", [projectId]);
+  const topics = decisions.rows.map((row) => row.topic);
+  assert.equal(new Set(topics).size, topics.length);
+});

@@ -1998,6 +1998,8 @@ window.__ModuleLoader__.load({
       }, [projects.length, selected]);
       var sumS = useLoad(function () { return selected ? apiGet("/admin/projects/" + selected + "/autopilot") : Promise.resolve(null); }, [selected]);
       var sum = (sumS[0].data && sumS[0].data) || {};
+      var reposS = useLoad(function () { return selected ? apiGet("/admin/projects/" + selected + "/repositories") : Promise.resolve(null); }, [selected]);
+      var repos = (reposS[0].data && reposS[0].data.items) || [];
       var formS = react.useState({ name: "", repositoryUrl: "", branch: "main", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true });
       var form = formS[0], setForm = formS[1];
       var busyS = react.useState(false);
@@ -2005,6 +2007,16 @@ window.__ModuleLoader__.load({
       var decideS = react.useState(null);
       var deciding = decideS[0], setDeciding = decideS[1];
       function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
+      function knownRepoUrl() {
+        if (repos.length > 0 && repos[0].url) return repos[0].url;
+        var profile = (sum.profile && sum.profile.software_profile) || null;
+        return (profile && profile.repositoryUrl) || "";
+      }
+      react.useEffect(function () {
+        if (!selected) return;
+        var url = knownRepoUrl();
+        if (url && !form.repositoryUrl) up("repositoryUrl", url);
+      }, [selected, repos.length, sum.profile]);
       function refreshAll() { projectsS[1](); if (selected) sumS[1](); }
       function run() {
         if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
@@ -2024,6 +2036,25 @@ window.__ModuleLoader__.load({
           props.flash("自动生产完成：" + (parts.join(" · ") || "已创建"));
           if (r.id) setSelected(String(r.id));
           refreshAll();
+        }).catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function runExisting() {
+        if (!selected) { props.flash("先选一个项目", false); return; }
+        if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
+        setBusy(true);
+        apiPost("/admin/projects/" + selected + "/autopilot", {
+          repository: { url: form.repositoryUrl, branch: form.branch || undefined, authRef: form.authRef || undefined },
+          options: { scaffold: form.scaffold, pipeline: form.pipeline, deployTest: form.deployTest, healthUrl: form.healthUrl || undefined },
+        }).then(function (r) {
+          var parts = [];
+          if (r.checkout) parts.push("检出 " + String(r.checkout.commit || "").slice(0, 8));
+          if (r.scaffold) parts.push("骨架 " + r.scaffold.status);
+          if (r.pipeline) parts.push("流水线 " + r.pipeline.status);
+          if (r.deploy) parts.push("测试环境 " + r.deploy.status);
+          if (r.repository && r.repository.reused) parts.push("复用已登记版本库");
+          props.flash("已执行：" + (parts.join(" · ") || "完成") + "（计划版本递增）");
+          sumS[1](); reposS[1]();
         }).catch(function (e) { props.flash(e.message || String(e), false); })
           .then(function () { setBusy(false); });
       }
@@ -2067,6 +2098,15 @@ window.__ModuleLoader__.load({
             h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.pipeline, onChange: function (e) { up("pipeline", e.target.checked); } }), " 跑测试流水线"),
             h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.deployTest, onChange: function (e) { up("deployTest", e.target.checked); } }), " 发测试环境"),
             h(Btn, { kind: "primary", disabled: busy, onClick: run }, busy ? "执行中…" : "开始自动生产"))),
+        !selected ? null : h(Card, null,
+          h("div", { className: "ocH" }, "对已选项目执行自动驾驶"),
+          h("div", { className: "ocMuted" }, "已建项目也能走同一条流水线：检出 → 扫描 → 回填档案 → 计划（版本递增）→ 可选骨架/流水线/测试环境发布；不会重复建版本库、里程碑、测试计划与裁决。"),
+          h("div", { className: "ocFormRow" },
+            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///…" }),
+            h(Field, { label: "分支", value: form.branch, onChange: function (v) { up("branch", v); } }),
+            h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
+            h(Btn, { kind: "primary", disabled: busy, onClick: runExisting }, busy ? "执行中…" : "在现有项目执行")),
+          repos.length > 0 ? h("div", { className: "ocMuted" }, "已登记版本库：" + repos.map(function (r) { return r.name + "（" + r.url + "）"; }).join("；")) : null),
         !selected ? null : h(Fragment, null,
           h(KpiGrid, { items: [
             { label: "检出", value: checkout && checkout.status === "ok" ? 1 : 0, unit: checkout && checkout.status === "ok" ? "ok" : "", tone: checkout && checkout.status === "ok" ? "ok" : "warn" },

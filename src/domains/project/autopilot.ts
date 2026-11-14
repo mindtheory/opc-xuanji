@@ -113,12 +113,26 @@ export class ProjectAutopilotService {
     if (authRef !== null && !AUTH_REF.test(authRef)) {
       throw new OpcError(ERR.AUTO_CRED, "authRef 只接受 env:/secret:/vault:/ssh-agent: 引用", 400);
     }
+    const existing = await this.pool.query<{ id: string }>(
+      "SELECT id FROM ref.code_repository WHERE project_id = $1 AND url = $2 ORDER BY id LIMIT 1",
+      [projectId, url],
+    );
+    if (existing.rows.length > 0) {
+      // 重复执行：复用已登记的版本库，不重复建行（已建项目接入自动驾驶时很关键）
+      await this.pool.query(
+        `UPDATE ref.code_repository
+         SET sync_status = 'pending', default_ref = COALESCE($2, default_ref), auth_ref = COALESCE($3, auth_ref)
+         WHERE id = $1`,
+        [Number(existing.rows[0].id), repo.branch ?? null, authRef],
+      );
+      return { id: existing.rows[0].id, reused: true };
+    }
     const inserted = await this.pool.query(
       `INSERT INTO ref.code_repository (project_id, name, kind, url, default_ref, auth_ref, sync_mode, sync_status)
        VALUES ($1,$2,$3,$4,$5,$6,'manual','pending') RETURNING id`,
       [projectId, name.slice(0, 120), kind, url, repo.branch ?? null, authRef],
     );
-    return { id: String((inserted.rows[0] as Row).id) };
+    return { id: String((inserted.rows[0] as Row).id), reused: false };
   }
 
   // ---------------------------------------------------------------- 检出
@@ -304,39 +318,60 @@ export class ProjectAutopilotService {
       { name: "联调与测试", day: 3 + Math.ceil(weeks * 0.9) * 7 },
       { name: "发布上线", day: 3 + weeks * 7 },
     ];
-    for (const item of milestones) {
-      await this.pool.query(
-        `INSERT INTO biz.project_milestone (project_id, name, stage, target_date, status, owner, evidence)
-         VALUES ($1,$2,$3,$4,'planned',$5,$6)`,
-        [projectId, item.name, "plan", ciDate(item.day), "项目监理", "autopilot-1 自动生成"],
-      );
+    const existingMilestones = await this.pool.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM biz.project_milestone WHERE project_id = $1",
+      [projectId],
+    );
+    const milestonesReused = (existingMilestones.rows[0]?.n ?? 0) > 0;
+    if (!milestonesReused) {
+      for (const item of milestones) {
+        await this.pool.query(
+          `INSERT INTO biz.project_milestone (project_id, name, stage, target_date, status, owner, evidence)
+           VALUES ($1,$2,$3,$4,'planned',$5,$6)`,
+          [projectId, item.name, "plan", ciDate(item.day), "项目监理", "autopilot-1 自动生成"],
+        );
+      }
     }
     const devContent = {
       weeks,
       milestones: milestones.map((item) => ({ name: item.name, targetDate: ciDate(item.day) })),
+      milestonesReused,
       workBreakdown: ["需求澄清", "架构设计", "接口契约", "编码实现", "代码评审", "联调", "测试回归", "发布"],
       assumptions: [`代码规模约 ${loc} 行`, hasTests ? "仓库已有测试目录" : "仓库未发现测试，先建测试基线", hasCi ? "仓库已有 CI 配置" : "仓库未发现 CI，需接入"],
     };
     created.push(await this.insertPlan(projectId, "dev", "开发计划（自动生成）", devContent));
 
     // 2) 测试计划：test_plan + 基线用例 + 计划文档
-    const plan = await this.pool.query(
-      `INSERT INTO biz.test_plan (project_id, version, scope, test_types, entry_criteria, exit_criteria, owner, status)
-       VALUES ($1,'0.1.0','自动生成基线',$2::jsonb,'构建与静态检查通过','P0/P1 全通过且无阻塞缺陷','项目监理','draft') RETURNING id`,
-      [projectId, JSON.stringify(hasTests ? ["unit", "integration"] : ["api"])],
+    const existingPlan = await this.pool.query<{ id: string }>(
+      "SELECT id FROM biz.test_plan WHERE project_id = $1 ORDER BY id LIMIT 1",
+      [projectId],
     );
-    const planId = String((plan.rows[0] as Row).id);
+    let planId: string;
+    if (existingPlan.rows.length > 0) {
+      planId = String(existingPlan.rows[0].id);
+    } else {
+      const plan = await this.pool.query(
+        `INSERT INTO biz.test_plan (project_id, version, scope, test_types, entry_criteria, exit_criteria, owner, status)
+         VALUES ($1,'0.1.0','自动生成基线',$2::jsonb,'构建与静态检查通过','P0/P1 全通过且无阻塞缺陷','项目监理','draft') RETURNING id`,
+        [projectId, JSON.stringify(hasTests ? ["unit", "integration"] : ["api"])],
+      );
+      planId = String((plan.rows[0] as Row).id);
+    }
+    const existingCases = await this.pool.query<{ case_code: string }>("SELECT case_code FROM biz.test_case WHERE project_id = $1", [projectId]);
+    const knownCases = new Set(existingCases.rows.map((row) => row.case_code));
     const cases = [
       { code: "TC-AUTO-001", title: "构建冒烟", steps: ["检出代码", "安装依赖", "构建"] },
       { code: "TC-AUTO-002", title: "自动化测试", steps: ["运行仓库既有测试", "记录通过率"] },
       { code: "TC-AUTO-003", title: "部署验证", steps: ["部署到测试环境", "健康检查", "核心接口冒烟"] },
     ];
     for (const item of cases) {
+      if (knownCases.has(item.code)) continue;
       await this.pool.query(
         `INSERT INTO biz.test_case (project_id, plan_id, case_code, title, preconditions, steps, expected, priority, kind, version, status)
          VALUES ($1,$2,$3,$4,'仓库已检出',$5::jsonb,$6,'P1','auto','0.1.0','draft')`,
         [projectId, planId, item.code, item.title, JSON.stringify(item.steps), "全部通过"],
       );
+      knownCases.add(item.code);
     }
     const testContent = { planId, cases: cases.map((item) => item.code), testTypes: hasTests ? ["unit", "integration"] : ["api"], entryCriteria: "构建与静态检查通过", exitCriteria: "P0/P1 全通过且无阻塞缺陷" };
     created.push(await this.insertPlan(projectId, "test", "测试计划（自动生成）", testContent));
@@ -346,8 +381,12 @@ export class ProjectAutopilotService {
       `SELECT id, name, endpoint, default_account, credential_ref
        FROM ref.shared_resource WHERE kind = 'test_server' AND is_default AND status = 'active' ORDER BY id LIMIT 1`,
     );
-    let environmentId: string | null = null;
-    if (server.rows.length > 0) {
+    const existingEnv = await this.pool.query<{ id: string }>(
+      "SELECT id FROM ref.deploy_environment WHERE project_id = $1 AND env_type = 'test' ORDER BY id LIMIT 1",
+      [projectId],
+    );
+    let environmentId: string | null = existingEnv.rows.length > 0 ? String(existingEnv.rows[0].id) : null;
+    if (environmentId === null && server.rows.length > 0) {
       const target = server.rows[0];
       const env = await this.pool.query(
         `INSERT INTO ref.deploy_environment (project_id, env_type, name, host, port, ssh_user, auth_ref, approval_policy, status)
@@ -372,10 +411,16 @@ export class ProjectAutopilotService {
   }
 
   private async insertPlan(projectId: number, kind: string, title: string, content: Row): Promise<Row> {
+    // 重复执行时递增版本（UNIQUE(project_id, plan_kind, version)），保留历史计划
+    const next = await this.pool.query<{ version: number }>(
+      "SELECT coalesce(max(version), 0) + 1 AS version FROM stat.project_plan WHERE project_id = $1 AND plan_kind = $2",
+      [projectId, kind],
+    );
+    const version = Number(next.rows[0]?.version ?? 1);
     const result = await this.pool.query(
       `INSERT INTO stat.project_plan (project_id, plan_kind, version, title, content, status)
        VALUES ($1,$2,$3,$4,$5::jsonb,'draft') RETURNING id, plan_kind, version, title, status`,
-      [projectId, kind, 1, title, JSON.stringify(content)],
+      [projectId, kind, version, title, JSON.stringify(content)],
     );
     return result.rows[0] as Row;
   }
@@ -416,8 +461,15 @@ export class ProjectAutopilotService {
     if (deploy !== undefined && deploy.status === "failed") {
       findings.push({ topic: "deploy_failed", riskLevel: "high", question: "测试环境发布失败：回滚还是修复后重发？", options: [{ label: "修复后重发", impact: "保留发布单记录" }, { label: "回滚上一版本", impact: "按部署计划回滚" }] });
     }
+    const existingDecisions = await this.pool.query<{ topic: string }>(
+      "SELECT topic FROM stat.project_decision WHERE project_id = $1",
+      [projectId],
+    );
+    const askedTopics = new Set(existingDecisions.rows.map((row) => row.topic));
     const created: Row[] = [];
     for (const item of findings) {
+      if (askedTopics.has(item.topic)) continue;
+      askedTopics.add(item.topic);
       const result = await this.pool.query(
         `INSERT INTO stat.project_decision (project_id, topic, question, options, risk_level, status, payload)
          VALUES ($1,$2,$3,$4::jsonb,$5,'pending',$6::jsonb) RETURNING id, topic, question, risk_level, status`,
@@ -656,7 +708,7 @@ export class ProjectAutopilotService {
     );
     return {
       projectId,
-      repository: { id: registered.id, url: repo.url, branch: checkout.branch },
+      repository: { id: registered.id, url: repo.url, branch: checkout.branch, reused: registered.reused === true },
       checkout: { commit: checkout.commitSha, files: checkout.files, bytes: checkout.bytes, status: checkout.status },
       scan: { languages: scan.languages, frameworks: (scan.stack as Row).frameworks, packageManager: (scan.stack as Row).packageManager, tests: scan.tests, ci: scan.ci, loc: scan.loc },
       scaffold,

@@ -34,7 +34,7 @@ opc-xuanji/
 │   ├── plugin/      # DSH cordis 插件入口（39 个工具）
 │   └── db/          # 连接池与迁移执行器
 ├── scripts/         # gen-spec / migrate / serve
-├── test/            # 单元 25 + 集成 90（共 115 例；新增 Web/员工用例需测试库）
+├── test/            # 单元 25 + 集成 92（共 117 例；新增 Web/员工用例需测试库）
 ├── docs/员工需求/   # 11 个员工需求分册（一人一份）
 ├── docs/            # 软件工程文档（SRS/IRS/SDD/DBDD/SDP/SCMP/SQAP/RMP/RTM/SVD/STP/STD/STR + UML + PA）
 ├── AGENTS.md        # 主会话 Agent 运行章程（幕僚长/COO 行为约定）
@@ -91,7 +91,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | 中枢（Service） | `src/platform`、`src/workflow` | 视图级授权（8 个视图）、一次性令牌（≤5 分钟、单次）、冲突冻结与裁决、审计哈希链、Registry 六项准入守卫、风险硬规则、Verifier 封装、诊断 |
 | 员工（Subagent / 函数） | `ref.employee_plugin` + 工具注册 | 员工不直连库：读经视图、写经中枢、审计统一入口；`write_targets` 决定风险等级 |
 | 项目自动驾驶 | `src/domains/project/autopilot.ts` | 建项目填版本库 → 浅克隆 → 只读静态扫描 → 回填 `tech_stack/software_profile` → 生成开发/测试/部署计划 → 仅裁决项入队；检出上限 2000 文件、不执行仓库代码、生产仍需人工审批 |
-| 自动化生产 | `src/domains/project/autopilot.ts` + `client.js` | 只补缺失骨架并提交本地分支（不推远端）、识别并执行 lint/build/test（300s 超时、默认不装依赖）、自动发测试环境（无命令转裁决）；管理面「自动驾驶」页签一键触发与就地裁决 |
+| 自动化生产 | `src/domains/project/autopilot.ts` + `client.js` | 只补缺失骨架并提交本地分支（不推远端）、识别并执行 lint/build/test（300s 超时、默认不装依赖）、自动发测试环境（无命令转裁决）；管理面「自动驾驶」页签一键触发与就地裁决；**已建项目**可在同一页签选中执行，重复执行只递增计划版本、复用资源 |
 | 运维反馈 | `src/ops/feedback.ts` | 5xx 运行错误按指纹去重并自动开 GitHub Issue；HTTP 埋点只记动作/状态/耗时，按天聚合后规则 + 可选 AI 产出体验/需求/流程 Issue 草稿（单轮5/单日20、正文脱敏、未配置 token 只攒草稿） |
 | 基础资源（公司共享） | `src/domains/admin` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记在 `ref.shared_resource`；公司默认口径 Debian + SSH、默认账号 `canetwork` 存 `ref.shared_setting`；新建项目默认按 `is_default` 选型绑定到 `ref.project_shared_resource`；口令只以 `env:OPC_DEFAULT_SSH_PASSWORD` 引用登记，不入库不入仓 |
 | 流程（TS 固化） | `ref.workflow_registry` + `audit.workflow_*` | 版本不可变、代码哈希与测试哈希一致、幂等键 `instance_id + node_id`、三关测试与影子运行在 Phase 2 接 `dsh-workflow-ptc` |

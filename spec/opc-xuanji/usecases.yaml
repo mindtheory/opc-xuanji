@@ -714,3 +714,32 @@ usecases:
       - 定时任务把未上报错误转成 Issue 草稿（含接口、错误码、次数、脱敏消息）
       - sync 按单轮 5 条 / 单日 20 条限额投递 GitHub，记录 number/url
       - 未配置 token → 草稿标 skipped 并保留，不影响主流程
+
+  - id: UC-029
+    title: 已建项目接入自动驾驶与重复执行幂等
+    requirement: REQ-PRJ-034
+    actors:
+      - 老板
+      - 项目监理
+    goal: 已有项目也能一键接入自动驾驶；重复执行只追加计划版本，不重复建资源
+    entities:
+      - Project
+      - CodeRepository
+      - ProjectPlan
+      - ProjectMilestone
+      - TestPlan
+      - DeployEnvironment
+      - ProjectDecision
+      - AuditLog
+    api:
+      - bootstrapProjectAutopilot
+      - getProjectAutopilot
+    tests:
+      - TC-AUTO-008
+      - TC-AUTO-009
+    preconditions: 项目已存在（可为手工创建、无版本库）；版本库地址可达
+    steps:
+      - 管理面「自动驾驶」选中已建项目，预填已登记版本库或从档案回填地址
+      - 执行 POST /admin/projects/{id}/autopilot：检出 → 扫描 → 回填档案 → 生成计划
+      - 重复执行时复用版本库/测试环境，里程碑与测试计划用例去重，裁决同 topic 不再追问
+      - 计划按 (project_id, plan_kind) 版本递增，保留历史

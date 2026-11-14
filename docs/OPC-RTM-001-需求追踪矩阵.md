@@ -54,9 +54,9 @@ updated: 2026-11-14
 | 对象 | 数量 | 来源 |
 | :--- | :--- | :--- |
 | 主文档功能需求 | 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7） | SRS §4 |
-| 员工需求 | 156 条（11 份分册，v2.17 项目监理 +3） | `docs/员工需求/` |
+| 员工需求 | 157 条（11 份分册，v2.19 项目监理 +1） | `docs/员工需求/` |
 | 非功能需求 | 26 条（NFR-001..022 + NFR-WEB-001..004） | SRS §10 |
-| 用例 | 28 条（UC-001..028） | `usecases.yaml` |
+| 用例 | 29 条（UC-001..029） | `usecases.yaml` |
 | HTTP operation | 62 个 | `api.yaml` |
 | DSH 工具 | 31 个 | `src/plugin/index.ts` |
 | 实体 | 76 个 | `entities.yaml` / `migrations/` |
@@ -134,6 +134,7 @@ updated: 2026-11-14
 | REQ-OPS-001 | 运行错误自动登记并开 Issue | UC-028 | TC-OPS-002、003、005 | syncIssues / listIssues | `ops/feedback.ts`、`api/http.ts` | `ops.test.ts` |
 | REQ-OPS-002 | 用量遥测与使用习惯审视 | UC-027 | TC-OPS-001、004 | getUsageSummary / generateUsageInsight | `ops/feedback.ts` | `ops.test.ts` |
 | REQ-OPS-003 | 反馈投递治理 | UC-027、028 | TC-OPS-003 | syncIssues | `ops/feedback.ts` | `ops.test.ts` |
+| REQ-PRJ-034 | 已建项目接入自动驾驶与重复执行幂等 | UC-029 | TC-AUTO-008、009 | bootstrapProjectAutopilot / getProjectAutopilot | `domains/project/autopilot.ts`、`client.js` | `autopilot.test.ts` |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list | `employees/catalog.ts` | `employees.test.ts`、`unit/employees.test.ts` |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle | `employees/index.ts` | `employees.test.ts` |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 | `employees/catalog.ts`、`plugin/index.ts` | `employees.test.ts` |
@@ -226,6 +227,7 @@ updated: 2026-11-14
 | UC-026 | 自动化生产（骨架/流水线/测试环境） | REQ-PRJ-031 | TC-AUTO-005、006、007 | `test/integration/autopilot.test.ts` |
 | UC-027 | 用量遥测与使用习惯审视 | REQ-OPS-002 | TC-OPS-001、004 | `test/integration/ops.test.ts` |
 | UC-028 | 运行错误自动开 GitHub Issue | REQ-OPS-001 | TC-OPS-002、003、005 | `test/integration/ops.test.ts` |
+| UC-029 | 已建项目接入自动驾驶与重复执行幂等 | REQ-PRJ-034 | TC-AUTO-008、009 | `test/integration/autopilot.test.ts` |
 
 ## 7. 缺口与处置
 

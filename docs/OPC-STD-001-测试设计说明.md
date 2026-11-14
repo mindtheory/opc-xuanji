@@ -664,6 +664,17 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.18 增量，基线核算（5.1）只统计基线 68 例；运维闭环用例在 `OPC-STR-001` §14 登记。
 
+### 4.29 TC-AUTO-008/009 · 已建项目接入与重复执行幂等（v2.19 增量）
+
+**追溯**：REQ-PRJ-034；`test/integration/autopilot.test.ts`；实体 Project、CodeRepository、ProjectPlan。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-AUTO-008 | 已建项目接入 | 手工建项目（无 repository）→ `POST /admin/projects/{id}/autopilot` 201；检出 ok、扫描语言 javascript、档案回填主语言、3 份计划 |
+| TC-AUTO-009 | 重复执行幂等 | 二次执行 201 且 `repository.reused=true`；版本库 1、里程碑 5、测试计划 1、用例 3、测试环境 1；计划版本 dev/test/deploy 各 1→2；裁决 topic 无重复 |
+
+**结论口径**：本章为 v2.19 增量，基线核算（5.1）只统计基线 68 例。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -709,6 +720,8 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-OPS-003 | UC-028 / REQ-OPS-003 | `test/integration/ops.test.ts` | 无 token 降级 skipped |
 | TC-OPS-004 | UC-027 / REQ-OPS-002 | `test/integration/ops.test.ts` | 审视产出体验/需求草稿并投递 |
 | TC-OPS-005 | UC-028 / REQ-OPS-001 | `test/integration/ops.test.ts` | Issue 列表按状态过滤 |
+| TC-AUTO-008 | UC-029 / REQ-PRJ-034 | `test/integration/autopilot.test.ts` | 已建项目接入：检出/扫描/档案/3 计划 |
+| TC-AUTO-009 | UC-029 / REQ-PRJ-034 | `test/integration/autopilot.test.ts` | 重复执行：复用资源、计划版本递增、裁决去重 |
 
 ### 5.1 覆盖核算（60 + 8 = 68）
 
