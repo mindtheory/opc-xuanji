@@ -1,7 +1,7 @@
 ---
 doc_id: OPC-SRS-105
 title: 项目监理 员工需求规格说明
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D1
 owner: 玄机文档组
@@ -359,6 +359,57 @@ updated: 2026-11-14
 
 追溯：AC 直验 / `project_status_review` 流程
 
+### 3.23 REQ-PRJ-023 公司基础资源目录
+
+**需求陈述**：把公司公用的版本库（Git/SVN）、制品库（Maven/Docker）、测试服务器、NAS 存储、公网服务器、域名登记为**公司级共享资源目录**；项目只引用不复制，避免每个项目重复填地址与凭据。
+
+**验收标准**：
+
+- **AC-1** 资源类型限定六类：`code_repo`、`artifact_repo`、`test_server`、`nas`、`public_server`、`domain`；可登记名称、编码、地址（endpoint）、远程管理方式、默认账号、凭据引用、系统、位置、容量、规格、标签与状态。
+- **AC-2** 凭据只接受 `env:/secret:/vault:/ssh-agent:` 引用；疑似明文口令直接 400（`ERR-RES-002`），不得入库。
+- **AC-3** 资源为跨项目共享资产；被项目绑定的资源删除返回 409（`ERR-RES-004`），须先解绑。
+- **AC-4** 登记、修改、删除与绑定变更全部写审计。
+
+追溯：AC 直验 / `UC-022`
+
+### 3.24 REQ-PRJ-024 远程管理方式与公司默认口径
+
+**需求陈述**：远程管理方式覆盖 SSH、Windows 远程桌面（RDP）、向日葵（Sunlogin）以及 https/console/smb/nfs/api；**公司默认使用 Debian 系统、SSH 远程管理**，默认账号 `canetwork`。
+
+**验收标准**：
+
+- **AC-1** `access_method` 枚举包含 `ssh`、`rdp`、`sunlogin`、`https`、`console`、`smb`、`nfs`、`api`。
+- **AC-2** 公司默认口径落 `ref.shared_setting`：`company.default_os=debian`、`company.default_remote_method=ssh`、`company.default_account=canetwork`、`company.default_credential_ref=env:OPC_DEFAULT_SSH_PASSWORD`、`company.default_ssh_port=22`，可由管理面读取。
+- **AC-3** 服务器类资源（`test_server`/`public_server`）未显式给系统与远程方式时，按公司默认补 `debian`/`ssh`。
+- **AC-4** 口令**不入库、不入仓**：库内只存凭据引用（如 `env:OPC_DEFAULT_SSH_PASSWORD`），实际口令由部署环境注入；文档与日志不得出现明文。
+
+追溯：AC 直验 / `UC-022`
+
+### 3.25 REQ-PRJ-025 新建项目按默认资源选型
+
+**需求陈述**：新建项目时**默认从公司基础资源里选**，减少重复录入；允许显式覆盖。
+
+**验收标准**：
+
+- **AC-1** 新建项目未指定资源时，自动绑定 `is_default=true` 且 `status=active` 的资源，并记 `applied_by_default=true`。
+- **AC-2** 传 `resourceIds` 时按显式集合绑定（`applied_by_default=false`）；`bindDefaults=false` 时不自动绑定。
+- **AC-3** 绑定结果可查（含来源标记）；绑定/解绑写审计。
+
+追溯：AC 直验 / `UC-023`
+
+### 3.26 REQ-PRJ-026 项目基础资源绑定与追溯
+
+**需求陈述**：项目与基础资源是多对多绑定，保留角色与来源，便于替换与追溯。
+
+**验收标准**：
+
+- **AC-1** `ref.project_shared_resource` 记录 `project_id`、`resource_id`、`role`（primary/backup/readonly）、`applied_by_default`。
+- **AC-2** 解绑不存在的绑定返回 404（`ERR-RES-003`）。
+- **AC-3** 资源删除受外键 `ON DELETE RESTRICT` 保护，不能绕过应用层直接删。
+- **AC-4** 绑定关系变更写审计。
+
+追溯：AC 直验 / `UC-023`
+
 ## 4. 数据对象与视图（需求层）
 
 | 数据对象 | 用途 |
@@ -382,6 +433,9 @@ updated: 2026-11-14
 | `release_order` | 发布单：版本、制品、目标环境、审批、回滚与执行结果 |
 | `test_plan` / `test_case` / `test_suite` | 测试计划、用例与套件 |
 | `test_run` / `test_result` / `defect` | 测试执行批次、逐用例结果与缺陷 |
+| `shared_resource` | 公司基础资源目录：六类公用资源的地址、远程管理方式、默认账号与凭据引用 |
+| `shared_setting` | 公司默认口径：默认系统（debian）、远程方式（ssh）、默认账号、凭据引用、SSH 端口 |
+| `project_shared_resource` | 项目与基础资源的绑定：角色、是否由默认选型带来 |
 
 **视图**：公司档案、项目状态、应收应付、合同索引、OKR、客户基础信息只读；客户敏感字段不进入项目视图；跨域明细经 `need_detail` 或一次性令牌。
 
@@ -393,9 +447,9 @@ updated: 2026-11-14
 
 ## 6. 验收与追溯
 
-- 本文 22 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
+- 本文 26 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
 - 单员工流程：`project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`、`project_release_flow`、`project_test_review`；跨员工 `project_acceptance_flow` 含验收终审 human gate。
-- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.22。
+- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.26（含基础资源配置 §3.23–§3.26）。
 - 版本库/制品库/SSH 环境/测试管理为软件研发项目增量，契约与 DDL 在 Phase 2 落地；落地前 manifest 只声明工具族与写目标，不宣称已实现。
 - 插件可插拔验收：manifest 完整、启用/停用可逆、停用后不派工、卸载不误删项目数据。
 
@@ -409,6 +463,7 @@ updated: 2026-11-14
 - [x] 软件研发要素完整：项目起点、Git/SVN、Maven/Docker、SSH 环境、发布/回滚、测试管理与专门测试 Agent、时间管理均有 AC。
 - [x] 凭据只存引用、不落明文；生产发布与回滚 human gate，不可逆动作无自动默认。
 - [x] 版本库同步、制品查询、测试执行失败均标注“未获取/未执行”，不伪造证据。
+- [x] 公司基础资源（六类）可登记、可绑定、默认选型可覆盖；远程管理方式与默认口径（debian/ssh/canetwork）明确，口令只以引用登记。
 
 ## 与其他文档的关系
 

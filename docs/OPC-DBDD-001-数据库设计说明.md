@@ -132,7 +132,7 @@ flowchart LR
 
 跨 schema 的引用只存 id、不建 FK 的三处代表：`audit.audit_log.workflow_instance_id`（审计在实例删除后仍需可读）、`biz.conflict_queue.frozen_unit_id`（多态冻结单元：ledger/contract/stock_txn/vehicle_log 四选一）、`biz.ledger.project_id`（业务弱引用，避免跨域锁）。
 
-### 2.3 76 张表清单总览
+### 2.3 79 张表清单总览
 
 基线列数合计 272（37 表）；v2.10 Web 层新增 8 表另计。下表是第 3 章的索引页：先看清单定位，再进 3.x 看列级定义。
 
@@ -214,11 +214,14 @@ flowchart LR
 | 74 | `stat.intel_collect_run` | 采集运行 | 16 | `status` CHECK；`idempotency_key` 唯一 |
 | 75 | `stat.intel_pipeline_run` | 流水线运行 | 10 | `stage/status` CHECK；`idempotency_key` 唯一 |
 | 76 | `stat.intel_push_log` | 推送记录 | 10 | `status` CHECK；`UNIQUE(brief_id,channel,target)` |
+| 77 | `ref.shared_resource` | 公司基础资源 | 18 | `kind/access_method/status` CHECK；`credential_ref` 仅引用；`UNIQUE(kind,name)`、`code` 唯一 |
+| 78 | `ref.shared_setting` | 公司默认口径 | 4 | 主键 `id`；`key` 唯一；`value` jsonb |
+| 79 | `ref.project_shared_resource` | 项目资源绑定 | 6 | 主键 `id`、`UNIQUE(project_id,resource_id)`；`resource_id` FK RESTRICT；`role` CHECK |
 
-清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，明细见 3.6–3.9）：
+清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，明细见 3.6–3.10）：
 
 ```sql
--- 按 schema 统计表与列（v2.13 后：biz 44、ref 11、audit 6、stat 14、vec 1；列数随增量表变化）
+-- 按 schema 统计表与列（v2.15 后：biz 44、ref 14、audit 6、stat 14、vec 1；列数随增量表变化）
 SELECT table_schema AS schema,
        count(DISTINCT table_name) AS tables,
        count(*)                   AS columns
@@ -227,7 +230,7 @@ WHERE table_schema IN ('biz','ref','audit','stat','vec')
 GROUP BY table_schema ORDER BY table_schema;
 ```
 
-## 3. 表结构（76 张）
+## 3. 表结构（79 张）
 
 本章按 schema 分节。每张表给出列级定义（列名 / 类型 / 可空 / 默认 / 说明）与索引约束，字段口径见 1.2。所有表主键均为 `id bigint GENERATED ALWAYS AS IDENTITY`，为避免重复，下文不再逐行标注主键列，只在“索引与约束”里写明主键名。
 
@@ -849,9 +852,23 @@ GROUP BY table_schema ORDER BY table_schema;
 
 **安全口径**：数据源凭据只落 `auth_ref`；采集失败标 `blocked/failed`，不伪造条目；简报按版本保留，推送状态以 `intel_push_log` 为准。
 
+### 3.10 基础资源配置（v2.15 新增 3 张）
+
+> 迁移：`migrations/0008_shared_resources.sql`；实体：`SharedResource`、`SharedSetting`、`ProjectSharedResource`。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `ref.shared_resource` | `kind, code, name, endpoint, access_method, default_account, credential_ref, os, location, capacity, specs, tags, is_default, status, notes, created_at, updated_at` | `kind` CHECK 六类（code_repo/artifact_repo/test_server/nas/public_server/domain）；`access_method` CHECK 八种（ssh/rdp/sunlogin/https/console/smb/nfs/api）；`credential_ref` 正则 CHECK 仅接受 `env:/secret:/vault:/ssh-agent:` 引用；`UNIQUE(kind,name)`、`code` 唯一；`index(kind,status)`、`index(is_default,status)` | 公司级共享资源目录；跨项目复用，项目只绑定不复制；口令不入库 |
+| `ref.shared_setting` | `key, value, updated_at` | 主键 `id`（与实体表惯例一致）；`key` 唯一；`value` jsonb | 公司默认口径键值：`company.default_os=debian`、`company.default_remote_method=ssh`、`company.default_account=canetwork`、`company.default_credential_ref=env:OPC_DEFAULT_SSH_PASSWORD`、`company.default_ssh_port=22` |
+| `ref.project_shared_resource` | `project_id, resource_id, role, applied_by_default, created_at` | 主键 `id`、`UNIQUE(project_id,resource_id)`；`role` CHECK（primary/backup/readonly）；`resource_id` FK `ON DELETE RESTRICT`；`index(project_id)` | 项目 ↔ 基础资源绑定；`applied_by_default` 标明是否由「新建项目默认选型」带来 |
+
+**默认资源种子**：迁移预置三类已确认资源（`git-primary` 主仓库、`test-debian52` 测试服务器（Debian + SSH，账号 `canetwork`）、`domain-main` 主域名）；制品库/NAS/公网服务器支持登记但不预置虚构地址。
+
+**安全口径**：`credential_ref` 只存引用，实际口令由部署环境注入（`OPC_DEFAULT_SSH_PASSWORD`），库、仓、日志均不出现明文。
+
 ## 4. 关键索引设计
 
-基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）。
+基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）。
 
 ### 4.1 audit_log 复合主键与分区预留
 

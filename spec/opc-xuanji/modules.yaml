@@ -32,8 +32,8 @@ modules:
 
   - name: admin
     package: opc.domains.admin
-    responsibility: 行政总管——日程、会议闭环、行动项
-    dependsOn: [platform]
+    responsibility: 管理面——项目研发与情报管理的 CRUD/汇总，以及公司基础资源（版本库、制品库、测试服务器、NAS、公网服务器、域名）登记、默认口径与项目选型绑定
+    dependsOn: [platform, project, intel]
     writeDomains:
       - src/domains/admin
 

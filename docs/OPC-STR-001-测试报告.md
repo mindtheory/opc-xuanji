@@ -167,6 +167,22 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：v0.1.0 的单元、契约、集成在 GitHub Actions 全部通过（68/68）；本机仅因缺少 `OPC_TEST_DSN` 未复跑集成。CI 证据：https://github.com/mindtheory/opc-xuanji/actions/runs/42153267527 。
 
+## 11. v2.15 基础资源增量验证（2026-11-14）
+
+本节追加记录基础资源配置（REQ-PRJ-023..026）的验证结果，不覆盖第 1–10 节。
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0008_shared_resources.sql` | 业务库 applied 1 / 测试库 applied 1 | `npm run migrate`、`npm run migrate:test` 均 exit 0 |
+| 新增集成用例（`admin-shared.test.ts`） | **5/5 pass** | TC-RES-001..005，`node --test` 输出 pass 5 / fail 0 |
+| 全量测试（`npm test`） | **103/103 pass** | v2.13 基线 98 + v2.15 增量 5；串行执行无超时 |
+| 类型检查 | exit 0 | `npm run typecheck` 无输出 |
+| 规格门禁 | PASS（79 实体 / 23 用例 / 21 模块） | `npm run spec:check` |
+| 文档门禁 | PASS（28 份文档） | `npm run docs:check` |
+| 安全项 | 明文口令入库被拒 | TC-RES-004 断言 400 `ERR-RES-002`；库内仅存 `env:OPC_DEFAULT_SSH_PASSWORD` 引用 |
+
+**结论**：基础资源配置在迁移、接口、单元/集成、契约与文档五个层面均已验证；部署后由发版值守按 `npm test` 全量回归。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写

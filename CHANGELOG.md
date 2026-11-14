@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **公司基础资源配置（v2.15）**：`OPC-SRS-105` 新增 REQ-PRJ-023..026（公司基础资源目录六类、远程管理方式与公司默认口径、新建项目默认选型、项目绑定与追溯）；新增 `migrations/0008_shared_resources.sql`（3 张表：`ref.shared_resource`/`ref.shared_setting`/`ref.project_shared_resource`，实体 76→79）；`AdminService` 新增 8 个共享资源方法与 8 个 HTTP operation（P77–P84，契约 89→97）、4 个错误码 `ERR-RES-001..004`；新建项目默认按 `is_default + active` 选型绑定，`resourceIds` 可显式覆盖；公司默认 Debian + SSH、默认账号 `canetwork`，口令只以 `env:OPC_DEFAULT_SSH_PASSWORD` 引用登记；新增集成测试 `test/integration/admin-shared.test.ts`（TC-RES-001..005）；文档同步 SRS/DBDD/IRS/RTM/STD/STP/STR/SDD/index + `PA-OPC-024`。
 - **项目管理与情报管理 Web 面**：新增 `/api/v1/admin/*` 管理面 27 个 operation 与「项目管理」「情报管理」两个页签；项目侧覆盖里程碑/版本库/制品库/环境/发布/测试计划/用例/套件/批次/缺陷/工时 CRUD 与发布审批；情报侧覆盖情报空间/数据源/绑定/主题/标签 CRUD、条目状态处理、日报详情与五阶段流水线手动触发；驾驶舱新增项目研发与情报指标。
 - `client.js` 新增可复用管理组件（项目选择、KPI、分割视图、通用 CRUD 表单、状态徽标、详情面板）与 27 条管理面路由的前端接线。
 

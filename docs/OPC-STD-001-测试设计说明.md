@@ -611,6 +611,20 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **期望结果**：导出 checksum 一致；dry-run `ready=true`；确认导入后 `enabled=false` 且原因含“默认停用”；非法包 `ready=false` 且不产生安装。
 
+### 4.25 TC-RES-001 … TC-RES-005 · 基础资源配置（v2.15 增量）
+
+**追溯**：REQ-PRJ-023..026；`test/integration/admin-shared.test.ts`；实体 SharedResource、SharedSetting、ProjectSharedResource。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-RES-001 | 公司默认口径与默认资源 | `defaultOs=debian`、`defaultRemoteMethod=ssh`、`defaultAccount=canetwork`、`defaultCredentialRef=env:OPC_DEFAULT_SSH_PASSWORD`、`defaultSshPort=22`；`kinds` 六类、`accessMethods` 八种；默认资源三类（code_repo/test_server/domain），测试机 `accessMethod=ssh`、`os=debian` |
+| TC-RES-002 | 新建项目默认选型 | 不传资源建项目 → `sharedResourcesBound=3`；项目资源列表 3 项且全部 `appliedByDefault=true`，kind 顺序 code_repo/domain/test_server |
+| TC-RES-003 | 显式选型与禁用默认 | 显式 `resourceIds=[nas]` → 仅 1 项、`appliedByDefault=false`；`bindDefaults=false` → 0 项 |
+| TC-RES-004 | 凭据与类型红线 | 明文口令 → 400 `ERR-RES-002`；kind 非法 → 400 `ERR-RES-001`；合法引用 → 201 且服务器类资源自动补 `os=debian`、`accessMethod=ssh` |
+| TC-RES-005 | 资源 CRUD 与绑定保护 | 更新 `status/notes` 回读一致；绑定后删除 → 409 `ERR-RES-004`；解绑 → 200，再解绑 → 404；删除 → 200，再删 → 404 |
+
+**结论口径**：本章为 v2.15 增量，基线核算（5.1）只统计基线 68 例；项目研发/情报/基础资源的增量用例统一在 `OPC-STR-001` 的增量验证章节登记，避免两处数字打架。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -639,6 +653,11 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-EMP-001 | REQ-EMP-001/003/004 | `test/unit/employees.test.ts` | 11 个 manifest 唯一；视图/工具/写目标合法；非法 manifest 被拒 |
 | TC-EMP-002 | REQ-EMP-002 | `test/integration/employees.test.ts` | 安装/列表/停用；有依赖插件停用 409；停用原因保留 |
 | TC-EMP-003 | REQ-EMP-006/007 | `test/integration/employees.test.ts` | 导出 checksum 一致；dry-run；确认导入默认停用；路径穿越/坏 checksum 拒绝 |
+| TC-RES-001 | UC-022 / REQ-PRJ-023、024 | `test/integration/admin-shared.test.ts` | debian/ssh/canetwork/凭据引用；kinds 六类、accessMethods 八种；默认资源三类 |
+| TC-RES-002 | UC-023 / REQ-PRJ-025 | `test/integration/admin-shared.test.ts` | `sharedResourcesBound=3`；`appliedByDefault=true` |
+| TC-RES-003 | UC-023 / REQ-PRJ-025、026 | `test/integration/admin-shared.test.ts` | 显式选型 1 项、`appliedByDefault=false`；bindDefaults=false → 0 项 |
+| TC-RES-004 | UC-022 / REQ-PRJ-023、024 | `test/integration/admin-shared.test.ts` | 明文 400 `ERR-RES-002`；非法 kind 400 `ERR-RES-001`；服务器类补 debian/ssh |
+| TC-RES-005 | UC-022、023 / REQ-PRJ-023、026 | `test/integration/admin-shared.test.ts` | 绑定后删 409 `ERR-RES-004`；解绑后删 200；再删 404 |
 
 ### 5.1 覆盖核算（60 + 8 = 68）
 

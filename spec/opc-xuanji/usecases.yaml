@@ -520,3 +520,58 @@ usecases:
       - 关键节点到期前 7/3/1 天分级提醒
       - 日期变更写审计并列出受影响任务、里程碑与发布单
       - 工时写入 work_log，仅作事实记录
+
+  - id: UC-022
+    title: 公司基础资源登记与默认口径
+    requirement: REQ-PRJ-023
+    actors:
+      - 老板
+      - 项目监理
+    goal: 把公司公用的版本库、制品库、测试服务器、NAS、公网服务器、域名登记成共享目录，默认口径可查可改
+    entities:
+      - SharedResource
+      - SharedSetting
+      - AuditLog
+    api:
+      - listSharedResources
+      - createSharedResource
+      - updateSharedResource
+      - deleteSharedResource
+      - getSharedResourceDefaults
+    tests:
+      - TC-RES-001
+      - TC-RES-004
+      - TC-RES-005
+    preconditions: 迁移 0008 已应用，公司默认口径与已确认资源已播种
+    steps:
+      - 老板在管理面登记资源（类型、地址、远程管理方式、默认账号、凭据引用）
+      - 校验类型枚举与远程管理方式枚举；凭据只接受 env:/secret:/vault:/ssh-agent: 引用
+      - 公司默认口径（系统 debian、远程 ssh、默认账号 canetwork、凭据引用）写入 ref.shared_setting
+      - 登记与变更全部写审计；被项目绑定的资源禁止删除
+
+  - id: UC-023
+    title: 新建项目按公司默认资源选型
+    requirement: REQ-PRJ-025
+    actors:
+      - 老板
+      - 项目监理
+    goal: 新建项目时默认从公司基础资源中选型绑定，避免每项目重复填地址与凭据
+    entities:
+      - Project
+      - SharedResource
+      - ProjectSharedResource
+      - AuditLog
+    api:
+      - createAdminProject
+      - listProjectSharedResources
+      - bindProjectSharedResources
+      - unbindProjectSharedResource
+    tests:
+      - TC-RES-002
+      - TC-RES-003
+    preconditions: 公司基础资源已登记，至少一个资源 is_default=true 且 active
+    steps:
+      - 老板新建项目（只填名称与阶段）
+      - 中枢按 is_default + active 选出默认资源并写入 ref.project_shared_resource（applied_by_default=true）
+      - 传入 resourceIds 时按显式集合绑定（applied_by_default=false）；bindDefaults=false 时不绑定
+      - 项目详情可查已绑定资源与来源标记；解绑与绑定均写审计

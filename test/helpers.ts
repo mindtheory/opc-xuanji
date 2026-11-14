@@ -11,6 +11,9 @@ export const config = loadConfig();
 export const testDsn = config.testDsn;
 
 const TABLES = [
+  "ref.project_shared_resource",
+  "ref.shared_resource",
+  "ref.shared_setting",
   "stat.intel_push_log",
   "stat.intel_pipeline_run",
   "stat.intel_collect_run",

@@ -2554,6 +2554,108 @@ entities:
       - name: created_at
         type: timestamptz
         nullable: true
+  - name: SharedResource
+    table: ref.shared_resource
+    module: platform
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: kind
+        type: varchar(24)
+        nullable: false
+      - name: code
+        type: varchar(64)
+        nullable: true
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: endpoint
+        type: text
+        nullable: true
+      - name: access_method
+        type: varchar(24)
+        nullable: false
+      - name: default_account
+        type: varchar(64)
+        nullable: true
+      - name: credential_ref
+        type: varchar(128)
+        nullable: true
+      - name: os
+        type: varchar(64)
+        nullable: true
+      - name: location
+        type: varchar(128)
+        nullable: true
+      - name: capacity
+        type: varchar(128)
+        nullable: true
+      - name: specs
+        type: jsonb
+        nullable: true
+      - name: tags
+        type: jsonb
+        nullable: true
+      - name: is_default
+        type: boolean
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: notes
+        type: text
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
+      - name: updated_at
+        type: timestamptz
+        nullable: true
+  - name: SharedSetting
+    table: ref.shared_setting
+    module: platform
+    kind: code-table
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: key
+        type: varchar(64)
+        nullable: false
+      - name: value
+        type: jsonb
+        nullable: false
+      - name: updated_at
+        type: timestamptz
+        nullable: true
+  - name: ProjectSharedResource
+    table: ref.project_shared_resource
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: resource_id
+        type: bigint
+        nullable: false
+      - name: role
+        type: varchar(16)
+        nullable: false
+      - name: applied_by_default
+        type: boolean
+        nullable: false
+      - name: created_at
+        type: timestamptz
+        nullable: true
   - name: RadarItem
     table: stat.radar_item
     module: web

@@ -1024,6 +1024,84 @@ export const ROUTES: Route[] = [
       return { status: 200, data: await requireAdmin(ctx).removeIntelResource(params.resource, optionalId(query.get("projectId"), "projectId"), requireId(params, "resourceId")) };
     },
   },
+  // ---------------- 公司基础资源（跨项目共享） ----------------
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/shared-resources\/defaults$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await requireAdmin(ctx).sharedDefaults() };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/shared-resources$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listSharedResources(query.get("kind"), query.get("status")) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/shared-resources$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 201, data: await requireAdmin(ctx).createSharedResource(body) };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/shared-resources\/([^/]+)$/,
+    keys: ["resourceId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await requireAdmin(ctx).updateSharedResource(requireId(params, "resourceId"), body) };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/api\/v1\/admin\/shared-resources\/([^/]+)$/,
+    keys: ["resourceId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await requireAdmin(ctx).removeSharedResource(requireId(params, "resourceId")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/shared-resources$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listProjectSharedResources(requireId(params, "projectId")) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/shared-resources$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      const projectId = requireId(params, "projectId");
+      const raw = Array.isArray(body.resourceIds) ? body.resourceIds : body.resourceId === undefined ? null : [body.resourceId];
+      if (raw === null) throw new OpcError(ERR.RES_INVALID, "resourceId 或 resourceIds 必须提供", 400);
+      if (raw.length === 0) throw new OpcError(ERR.RES_INVALID, "resourceIds 不能为空", 400);
+      const ids = raw.map((value: unknown) => {
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed <= 0) throw new OpcError(ERR.RES_INVALID, "resourceId 必须是正整数", 400);
+        return parsed;
+      });
+      const bound = await requireAdmin(ctx).bindProjectSharedResources(projectId, ids, false);
+      return { status: 201, data: { projectId, bound } };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/shared-resources\/([^/]+)$/,
+    keys: ["projectId", "resourceId"],
+    async handler(ctx, params) {
+      return {
+        status: 200,
+        data: await requireAdmin(ctx).unbindProjectSharedResource(requireId(params, "projectId"), requireId(params, "resourceId")),
+      };
+    },
+  },
   {
     method: "GET",
     pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/([^/]+)$/,

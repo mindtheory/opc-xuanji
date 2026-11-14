@@ -1031,6 +1031,10 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-PRJ-020 | 测试统一管理 | UC-019 | TC-PRJ-005 | createTestPlan / createTestRun / recordTestResult |
 | REQ-PRJ-021 | 专门测试 Agent 协同 | UC-020 | TC-PRJ-006 | createTestRun / recordTestResult / listDefects |
 | REQ-PRJ-022 | 时间管理、日历与关键节点 | UC-021 | TC-PRJ-007 | createProjectMilestone / listProjectMilestones |
+| REQ-PRJ-023 | 公司基础资源目录（六类共享资源） | UC-022 | TC-RES-001、004、005 | listSharedResources / createSharedResource / deleteSharedResource |
+| REQ-PRJ-024 | 远程管理方式与公司默认口径（debian/ssh） | UC-022 | TC-RES-001 | getSharedResourceDefaults / createSharedResource |
+| REQ-PRJ-025 | 新建项目按默认资源选型 | UC-023 | TC-RES-002、003 | createAdminProject / bindProjectSharedResources |
+| REQ-PRJ-026 | 项目基础资源绑定与追溯 | UC-023 | TC-RES-003、005 | listProjectSharedResources / unbindProjectSharedResource |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 |
@@ -1041,7 +1045,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：21 个 UC 全部在被映射的 REQ 中出现（UC-001..021 逐条可见）；主文档 39 条功能需求 + 11 份员工分册 145 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：23 个 UC 全部在被映射的 REQ 中出现（UC-001..023 逐条可见）；主文档 39 条功能需求 + 11 份员工分册 149 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 

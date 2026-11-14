@@ -47,6 +47,10 @@ errorCodes:
   - ERR-PRJ-003
   - ERR-INT-001
   - ERR-INT-002
+  - ERR-RES-001
+  - ERR-RES-002
+  - ERR-RES-003
+  - ERR-RES-004
   - ERR-SYS-001
 
 paths:
@@ -1348,7 +1352,8 @@ paths:
     post:
       operationId: createAdminProject
       tags: [admin]
-      summary: 新建项目（写审计）
+      summary: 新建项目（写审计）；默认从公司基础资源按 is_default 选型绑定，可用 resourceIds 显式覆盖
+      description: 请求体可选 resourceIds:number[] 指定本次绑定的基础资源；bindDefaults=false 时不自动绑定。
       responses:
         '201': { description: Created }
 
@@ -1599,6 +1604,83 @@ paths:
         - { name: resourceId, in: path, required: true, schema: { type: integer } }
       responses:
         '200': { description: OK }
+
+  /api/v1/admin/shared-resources:
+    get:
+      operationId: listSharedResources
+      tags: [admin]
+      summary: 公司基础资源目录（版本库/制品库/测试服务器/NAS/公网服务器/域名）
+      parameters:
+        - { name: kind, in: query, required: false, schema: { type: string } }
+        - { name: status, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: createSharedResource
+      tags: [admin]
+      summary: '登记基础资源（凭据只接受 env:/secret:/vault:/ssh-agent: 引用）'
+      responses:
+        '201': { description: Created }
+        '400': { description: ERR-RES-001 参数非法 / ERR-RES-002 凭据非引用 }
+
+  /api/v1/admin/shared-resources/defaults:
+    get:
+      operationId: getSharedResourceDefaults
+      tags: [admin]
+      summary: 公司默认口径（系统 debian / 远程管理 ssh / 默认账号 / 凭据引用）+ 各类型默认资源
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/shared-resources/{resourceId}:
+    put:
+      operationId: updateSharedResource
+      tags: [admin]
+      summary: 更新基础资源（写审计）
+      parameters:
+        - { name: resourceId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '404': { description: ERR-RES-003 }
+    delete:
+      operationId: deleteSharedResource
+      tags: [admin]
+      summary: 删除基础资源（被项目绑定返回 409，需先解绑）
+      parameters:
+        - { name: resourceId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '409': { description: ERR-RES-004 仍被项目绑定 }
+
+  /api/v1/admin/projects/{projectId}/shared-resources:
+    get:
+      operationId: listProjectSharedResources
+      tags: [admin]
+      summary: 项目已绑定的基础资源（含 appliedByDefault 标记）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: bindProjectSharedResources
+      tags: [admin]
+      summary: 为项目显式绑定基础资源（resourceId 或 resourceIds）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '201': { description: Created }
+        '400': { description: ERR-RES-001 }
+
+  /api/v1/admin/projects/{projectId}/shared-resources/{resourceId}:
+    delete:
+      operationId: unbindProjectSharedResource
+      tags: [admin]
+      summary: 解除项目与基础资源的绑定
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+        - { name: resourceId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '404': { description: ERR-RES-003 }
 
 components:
   schemas:
@@ -2154,3 +2236,4 @@ components:
               items: { type: object }
             checksum: { type: string }
             packageCode: { type: string }
+

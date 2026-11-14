@@ -83,9 +83,13 @@ updated: 2026-11-14
 | ERR-AUDIT-001 | 500 | 审计写入或导出失败 | listAudits、exportAudits |
 | ERR-TASK-001 | 400 | cron 无法解析或任务类型未注册 | upsertTask |
 | ERR-TASK-002 | 404 | 任务不存在 | runTask |
+| ERR-RES-001 | 400 | 基础资源参数或类型非法 | createSharedResource、updateSharedResource、bindProjectSharedResources |
+| ERR-RES-002 | 400 | 凭据不是 `env:/secret:/vault:/ssh-agent:` 引用（疑似明文） | createSharedResource、updateSharedResource |
+| ERR-RES-003 | 404 | 基础资源或项目绑定不存在 | updateSharedResource、deleteSharedResource、unbindProjectSharedResource |
+| ERR-RES-004 | 409 | 基础资源仍被项目绑定，不能删除 | deleteSharedResource |
 | ERR-SYS-001 | 500 / 503 | 未分类系统错误；依赖不可用 | 全部接口（兜底） |
 
-21 个错误码与 `api.yaml` 的 `errorCodes` 列表一一对应，新增错误码必须先登记 `api.yaml` 再实现；本文不引入第 22 个码。
+错误码以 `api.yaml` 的 `errorCodes`（当前 25 个）为唯一事实来源，本表登记平台与基础资源主要码；项目/情报/员工码见 §7.5、§7.6 与 §9.1。新增错误码必须先登记 `api.yaml` 再实现。
 
 ### 1.3 调用方与鉴权约定
 
@@ -142,9 +146,9 @@ updated: 2026-11-14
 - 新增/修改接口、字段、枚举、错误码，必须先改 `api.yaml`，再改本文，再改实现，同一需求同一提交序列（不允许先改代码后补 spec）。
 - 破坏性变更（删字段、改语义、收紧必填）须在本文"与其他文档的关系"记录变更点并升 `version`。
 
-## 2. 接口清单（89 个 /api/v1 operation）
+## 2. 接口清单（97 个 /api/v1 operation）
 
-> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P76 管理面（项目与情报 Web 控制台）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P84 管理面（项目/情报 Web 控制台与公司基础资源）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -825,7 +829,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
-### 7.6 管理面接口（P50–P76，Web 控制台）
+### 7.6 管理面接口（P50–P84，Web 控制台）
 
 管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
 
@@ -837,8 +841,9 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 测试 | `GET/POST /admin/projects/{projectId}/test-runs`、`POST /admin/test-runs/{runId}/results` | 测试批次与逐用例结果 |
 | 情报资源 | `GET/POST/PUT/DELETE /admin/intel/{resource}` | `resource ∈ {scopes,sources,bindings,topics,tags}`；项目隔离由 `projectId` 强制 |
 | 情报条目/日报/流水线 | `GET /admin/intel/items`、`PUT /admin/intel/items/{itemId}`、`GET /admin/intel/briefs[/{briefId}]`、`GET /admin/intel/runs`、`POST /admin/intel/run/{stage}`、`GET /admin/intel/summary` | 条目状态、日报详情、运行记录、手动触发 analyze/aggregate/brief/push 与 KPI |
+| 公司基础资源 | `GET/POST /admin/shared-resources`、`GET /admin/shared-resources/defaults`、`PUT/DELETE /admin/shared-resources/{resourceId}`、`GET/POST /admin/projects/{projectId}/shared-resources`、`DELETE /admin/projects/{projectId}/shared-resources/{resourceId}` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记与默认口径（debian/ssh/canetwork）；新建项目默认选型绑定；明文凭据 400 `ERR-RES-002`，被绑定删除 409 `ERR-RES-004` |
 
-**失败语义**：项目侧复用 `ERR-PRJ-001..003`；情报侧新增 `ERR-INT-001`（参数/状态非法）与 `ERR-INT-002`（资源不存在）。所有写操作记录 `actor=boss` 审计；不返回明文凭据。
+**失败语义**：项目侧复用 `ERR-PRJ-001..003`；情报侧新增 `ERR-INT-001`（参数/状态非法）与 `ERR-INT-002`（资源不存在）；基础资源侧 `ERR-RES-001`（参数/类型非法）、`ERR-RES-002`（凭据非引用）、`ERR-RES-003`（资源/绑定不存在）、`ERR-RES-004`（仍被项目绑定）。所有写操作记录 `actor=boss` 审计；不返回明文凭据。
 
 ## 8. DSH 工具契约（工具即接口）
 
@@ -1029,6 +1034,19 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P48 recordTestResult |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
 | P49 listDefects |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
 
+#### 9.1.1 基础资源接口错误码（P77–P84）
+
+| 接口 | ERR-RES-001 | ERR-RES-002 | ERR-RES-003 | ERR-RES-004 |
+| :--- | :---: | :---: | :---: | :---: |
+| P77 listSharedResources |  |  |  |  |
+| P78 createSharedResource | ✓ | ✓ |  |  |
+| P79 getSharedResourceDefaults |  |  |  |  |
+| P80 updateSharedResource | ✓ | ✓ | ✓ |  |
+| P81 deleteSharedResource |  |  | ✓ | ✓ |
+| P82 listProjectSharedResources |  |  |  |  |
+| P83 bindProjectSharedResources | ✓ |  |  |  |
+| P84 unbindProjectSharedResource |  |  | ✓ |  |
+
 ### 9.2 失败语义三原则
 
 | 原则 | 内容 | 反例（禁止实现） |
@@ -1092,6 +1110,14 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P47 | REQ-PRJ-020、021 | UC-019、020 | TC-PRJ-005、006 | `executorType` 枚举 human/agent/ci；初始 `running` |
 | P48 | REQ-PRJ-020、021 | UC-019、020 | TC-PRJ-005、006 | blocked/skipped 不计通过；失败置批次 `failed` |
 | P49 | REQ-PRJ-020、021 | UC-019、020 | TC-PRJ-005、006 | 返回缺陷列表；空列表返回 `[]` |
+| P77 | REQ-PRJ-023 | UC-022 | TC-RES-001 | 按 kind/status 过滤；返回六类资源目录 |
+| P78 | REQ-PRJ-023、024 | UC-022 | TC-RES-001、004 | 类型非法 400 `ERR-RES-001`；明文凭据 400 `ERR-RES-002` |
+| P79 | REQ-PRJ-024 | UC-022 | TC-RES-001 | 返回默认口径 debian/ssh/canetwork 与各类型默认资源 |
+| P80 | REQ-PRJ-023 | UC-022 | TC-RES-005 | 不存在 404 `ERR-RES-003`；更新写审计 |
+| P81 | REQ-PRJ-023、026 | UC-022 | TC-RES-005 | 被绑定 409 `ERR-RES-004`；删除写审计 |
+| P82 | REQ-PRJ-026 | UC-023 | TC-RES-002、003 | 返回绑定含 appliedByDefault 来源标记 |
+| P83 | REQ-PRJ-025 | UC-023 | TC-RES-003 | 显式选型覆盖默认；非法资源 400 `ERR-RES-001` |
+| P84 | REQ-PRJ-026 | UC-023 | TC-RES-005 | 未绑定 404 `ERR-RES-003`；解绑写审计 |
 
 ### 10.2 G2 契约门禁验收命令
 
@@ -1124,14 +1150,14 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 
 - [ ] frontmatter 九字段齐全，`doc_id` 为 `OPC-IRS-001` 且与 SRS 不重号，`updated` 为 2026-11-06。
 - [ ] 首段写明"解决什么问题/谁何时用"，`## 目录` 覆盖 9 章且锚点可跳转。
-- [ ] 89 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
+- [ ] 97 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
 - [ ] 每个接口六项齐全：用途、调用方、入参、出参、错误码、幂等与重试 + 审计。
 - [ ] Result 口径写死为"成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`"，并有成功/失败两个可复制示例。
-- [ ] 21 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应，未引入第 22 个码。
+- [ ] 25 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应（含 ERR-RES-001..004）。
 - [ ] 工具契约表含工具名、用途、必填参数、返回结构、失败语义五列，覆盖 `hub` + 十一族共 31 个实现工具（含员工目录/员工包）。
 - [ ] TI-1..TI-8 八条"工具即接口"约定齐备，且明确与 Java/TS 实现语言无关。
 - [ ] §8.1 矩阵中每个接口的 ✓ 与 §3~§6 各接口错误码表述一致。
-- [ ] §10.1 映射覆盖 UC-001..021 全部二十一个用例与 89 个接口（管理面 27 个见 §7.6）。
+- [ ] §10.1 映射覆盖 UC-001..023 全部二十三个用例与 97 个接口（管理面 35 个见 §7.6）。
 - [ ] 全文无未决占位标记，无 `api.yaml` 与设计文档之外的新增数值或字段。
 - [ ] 文末两节齐备，`## 与其他文档的关系` 位于全文最后。
 

@@ -1,11 +1,11 @@
 import type { Pool } from "../../db/pool.ts";
 import type { AuditService } from "../../audit/audit.ts";
-import { OpcError, ERR } from "../../platform/errors.ts";
+import { OpcError, ERR, type ErrorCode } from "../../platform/errors.ts";
 import type { ProjectSoftwareService } from "../project/software.ts";
 import type { IntelPipelineService } from "../intel/daily.ts";
 
 type Row = Record<string, unknown>;
-type Domain = "project" | "intel";
+type Domain = "project" | "intel" | "admin";
 type FieldType = "string" | "int" | "number" | "bool" | "json" | "date" | "enum" | "authRef";
 
 interface FieldDef {
@@ -95,12 +95,16 @@ function asJson(value: unknown, field: string, domain: Domain): unknown {
   }
 }
 
+function codeOf(domain: Domain, project: keyof typeof ERR, intel: keyof typeof ERR, admin: keyof typeof ERR): ErrorCode {
+  return ERR[domain === "project" ? project : domain === "admin" ? admin : intel];
+}
+
 function invalid(domain: Domain, message: string, status = 400): OpcError {
-  return new OpcError(domain === "project" ? ERR.PRJ_INVALID : ERR.INT_INVALID, message, status);
+  return new OpcError(codeOf(domain, "PRJ_INVALID", "INT_INVALID", "RES_INVALID"), message, status);
 }
 
 function notFound(domain: Domain, message: string): OpcError {
-  return new OpcError(domain === "project" ? ERR.PRJ_INVALID : ERR.INT_NOT_FOUND, message, 404);
+  return new OpcError(codeOf(domain, "PRJ_INVALID", "INT_NOT_FOUND", "RES_NOT_FOUND"), message, 404);
 }
 
 function coerce(field: FieldDef, value: unknown, domain: Domain): unknown {
@@ -142,7 +146,7 @@ function coerce(field: FieldDef, value: unknown, domain: Domain): unknown {
       const text = typeof value === "string" ? value.trim() : "";
       if (text === "") return null;
       if (!AUTH_REF.test(text)) {
-        throw new OpcError(domain === "project" ? ERR.PRJ_AUTH_REF : ERR.INT_INVALID, "凭据只接受 env:/secret:/vault:/ssh-agent: 引用", 400);
+        throw new OpcError(codeOf(domain, "PRJ_AUTH_REF", "INT_INVALID", "RES_CRED"), "凭据只接受 env:/secret:/vault:/ssh-agent: 引用", 400);
       }
       return text;
     }
@@ -451,6 +455,40 @@ const INTEL_RESOURCES: Record<string, ResourceDef> = {
   },
 };
 
+/** 公司级基础资源（跨项目共享，不属于单项目）。 */
+const SHARED_KINDS = ["code_repo", "artifact_repo", "test_server", "nas", "public_server", "domain"] as const;
+const SHARED_ACCESS = ["ssh", "rdp", "sunlogin", "https", "console", "smb", "nfs", "api"] as const;
+/** 服务器类资源：缺省按公司口径落 debian + ssh。 */
+const SERVER_KINDS = new Set(["test_server", "public_server"]);
+
+/** 基础资源目录（公司级，无 projectColumn）。 */
+const SHARED_DEF: ResourceDef = {
+  key: "shared-resources",
+  table: "ref.shared_resource",
+  projectColumn: null,
+  orderBy: "kind, is_default DESC, id",
+  object: "SharedResource",
+  label: "基础资源",
+  domain: "admin",
+  fields: [
+    { key: "kind", column: "kind", type: "enum", enum: [...SHARED_KINDS], required: true },
+    { key: "name", column: "name", type: "string", required: true },
+    { key: "code", column: "code", type: "string" },
+    { key: "endpoint", column: "endpoint", type: "string" },
+    { key: "accessMethod", column: "access_method", type: "enum", enum: [...SHARED_ACCESS] },
+    { key: "defaultAccount", column: "default_account", type: "string" },
+    { key: "credentialRef", column: "credential_ref", type: "authRef" },
+    { key: "os", column: "os", type: "string" },
+    { key: "location", column: "location", type: "string" },
+    { key: "capacity", column: "capacity", type: "string" },
+    { key: "specs", column: "specs", type: "json" },
+    { key: "tags", column: "tags", type: "json" },
+    { key: "isDefault", column: "is_default", type: "bool" },
+    { key: "status", column: "status", type: "enum", enum: ["active", "disabled"] },
+    { key: "notes", column: "notes", type: "string" },
+  ],
+};
+
 export class AdminService {
   private readonly pool: Pool;
   private readonly audit: AuditService;
@@ -603,6 +641,124 @@ export class AdminService {
     return result.rows.map((row) => camelize(row as Row));
   }
 
+  // ---------------- 公司基础资源（跨项目共享） ----------------
+
+  /** 公司默认口径 + 各类型默认资源，前端「新建项目」据此预选。 */
+  async sharedDefaults(): Promise<Row> {
+    const [settings, resources] = await Promise.all([
+      this.pool.query<{ key: string; value: unknown }>("SELECT key, value FROM ref.shared_setting ORDER BY key"),
+      this.pool.query("SELECT * FROM ref.shared_resource WHERE is_default AND status = 'active' ORDER BY kind, id"),
+    ]);
+    const map: Record<string, unknown> = {};
+    for (const row of settings.rows) map[row.key] = row.value;
+    const asText = (key: string, fallback: string | null): string | null =>
+      typeof map[key] === "string" ? (map[key] as string) : fallback;
+    return {
+      kinds: [...SHARED_KINDS],
+      accessMethods: [...SHARED_ACCESS],
+      defaultOs: asText("company.default_os", "debian"),
+      defaultRemoteMethod: asText("company.default_remote_method", "ssh"),
+      defaultAccount: asText("company.default_account", null),
+      defaultCredentialRef: asText("company.default_credential_ref", null),
+      defaultSshPort: typeof map["company.default_ssh_port"] === "number" ? map["company.default_ssh_port"] : 22,
+      settings: map,
+      resources: resources.rows.map((row) => camelize(row as Row)),
+    };
+  }
+
+  async listSharedResources(kind: string | null = null, status: string | null = null): Promise<Row[]> {
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (kind !== null && kind !== "") {
+      params.push(kind);
+      where.push(`kind = $${params.length}`);
+    }
+    if (status !== null && status !== "") {
+      params.push(status);
+      where.push(`status = $${params.length}`);
+    }
+    let sql = "SELECT * FROM ref.shared_resource";
+    if (where.length > 0) sql += ` WHERE ${where.join(" AND ")}`;
+    sql += " ORDER BY kind, is_default DESC, id";
+    const result = await this.pool.query(sql, params);
+    return result.rows.map((row) => camelize(row as Row));
+  }
+
+  async createSharedResource(input: Row): Promise<Row> {
+    const kind = reqString(input.kind, "kind", "admin");
+    if (!(SHARED_KINDS as readonly string[]).includes(kind)) {
+      throw invalid("admin", `kind 取值非法：${kind}（可选 ${SHARED_KINDS.join("/")}）`);
+    }
+    const payload: Row = { ...input };
+    if (payload.accessMethod === undefined) {
+      payload.accessMethod = kind === "code_repo" || kind === "artifact_repo" || kind === "domain" ? "https" : "ssh";
+    }
+    if (payload.os === undefined && SERVER_KINDS.has(kind)) payload.os = "debian";
+    return this.insert(SHARED_DEF, null, payload);
+  }
+
+  async updateSharedResource(id: number, input: Row): Promise<Row> {
+    return this.updateRow(SHARED_DEF, null, id, input);
+  }
+
+  async removeSharedResource(id: number): Promise<{ id: number }> {
+    const bound = await this.pool.query("SELECT 1 FROM ref.project_shared_resource WHERE resource_id = $1 LIMIT 1", [id]);
+    if (bound.rows.length > 0) throw new OpcError(ERR.RES_IN_USE, "该基础资源已被项目绑定，请先解除绑定", 409);
+    return this.removeRow(SHARED_DEF, null, id);
+  }
+
+  async listProjectSharedResources(projectId: number): Promise<Row[]> {
+    await this.assertProject(projectId);
+    const result = await this.pool.query(
+      `SELECT p.project_id, p.resource_id, p.role, p.applied_by_default,
+              r.kind, r.code, r.name, r.endpoint, r.access_method, r.default_account,
+              r.credential_ref, r.os, r.status, r.is_default
+       FROM ref.project_shared_resource p JOIN ref.shared_resource r ON r.id = p.resource_id
+       WHERE p.project_id = $1 ORDER BY r.kind, r.id`,
+      [projectId],
+    );
+    return result.rows.map((row) => camelize(row as Row));
+  }
+
+  /** resourceIds 为 null 时按公司默认（is_default 且 active）选型。 */
+  async bindProjectSharedResources(projectId: number, resourceIds: number[] | null, byDefault: boolean): Promise<number> {
+    await this.assertProject(projectId);
+    let ids = resourceIds;
+    if (ids === null) {
+      const result = await this.pool.query<{ id: string | number }>(
+        "SELECT id FROM ref.shared_resource WHERE is_default AND status = 'active' ORDER BY id",
+      );
+      ids = result.rows.map((row) => Number(row.id));
+    }
+    for (const id of ids) {
+      const exists = await this.pool.query<{ kind: string }>(
+        "SELECT kind FROM ref.shared_resource WHERE id = $1 AND status = 'active'",
+        [id],
+      );
+      if (exists.rows.length === 0) throw invalid("admin", `基础资源不存在或已停用：${id}`);
+      await this.pool.query(
+        `INSERT INTO ref.project_shared_resource (project_id, resource_id, role, applied_by_default)
+         VALUES ($1, $2, 'primary', $3)
+         ON CONFLICT (project_id, resource_id) DO UPDATE SET applied_by_default = EXCLUDED.applied_by_default`,
+        [projectId, id, byDefault],
+      );
+    }
+    if (ids.length > 0) await this.record("project.shared-resources.bind", "Project", projectId, { resourceIds: ids, byDefault });
+    return ids.length;
+  }
+
+  async unbindProjectSharedResource(projectId: number, resourceId: number): Promise<{ id: number }> {
+    await this.assertProject(projectId);
+    const result = await this.pool.query(
+      "DELETE FROM ref.project_shared_resource WHERE project_id = $1 AND resource_id = $2 RETURNING resource_id",
+      [projectId, resourceId],
+    );
+    const row = result.rows[0] as { resource_id: string | number } | undefined;
+    if (row === undefined) throw notFound("admin", `项目未绑定该基础资源：${resourceId}`);
+    await this.record("project.shared-resources.unbind", "Project", projectId, { resourceId });
+    return { id: Number(row.resource_id) };
+  }
+
   async listProjects(): Promise<Row[]> {
     const result = await this.pool.query(
       `SELECT id, name, project_type, stage, progress, start_date, target_end_date, actual_start_date,
@@ -612,8 +768,19 @@ export class AdminService {
     return result.rows.map((row) => camelize(row as Row));
   }
 
+  /**
+   * 新建项目：默认从公司基础资源里「选型」——自动绑定 is_default 且 active 的资源；
+   * 显式传 resourceIds 时按传入集合绑定；bindDefaults=false 时不自动绑定。
+   */
   async createProject(input: Row): Promise<Row> {
     const row = await this.insert(PROJECT_DEF, null, input);
+    const projectId = asInt(row.id, "projectId", "admin");
+    const explicit = Array.isArray(input.resourceIds)
+      ? (input.resourceIds as unknown[]).map((value) => asInt(value, "resourceIds", "admin"))
+      : null;
+    if (input.bindDefaults !== false) {
+      row.sharedResourcesBound = await this.bindProjectSharedResources(projectId, explicit, explicit === null);
+    }
     return row;
   }
 
