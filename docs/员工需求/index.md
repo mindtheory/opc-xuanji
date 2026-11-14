@@ -20,8 +20,8 @@ updated: 2026-11-06
 | OPC-SRS-102 | 法务官 | LEG | `opc_legal` | contract / risk_rule | [法务官](OPC-SRS-102-法务官.md) |
 | OPC-SRS-103 | 行政总管 | ADM | `opc_admin` | event / action_item | [行政总管](OPC-SRS-103-行政总管.md) |
 | OPC-SRS-104 | 战略参谋 | STR | `opc_strategy` | objective / decision | [战略参谋](OPC-SRS-104-战略参谋.md) |
-| OPC-SRS-105 | 项目监理（全生命周期/里程碑/甘特/OKR） | PRJ | `opc_project` | 项目/章程/里程碑/任务/依赖/基线/变更/风险/验收/收尾/OKR | [项目监理](OPC-SRS-105-项目监理.md) |
-| OPC-SRS-106 | 情报官 | INT | `opc_intel` | lead / dd_report | [情报官](OPC-SRS-106-情报官.md) |
+| OPC-SRS-105 | 项目监理（全生命周期/里程碑/甘特/OKR/软件研发要素） | PRJ | `opc_project` | 项目/章程/里程碑/任务/依赖/基线/变更/风险/验收/收尾/OKR/Git-SVN/制品库/环境发布/测试 | [项目监理](OPC-SRS-105-项目监理.md) |
+| OPC-SRS-106 | 情报官（项目日报/数据源/关键词标签/五阶段流水线） | INT | `opc_intel` | 项目空间/数据源/关键词标签/条目/日报/采集与推送运行/线索/尽调 | [情报官](OPC-SRS-106-情报官.md) |
 | OPC-SRS-107 | 客户管家 | CRM | `opc_crm` | customer / customer_sensitive / commitment / quote | [客户管家](OPC-SRS-107-客户管家.md) |
 | OPC-SRS-108 | 车务官 | VEH | `opc_vehicle` | vehicle_log / subsidy_standard | [车务官](OPC-SRS-108-车务官.md) |
 | OPC-SRS-109 | 货栈总管 | INV | `opc_inv` | sku / stock_txn | [货栈总管](OPC-SRS-109-货栈总管.md) |

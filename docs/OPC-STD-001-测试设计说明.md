@@ -12,7 +12,7 @@ updated: 2026-11-11
 
 # OPC-STD-001 · OPC-玄机 · 一人公司中枢 测试设计说明
 
-本说明解决“每条 TC 到底由哪段代码验证、断言了什么、为什么这样断言”的问题：把 `usecases.yaml` 中 14 个用例的全部 24 条 TC 逐条落到仓库里真实存在的测试文件与测试标题，给出前置条件、步骤、输入数据、期望结果与需求/接口追溯，并把没有自动化覆盖的部分单独立册。**读者与使用时点**：测试执行者在 G4 复跑时按第 4 章逐条核对；开发接到失败单时按第 5 章定位断言与期望值；评审人判断“TC 是否真的被验证”时看第 5、7、8 章；新人接手测试时先读第 2、3 章再进第 4 章。
+本说明解决“每条 TC 到底由哪段代码验证、断言了什么、为什么这样断言”的问题：把 `usecases.yaml` 中 21 个用例的全部 31 条 TC 逐条落到仓库里真实存在的测试文件与测试标题，给出前置条件、步骤、输入数据、期望结果与需求/接口追溯，并把没有自动化覆盖的部分单独立册。**读者与使用时点**：测试执行者在 G4 复跑时按第 4 章逐条核对；开发接到失败单时按第 5 章定位断言与期望值；评审人判断“TC 是否真的被验证”时看第 5、7、8 章；新人接手测试时先读第 2、3 章再进第 4 章。
 
 ## 目录
 
@@ -61,7 +61,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | 能力 | 导出 | 行为 | 使用方 |
 | :--- | :--- | :--- | :--- |
 | 连接配置 | `config`、`testDsn`、`makePool()` | `loadConfig()` 读 `OPC_TEST_DSN`（缺省 `opc_test`）；`makePool` 建 `max: 4` 池 | 全部集成用例 |
-| 清库 | `resetDb(pool)` | advisory lock `824361` 内 `TRUNCATE` 54 张业务表 `RESTART IDENTITY CASCADE`，保留 `public._opc_migrations` | 集成用例的 `beforeEach` |
+| 清库 | `resetDb(pool)` | advisory lock `824361` 内 `TRUNCATE` 76 张业务表 `RESTART IDENTITY CASCADE`，保留 `public._opc_migrations` | 集成用例的 `beforeEach` |
 | 员工种子 | `seedEmployee(pool, pluginId, options)` | upsert `ref.employee_plugin`（scope/required_views/tools/write_targets/enabled）+ 逐视图写 `ref.view_grant(status='active')` | 平台、流程、API、插件用例 |
 | 固定时刻 | `NOW = 2026-11-05T02:00:00.000Z` | 北京时间 10:00 的固定参考时刻 | 需要“当前时刻”的新增用例 |
 
@@ -436,7 +436,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 3. HTTP `PUT /api/v1/tasks/daily_report` 改 cron 为 `45 8 * * 1-5`。
 4. 工具层 `opc_task_upsert` 改 `tax_reminder` 为 `15 9 * * *`，再 `opc_task_list` 回读。
 
-**输入数据**：默认 10 任务 ID 排序后为 `audit_export`、`conflict_escalation`、`contract_expiry`、`daily_report`、`dashboard_refresh`、`invoice_backlog`、`keyword_radar_scan`、`monthly_archive`、`plugin_radar_scan`、`tax_reminder`；非法 cron `99 * * * *`；新 cron `45 8 * * 1-5`、`15 9 * * *`；时区 `Asia/Shanghai`。
+**输入数据**：默认 15 任务 ID 排序后为 `audit_export`、`conflict_escalation`、`contract_expiry`、`daily_report`、`dashboard_refresh`、`intel_aggregate`、`intel_analyze`、`intel_brief`、`intel_push`、`intel_source_collect`、`invoice_backlog`、`keyword_radar_scan`、`monthly_archive`、`plugin_radar_scan`、`tax_reminder`；非法 cron `99 * * * *`；新 cron `45 8 * * 1-5`、`15 9 * * *`；时区 `Asia/Shanghai`。
 
 **期望结果**：
 
@@ -657,7 +657,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | `test/integration/web.test.ts` | 5 | TC-WEB-001 … TC-WEB-005 | — |
 | `test/integration/employees.test.ts` | 3 | TC-EMP-002、TC-EMP-003 | — |
 | `test/integration/spec.test.ts` | 4 | — | 4 条全部 |
-| 合计 | 68 | 60 个承载 24 条 TC | 8 条横切 |
+| 合计 | 75 | 67 个承载 31 条 TC | 8 条横切 |
 
 结论：24/24 TC 均有主用例，无 TC 只靠横切用例；8 个横切用例不进入 TC 计数，避免“把健康检查算作业务验收”的虚高覆盖。
 
@@ -700,7 +700,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | 33 | `exportEmployeePackage` | `POST /api/v1/employees/{pluginId}/export` | TC-EMP-003 | `employees.test.ts` |
 | 34 | `importEmployeePackage` | `POST /api/v1/employees/import` | TC-EMP-003 | `employees.test.ts` |
 
-矩阵闭合性由 `spec.test.ts`「api.yaml 的每个 operation 都有对应 HTTP 路由」保证：34 个 operation 全部要在 `ROUTES` 命中，且数量必须相等（`count === ROUTES.length`）。参数级负例（400/404）未逐接口覆盖，见第 8 章 N-6。
+矩阵闭合性由 `spec.test.ts`「api.yaml 的每个 operation 都有对应 HTTP 路由」保证：62 个 operation 全部要在 `ROUTES` 命中，且数量必须相等（`count === ROUTES.length`）。参数级负例（400/404）未逐接口覆盖，见第 8 章 N-6。
 
 ## 7. 横切验证（不对应 TC 的用例）
 
@@ -712,7 +712,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | opc_health：可执行并返回 PG/pgvector/任务信息 | `test/integration/plugin.test.ts` | `pg/pgvector=true`、`registeredTasks=7` | 同健康检查 |
 | 每个 spec 实体都在数据库里存在，且属性列齐备 | `test/integration/spec.test.ts` | ≥35 实体、`id` 主键、逐属性列存在 | 规格-实现对账，跨全部 UC |
 | api.yaml 的每个 operation 都有对应 HTTP 路由 | `test/integration/spec.test.ts` | 28 operation 全部命中且数量相等 | 契约门禁 |
-| 错误码集合与实现一致 | `test/integration/spec.test.ts` | 14 个错误码双向相等 | 契约门禁 |
+| 错误码集合与实现一致 | `test/integration/spec.test.ts` | 19 个错误码双向相等 | 契约门禁 |
 | 实体与用例的追溯不断链 | `test/integration/spec.test.ts` | `REQ-*-00x`、`TC-*-00x` 格式与实体引用存在 | 追溯门禁 |
 
 ## 8. 未覆盖项与理由
@@ -751,11 +751,11 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 ## 自检清单
 
-- [x] 24 条 TC 与 `usecases.yaml` 的 `tests` 字段逐一对应（员工分册 AC 直验另计），无遗漏、无自造编号。
+- [x] 31 条 TC 与 `usecases.yaml` 的 `tests` 字段逐一对应（员工分册 AC 直验另计），无遗漏、无自造编号。
 - [x] 每条 TC 均给出前置条件、步骤、输入数据、期望结果、覆盖的需求与接口、对应用例。
 - [x] 所有测试文件路径指向仓库真实文件，测试标题与代码原文一致。
 - [x] 第 5 章总表 24 行齐全，覆盖核算 60 + 8 = 68 可复算，与 `npm test` 用例总数一致。
-- [x] 第 6 章 34 个接口全部有覆盖归属，健康检查等横切项单列不混入 TC。
+- [x] 第 6 章 62 个接口全部有覆盖归属，健康检查等横切项单列不混入 TC。
 - [x] 未覆盖项 10 条，每条有理由与后续归属，真实 LLM Verifier、DSH 定时器、MCP 三条在列。
 - [x] 断言用绝对值（金额、行数、错误码、哈希长度、置信度），未使用“大致正确”式判据。
 - [x] 错误码归属偏差（X-1）已登记并闭环，含实现对齐说明与回归证据命令。

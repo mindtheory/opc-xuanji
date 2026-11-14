@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **软件研发项目管理**：`OPC-SRS-105` 新增 REQ-PRJ-016..022（项目起点与软件研发档案、Git/SVN 版本库、Maven/Docker 制品库、开发/测试/生产 SSH 部署环境、发布单与人工审批、测试计划/用例/批次/结果与缺陷、测试 Agent 协同、里程碑与时间管理）；新增 `src/domains/project/software.ts` 与 15 个 HTTP operation（`/api/v1/projects/*`、`/api/v1/releases/*`、`/api/v1/test-runs*`）；新增 12 张表（`0006_project_software.sql`，实体 54→66）；凭据仅接受 `env:/secret:/vault:/ssh-agent:` 引用，生产强制人工审批；`opc_project` manifest 升至 `0.2.0` 并扩展工具/写目标/流程。
+- `docs/过程资产/PA-OPC-022-软件研发项目管理需求扩展.md`: change record, boundaries, landing status, and verification.
+
+- **情报日报与数据源管理（v2.13）**：`OPC-SRS-106` 新增 REQ-INT-011..018（项目情报空间、数据源健康、项目关键词/标签、定时采集、分析与去重评分、日报汇总、推送送达、五阶段流水线）；新增 `src/domains/intel/daily.ts` 本地规则流水线与 5 个定时任务（`intel_source_collect/analyze/aggregate/brief/push`）；新增 10 张表（`0007_intel_daily.sql`，实体 66→76）；`opc_intel` manifest 升至 `0.2.0` 并扩展工具/写目标/`intel_daily_pipeline`。
+- `docs/过程资产/PA-OPC-023-情报日报与数据源管理需求细化.md`: change record, boundaries, landing status, and verification.
+
 - **Hindsight 记忆导入与同步**：`src/memory/hindsight.ts`（Hindsight API 桥：health/stats/list/import，超时与 `ERR-HINDSIGHT-001` 归一）+ `src/memory/sync.ts`（导入、推送 OPC 记忆卡→Hindsight、拉取 Hindsight→OPC 记忆提案、双向同步，全部写审计）；OPC 记忆卡以 `document_id=opc-memory-<id>` 幂等写入，敏感卡永不推送，拉取方向生成 pending 提案并自动去重。HTTP 契约 +4 operation（`/api/v1/memory/hindsight*`，共 47）；面板新增「记忆同步」页签（状态条、JSON/文本导入、推送/拉取/双向、远端记忆列表）。配置 `hindsightUrl`/`hindsightBank`（env `OPC_HINDSIGHT_URL`/`OPC_HINDSIGHT_BANK`；内网实测服务 `http://192.168.1.12:8888`，bank 与 dsh-hindsight-memory 插件一致 `coding-agent::workspace`）。
 - `docs/过程资产/PA-OPC-021-Hindsight记忆导入与同步.md`: change record with ADRs and verification.
 

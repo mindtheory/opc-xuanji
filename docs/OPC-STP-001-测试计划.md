@@ -12,7 +12,7 @@ updated: 2026-11-06
 
 # OPC-STP-001 · OPC-玄机 · 一人公司中枢 测试计划
 
-本计划解决“验证到底要验什么、验到什么程度算过、谁来验”的问题：把上游规格（14 个用例、24 条 TC、34 个 HTTP 接口、14 个错误码）与仓库里真实存在的 68 个自动化用例对账，定出级别、环境、数据、准入准出与缺陷回流规则。**读者与使用时点**：测试执行者在 G4（D4 验证门禁）复跑与签收前逐章核对；开发在失败定位与修复回流时看第 8 章；评审人在判断“能不能过门禁”时只看第 7、9 章；发布/归档者按第 7、11 章取证据。
+本计划解决“验证到底要验什么、验到什么程度算过、谁来验”的问题：把上游规格（21 个用例、31 条 TC、62 个 HTTP 接口、19 个错误码）与仓库里真实存在的 75 个自动化用例对账，定出级别、环境、数据、准入准出与缺陷回流规则。**读者与使用时点**：测试执行者在 G4（D4 验证门禁）复跑与签收前逐章核对；开发在失败定位与修复回流时看第 8 章；评审人在判断“能不能过门禁”时只看第 7、9 章；发布/归档者按第 7、11 章取证据。
 
 ## 目录
 
@@ -59,7 +59,7 @@ updated: 2026-11-06
 | 测试用例 TC | 16 | `usecases.yaml` 各 UC 的 `tests` 字段 | 43 个自动化用例承载 + 8 个横切用例 |
 | HTTP 接口 | 16 | `spec/opc-xuanji/api.yaml` | `test/integration/api.test.ts` 8 条 + 规格对账 |
 | DSH 工具 | 16 | `src/plugin/index.ts` | `test/integration/plugin.test.ts` 4 条 |
-| 数据表 | 54 | `spec/opc-xuanji/entities.yaml`、`migrations/0001..0005` | `spec.test.ts` 列级对账（≥35 实体断言） |
+| 数据表 | 66 | `spec/opc-xuanji/entities.yaml`、`migrations/0001..0006` | `spec.test.ts` 列级对账（≥35 实体断言） |
 | 错误码 | 12 | `api.yaml` 的 `errorCodes` | `spec.test.ts` 集合相等断言 |
 | 自动化用例 | 68 | 单元 25 + 集成 43 | `npm test` |
 
@@ -68,7 +68,7 @@ updated: 2026-11-06
 - 平台能力：视图授权查询、一次性令牌签发/消费、冲突冻结与裁决、审计写入/查询/导出。
 - 流程能力：注册守卫与风险等级、实例启动、写节点幂等、Verifier 评判与升级。
 - 自动化能力：cron 解析与下次触发、任务配置增改与校验、执行幂等、到点 tick、晨报聚合、审计导出任务。
-- 契约层：`/api/v1` 34 个 operation 的 HTTP 状态码、`code`/`errorCode` 口径；DSH 工具清单与参数 schema。
+- 契约层：`/api/v1` 62 个 operation 的 HTTP 状态码、`code`/`errorCode` 口径；DSH 工具清单与参数 schema。
 - 规格一致性：实体列、路由数、错误码集合、REQ/UC/TC 追溯引用。
 
 ### 2.3 范围外（本阶段不作自动化判定）
@@ -106,7 +106,7 @@ updated: 2026-11-06
 | 员工包导出 | `opc-employee-package` v1、checksum、默认不含数据 | 集成 | checksum 一致、包记录入库 |
 | 员工包导入 | 格式/路径/校验和/manifest/依赖校验、dry-run、确认安装 | 集成 | 非法包 422；确认后默认停用 |
 | 新员工 | WBS、外宣需求分册 | 文档评审 + AC 直验 | 分册完整；human gate/敏感约束明确 |
-| 契约 | 34 operation ↔ ROUTES；54 实体 ↔ DB | `spec.test.ts` | 数量相等、逐项命中 |
+| 契约 | 62 operation ↔ ROUTES；66 实体 ↔ DB | `spec.test.ts` | 数量相等、逐项命中 |
 | 工具 | 31 个 `opc_*` | `plugin.test.ts` | 清单完整、schema 完整 |
 
 ## 3. 测试级别与分层
@@ -118,7 +118,7 @@ updated: 2026-11-06
 | 集成（契约层） | HTTP 状态码/错误码/结构化返回；DSH 工具可执行 | `test/integration/api.test.ts`、`plugin.test.ts` | 12 | `opc_test` + 127.0.0.1 随机端口 | 12/12，0 失败 |
 | 集成（规格） | spec ↔ DDL/路由/错误码/追溯 | `test/integration/spec.test.ts` | 4 | `opc_test` + `spec/` | 4/4，0 失败 |
 | 系统 | 独立进程常驻（`npm run serve`）+ DSH 插件装配冒烟 | `scripts/serve.ts`、`cordis.patch.yml` | 手工 3 项 | 进程 + PG | 手工记录入 G4 归档，不并入 61 计数 |
-| 验收 | 14 个 UC 的主路径与异常路径可复述、可演示 | `OPC-STD-001` 第 4 章 | 24 条 TC | 全部级别通过 | 24/24 TC 有通过证据 |
+| 验收 | 21 个 UC 的主路径与异常路径可复述、可演示 | `OPC-STD-001` 第 4 章 | 31 条 TC | 全部级别通过 | 31/31 TC 有通过证据 |
 
 分层理由：单元层只放“无副作用、可穷举边界”的纯函数，任何需要真实 SQL 行为的断言一律下沉到集成层——视图授权依赖 `ref.view_grant` 行状态、幂等依赖唯一键冲突、审计链依赖链头行，mock 掉这些等于没测。
 
@@ -157,7 +157,7 @@ updated: 2026-11-06
 
 ### 5.2 `resetDb`（清库）
 
-- `TRUNCATE` 54 张业务表（`biz.*`、`ref.*`、`audit.*`、`stat.*`、`vec.embedding`）`RESTART IDENTITY CASCADE`，**保留**迁移台账 `public._opc_migrations`。
+- `TRUNCATE` 76 张业务表（`biz.*`、`ref.*`、`audit.*`、`stat.*`、`vec.embedding`）`RESTART IDENTITY CASCADE`，**保留**迁移台账 `public._opc_migrations`。
 - 跨测试文件可能并发清库，因此先取会话级 advisory lock `824361` 再 TRUNCATE，`finally` 解锁，避免 `AccessExclusiveLock` 互等死锁；这也是 `npm test` 仍要求 `--test-concurrency=1` 的双保险。
 - 清库会清掉调度配置：`scheduler` 与 `api` 用例在 `beforeEach` 里重跑 `seedDefaults()` 恢复 10 个默认任务。
 
@@ -188,7 +188,7 @@ updated: 2026-11-06
 
 进入 G4 执行前，以下 8 项全部满足，缺一项则退回准备阶段：
 
-- [ ] `spec/opc-xuanji/` 四份 YAML 已冻结在基线标签 `v2.11-20261106`，`usecases.yaml` 的 14 个 UC 与 24 条 TC 无未决变更。
+- [ ] `spec/opc-xuanji/` 四份 YAML 已冻结在基线标签 `v2.11-20261106`，`usecases.yaml` 的 21 个 UC 与 31 条 TC 无未决变更。
 - [ ] `npm install` 完成，`node_modules` 就绪；`node -v` ≥ 24.9。
 - [ ] 测试库 `opc_test` 可达，`vector`/`pgcrypto`/`unaccent` 已安装（pgvector 0.8.0）。
 - [ ] `npm run migrate:test` 已应用 `0001`–`0005`，`_opc_migrations` 台账与迁移文件一致。
@@ -288,10 +288,10 @@ updated: 2026-11-06
 
 ## 自检清单
 
-- [x] 目标与范围已对齐 `usecases.yaml` 的 14 个 UC、24 条 TC，数量与规格一致。
+- [x] 目标与范围已对齐 `usecases.yaml` 的 21 个 UC、31 条 TC，数量与规格一致。
 - [x] 四个测试级别均有资产文件、用例数、依赖与通过判据，68 = 单元 25 + 集成 43 可复算。
 - [x] 环境表列出 Node ≥24.9、PostgreSQL 17.11、pgvector 0.8.0、`opc_test` 与 `opc` 隔离及校验命令。
-- [x] 数据策略覆盖 `resetDb`（54 表 + advisory lock）、`seedEmployee`、固定时钟三件套。
+- [x] 数据策略覆盖 `resetDb`（66 表 + advisory lock）、`seedEmployee`、固定时钟三件套。
 - [x] 进入准则 8 项可勾选、可命令化验证，无“视情况而定”表述。
 - [x] 通过标准含 68/68、`typecheck` exit 0、`check-spec` PASS，并声明硬/软门禁差异。
 - [x] 缺陷分级 P0–P3 均有定义、示例、回流路径与门禁影响；规格变更走契约流程。
@@ -305,9 +305,9 @@ updated: 2026-11-06
 
 | 文档 | 关系 | 说明 |
 | :--- | :--- | :--- |
-| [spec/opc-xuanji/usecases.yaml](../spec/opc-xuanji/usecases.yaml) | 上游（唯一 TC 来源） | 14 个 UC 的 `tests` 字段决定本计划与 STD 的 24 条 TC 清单（员工分册 AC 直验另计） |
-| [spec/opc-xuanji/api.yaml](../spec/opc-xuanji/api.yaml) | 上游 | 34 个 operation 与 14 个错误码构成契约层判据 |
-| [spec/opc-xuanji/entities.yaml](../spec/opc-xuanji/entities.yaml) | 上游 | 54 张表的列级对账依据 |
+| [spec/opc-xuanji/usecases.yaml](../spec/opc-xuanji/usecases.yaml) | 上游（唯一 TC 来源） | 21 个 UC 的 `tests` 字段决定本计划与 STD 的 31 条 TC 清单（员工分册 AC 直验另计） |
+| [spec/opc-xuanji/api.yaml](../spec/opc-xuanji/api.yaml) | 上游 | 62 个 operation 与 19 个错误码构成契约层判据 |
+| [spec/opc-xuanji/entities.yaml](../spec/opc-xuanji/entities.yaml) | 上游 | 76 张表的列级对账依据 |
 | `OPC-玄机 · 一人公司中枢-产品设计.md` | 上游 | 8.6.9.2 三关测试、8.6.3 评判、8.6.9.5 守卫与风险规则的本计划依据 |
 | `OPC-玄机 · 技术选型与系统架构.md` | 上游 | 3.2 Verifier 缓存口径、3.3 判别力局限，解释为何以桩替代并登记风险 |
 | [docs/OPC-STD-001-测试设计说明.md](OPC-STD-001-测试设计说明.md) | 同级（下游细化） | 承接本计划的 TC 映射、逐条用例设计与未覆盖项登记 |

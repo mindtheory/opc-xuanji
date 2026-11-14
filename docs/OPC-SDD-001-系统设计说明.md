@@ -12,7 +12,7 @@ updated: 2026-11-06
 
 # OPC-玄机 · 一人公司中枢 系统设计说明（OPC-SDD-001）
 
-本文档解决“中枢到底由哪些部件组成、它们按什么顺序与约束协作、坏了退到哪一步”的问题：把 `src/` 里真实存在的 28 个模块文件、34 个 HTTP operation、31 个 DSH 工具、10 个定时任务与 5 层数据表，组织成可评审的四层机制、可复制的启动步骤与明确的失败路径。使用者与时机：开发在动代码前用它确认依赖方向与错误码口径；评审在 G2 用它核对“设计描述=已实现行为”；运维在部署与排障时用第 7、9 章；接手者在第 10 章看清哪些能力只是接口占位。全文坚持一条底线——**只写代码里已经跑得通的行为**：凡未落地的能力（真实 LLM 裁判调用、DSH 运行时内嵌定时器、11 个业务域模块、流程看板与自动固化闭环）一律在 10.1 标为 Phase 2，不混进主流程描述。文中数字（28 个源文件、34 接口、31 工具、14 错误码、8 视图、10 任务、54 张表）均可在 `src/`、`spec/`、`migrations/` 与 `npm test` 输出中复算。
+本文档解决“中枢到底由哪些部件组成、它们按什么顺序与约束协作、坏了退到哪一步”的问题：把 `src/` 里真实存在的 34 个模块文件、62 个 HTTP operation、31 个 DSH 工具、15 个定时任务与 76 张数据表，组织成可评审的四层机制、可复制的启动步骤与明确的失败路径。使用者与时机：开发在动代码前用它确认依赖方向与错误码口径；评审在 G2 用它核对“设计描述=已实现行为”；运维在部署与排障时用第 7、9 章；接手者在第 10 章看清哪些能力只是接口占位。全文坚持一条底线——**只写代码里已经跑得通的行为**：凡未落地的能力（真实 LLM 裁判调用、DSH 运行时内嵌定时器、9 个业务域模块、流程看板与自动固化闭环）一律在 10.1 标为 Phase 2，不混进主流程描述。文中数字（34 个源文件、62 接口、31 工具、19 错误码、8 视图、15 任务、76 张表）均可在 `src/`、`spec/`、`migrations/` 与 `npm test` 输出中复算。
 
 ## 目录
 
@@ -57,7 +57,9 @@ updated: 2026-11-06
 | 连接池、迁移执行器 | 已实现 | `src/db/*.ts`（2 个文件） | checksum 校验 |
 | 真实 LLM 裁判调用（Verifier 采样） | **Phase 2 占位** | `Verifier.judge` 只接收调用方给的 `samples` | 接口已定，模型调用未接 |
 | DSH 运行时内嵌定时器 | **Phase 2 占位** | `plugin.apply` 中 `ctx.setInterval` 分支 | 宿主契约未核对；独立进程 `scripts/serve.ts` 用 `setInterval`，已验证可用 |
-| 11 个业务域模块（财税/法务/行政/战略/项目/客户/货栈/车务/情报/WBS/外宣） | **Phase 2 未实现** | 无 `src/domains/` 目录 | 表已建，读写路径未写 |
+| 业务域模块（财税/法务/行政/战略/客户/货栈/车务/WBS/外宣） | **Phase 2 未实现** | 无对应 `src/domains/*` | 表已建，读写路径未写 |
+| 情报日报规则流水线（采集入库/评分/汇总/简报/站内推送） | 本地规则已实现；外部采集与投递 Phase 2 | `src/domains/intel/daily.ts`、`src/scheduler/tasks/index.ts` | 未接 RSS/API/MCP 采集适配器、IM/邮件通道与阶段超时/重试 |
+| 项目监理·软件研发要素（里程碑/版本库/制品库/SSH 环境/发布/测试） | 已实现登记与状态流转 | `src/domains/project/software.ts` | 不执行 Git/SVN 同步、SSH 部署与制品推送（Phase 2 执行器） |
 | 流程看板、裁决卡渲染、自动固化/影子/观察期/分阶段回滚 | **Phase 2 未实现** | 无对应文件 | 设计见产品设计 8.6.9 |
 | 向量写入与检索 | **Phase 2 未实现** | `vec.embedding` 表与 HNSW 索引已建 | 无写入/查询代码 |
 | 通知投递通道 | **Phase 2 未实现** | `stat.notification` 只入队 `pending` | 无发送器 |
@@ -66,11 +68,11 @@ updated: 2026-11-06
 
 ```bash
 cd /path/to/opc-xuanji
-find src -type f -name "*.ts" | wc -l    # 28 个源文件
+find src -type f -name "*.ts" | wc -l    # 34 个源文件
 grep -c "pattern: /" src/api/http.ts     # 34 条 HTTP 路由
 grep -c 'name: "opc_' src/plugin/index.ts # 31 个 opc_* 工具
-grep -c "  AUTHZ\|  TOKEN\|  CONFLICT\|  WF_\|  AUDIT\|  TASK_\|  WEB_\|  EMP_\|  VIEW_\|  SYS" src/platform/errors.ts  # 14 个错误码
-grep -c "id: \"" src/scheduler/tasks/index.ts  # 10 个默认任务
+grep -cE '^  [A-Z_]+: "ERR-' src/platform/errors.ts  # 19 个错误码
+grep -c "id: \"" src/scheduler/tasks/index.ts  # 15 个默认任务
 npm test 2>&1 | grep -E "^. tests"       # 68 个用例（需测试库）
 ```
 
@@ -96,7 +98,7 @@ npm test 2>&1 | grep -E "^. tests"       # 68 个用例（需测试库）
 | 中枢 | `src/platform` + `src/api` + `src/plugin` | 授权、令牌、审计、冲突、流程注册、评判封装、协议适配 | 员工不直连数据库；审计只经 `AuditService.record` |
 | 员工 | Phase 2（域模块） | 读视图、产出候选、提交写请求 | 员工间不直接调用；不可递归派工 |
 | TS 流程 | `src/workflow` | 版本注册、六项守卫、实例与幂等节点、评判封装、诊断 | 脚本不可被模型改写；版本不可变 |
-| 共享数据 | PostgreSQL 17.11 + pgvector 0.8.0 | 五个 schema、54 张表、视图级授权、冻结标记 | 敏感原文只进 `biz.customer_sensitive` |
+| 共享数据 | PostgreSQL 17.11 + pgvector 0.8.0 | 五个 schema、76 张表、视图级授权、冻结标记 | 敏感原文只进 `biz.customer_sensitive` |
 
 ### 2.2 组件架构
 
@@ -184,7 +186,8 @@ flowchart TB
 | `scheduler` | cron、任务引擎、默认任务 | platform、workflow | `src/scheduler/` 3 文件 | 已实现 |
 | `api` | HTTP 契约层 | 全部上层 | `src/api/http.ts` | 已实现 |
 | `plugin` | DSH cordis 装配、工具注册 | api | `src/plugin/index.ts` | 已实现 |
-| `finance` `legal` `admin` `strategy` `project` `crm` `inventory` `vehicle` `intel` | 九条业务线 | platform | 无目录 | Phase 2 |
+| `finance` `legal` `admin` `strategy` `crm` `inventory` `vehicle` `wbs` `publicity` | 九条业务线（项目/情报另有局部实现） | platform | 无目录 | Phase 2 |
+| `project` / `intel` | 项目研发要素、情报日报规则流水线 | platform、scheduler | `src/domains/project/software.ts`、`src/domains/intel/daily.ts` | 局部实现；外部执行器/采集器 Phase 2 |
 
 ```mermaid
 flowchart LR
@@ -897,7 +900,7 @@ NODE_ENV=test OPC_PG_DSN="postgresql://<user>:<password>@localhost:5432/opc_test
 cd /path/to/opc-xuanji
 # 规格包内部一致性（写域归属、实体/接口/用例引用），实测 PASS（WARN 为既有追溯缺口）
 npm run spec:check
-# “34 个 operation 均有路由、54 张表在库内存在、14 个错误码集合一致”由该测试断言
+# “62 个 operation 均有路由、76 张表在库内存在、19 个错误码集合一致”由该测试断言
 node --test test/integration/spec.test.ts
 grep -c "operationId" spec/opc-xuanji/api.yaml    # 28
 grep -c "pattern: /" src/api/http.ts             # 28 条路由（Route 接口里的 pattern 声明不计）
@@ -1045,7 +1048,7 @@ curl -s http://127.0.0.1:3082/api/v1/health
 | :--- | :--- | :--- | :--- |
 | 独立服务 | `npm run serve -- --port 3082` | 全量 16 路由 + `seedDefaults` + `setInterval` tick | headless 常驻首选 |
 | DSH 插件 | `cordis.patch.yml` 装配后由宿主加载 | 26 个工具 + 15 条**静态**路由（无路径参数） | 带路径参数的动态路由由独立进程提供 |
-| 测试 | `npm test` | 单元 25 + 集成 43（Web/员工增量需测试库） | 集成测试只连 `OPC_TEST_DSN`，清 54 张表不清 `_opc_migrations` |
+| 测试 | `npm test` | 单元 25 + 集成 43（Web/员工增量需测试库） | 集成测试只连 `OPC_TEST_DSN`，清 76 张表不清 `_opc_migrations` |
 
 进程退出时：`serve.ts` 监听 `SIGINT`/`SIGTERM`，先 `clearInterval` 再关 server 与连接池；插件 `apply` 在宿主 `dispose` 事件里同样清定时器并 `pool.end()`。
 
@@ -1067,7 +1070,7 @@ curl -s http://127.0.0.1:3082/api/v1/health
 | :--- | :--- | :--- | :--- |
 | 1 | 真实 LLM 裁判调用（Verifier 采样） | `Verifier.judge` 接收调用方给的 `samples`，不自行采样 | `src/workflow/verifier.ts` 增加裁判适配器 |
 | 2 | DSH 运行时内嵌定时器 | 插件 `apply` 里 `ctx.setInterval` 分支存在但宿主契约未核对；独立进程 `setInterval` 已验证 | `src/plugin/index.ts` |
-| 3 | 11 个业务域模块 | 无 `src/domains/`；对应表已建 | `src/domains/{finance,legal,admin,strategy,project,crm,inventory,vehicle,intel,wbs,publicity}` |
+| 3 | 业务域模块（其余 9 个） | 仅 `src/domains/project/software.ts` 与 `src/domains/intel/daily.ts` 有局部实现；其余无 `src/domains/*` | `src/domains/{finance,legal,admin,strategy,crm,inventory,vehicle,wbs,publicity}` |
 | 4 | `diagnose` 接线 | 诊断逻辑已实现（4 条分流），**未挂到任何 HTTP 路由或工具** | `src/api/http.ts` + `src/plugin/index.ts` |
 | 5 | 冲突汇总对外暴露 | `summaryIncludingFrozen` 已实现，**未挂路由/工具** | 同上 |
 | 6 | 风险预览对外暴露 | `previewRisk` 已实现，**未挂路由/工具** | 同上 |

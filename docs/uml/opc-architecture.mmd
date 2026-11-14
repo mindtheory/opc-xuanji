@@ -1,5 +1,5 @@
 %% 标题：OPC-玄机 组件架构图（组件 / 四层机制）
-%% 来源：src/ 实际文件 + migrations/0001-0005 + spec/opc-xuanji/modules.yaml
+%% 来源：src/ 实际文件 + migrations/0001-0006 + spec/opc-xuanji/modules.yaml
 %% 组件架构图：四层机制 + 已落地模块 + Phase 2 占位
 %% 实线 = 已实现且被测试覆盖的调用路径；虚线 = Phase 2 占位或未落地能力
 flowchart TB
@@ -18,7 +18,7 @@ flowchart TB
 
   subgraph L2["② 平台能力层 src/platform"]
     CFG["config.ts<br/>5 个环境变量"]
-    ERR["errors.ts<br/>14 个错误码"]
+    ERR["errors.ts<br/>19 个错误码"]
     AUD["audit.ts<br/>AuditService<br/>哈希链 + JSONL 导出"]
     VW["views.ts<br/>ViewService<br/>8 个共享视图"]
     TK["token.ts<br/>TokenService<br/>≤300 秒一次性令牌"]

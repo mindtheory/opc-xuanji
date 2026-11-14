@@ -90,7 +90,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | 中枢（Service） | `src/platform`、`src/workflow` | 视图级授权（8 个视图）、一次性令牌（≤5 分钟、单次）、冲突冻结与裁决、审计哈希链、Registry 六项准入守卫、风险硬规则、Verifier 封装、诊断 |
 | 员工（Subagent / 函数） | `ref.employee_plugin` + 工具注册 | 员工不直连库：读经视图、写经中枢、审计统一入口；`write_targets` 决定风险等级 |
 | 流程（TS 固化） | `ref.workflow_registry` + `audit.workflow_*` | 版本不可变、代码哈希与测试哈希一致、幂等键 `instance_id + node_id`、三关测试与影子运行在 Phase 2 接 `dsh-workflow-ptc` |
-| 数据（共享层） | `biz/ref/audit/stat/vec` | 54 张表（37 基线 + 8 Web + 9 员工线）；审计 `(id, created_at)` 复合主键为分区预留；pgvector HNSW `m=16, ef_construction=64` |
+| 数据（共享层） | `biz/ref/audit/stat/vec` | 76 张表（37 基线 + 8 Web + 9 员工线 + 12 项目研发 + 10 情报日报）；审计 `(id, created_at)` 复合主键为分区预留；pgvector HNSW `m=16, ef_construction=64` |
 
 ### HTTP 契约（`/api/v1`）
 

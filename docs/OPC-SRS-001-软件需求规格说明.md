@@ -191,10 +191,10 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | TASK | 定时自动化任务 | 3 | REQ-TASK-001..003 | UC-008、UC-009 | §8 |
 | WEB | 网页表现层 | 6 | REQ-WEB-001..006 | UC-010..UC-014 | §8.4 |
 | EMP | 员工插件/打包导入导出 | 7 | REQ-EMP-001..007 | 无 UC（跨员工） | §9 |
-| 员工分册 | 11 个员工 | 130 | 见 `docs/员工需求/` | 无 UC（员工线） | 分册 |
+| 员工分册 | 11 个员工 | 145 | 见 `docs/员工需求/` | 无 UC（员工线） | 分册 |
 | NFR | 非功能 | 26 | REQ-NFR-001..022 + WEB-001..004 | — | §10 |
 
-功能需求：主文档 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7）+ 员工分册 130 条 = 169 条；非功能需求 26 条。
+功能需求：主文档 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7）+ 员工分册 145 条 = 184 条；非功能需求 26 条。
 
 ### 4.2 需求条目书写模板
 
@@ -725,8 +725,8 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | OPC-SRS-102 | 法务官 | LEG | `opc_legal` | 合同/风险规则/案件/知识产权/劳动/合规/律师 |
 | OPC-SRS-103 | 行政总管 | ADM | `opc_admin` | 日程/公文/印章/证照/资产/采购/差旅/IT/考勤 |
 | OPC-SRS-104 | 战略参谋 | STR | `opc_strategy` | 战略/OKR/预算/复盘/决策/投资 |
-| OPC-SRS-105 | 项目监理（全生命周期/里程碑/甘特/OKR） | PRJ | `opc_project` | 项目/章程/里程碑/任务/依赖/基线/变更/风险/验收/收尾/OKR |
-| OPC-SRS-106 | 情报官 | INT | `opc_intel` | 情报/线索/尽调/供应商/来源/简报 |
+| OPC-SRS-105 | 项目监理（全生命周期/里程碑/甘特/OKR/软件研发要素） | PRJ | `opc_project` | 项目/章程/里程碑/任务/依赖/基线/变更/风险/验收/收尾/OKR/Git-SVN/制品库/环境发布/测试 |
+| OPC-SRS-106 | 情报官（项目日报/数据源/关键词标签/五阶段流水线） | INT | `opc_intel` | 情报/线索/尽调/供应商/项目空间/来源/关键词标签/日报/推送 |
 | OPC-SRS-107 | 客户管家 | CRM | `opc_crm` | 客户/联系人/线索/承诺/报价/沟通/投诉/分级 |
 | OPC-SRS-108 | 车务官 | VEH | `opc_vehicle` | 车辆/驾驶员/行程/能耗/保养/保险/违章/补贴 |
 | OPC-SRS-109 | 货栈总管 | INV | `opc_inv` | SKU/仓库/采购/出入库/调拨/盘点/批次/补货/成本 |
@@ -938,7 +938,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 调度 | TaskSchedule、TaskRun、Notification、DailyReport | `stat.task_schedule`、`stat.task_run`、`stat.notification`、`stat.daily_report` |
 | 记忆 | Embedding | `vec.embedding`（`VECTOR(1024)` + HNSW） |
 
-（54 个实体、五层 schema `biz/ref/audit/stat/vec` 以 `entities.yaml` 为准；本文只登记需求涉及的落点。）
+（76 个实体、五层 schema `biz/ref/audit/stat/vec` 以 `entities.yaml` 为准；本文只登记需求涉及的落点。）
 
 ### 11.2 补贴来源白名单
 
@@ -1024,6 +1024,13 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-WEB-004 | 驾驶舱只读聚合 | UC-012 | TC-WEB-003 | getDashboard |
 | REQ-WEB-005 | 插件雷达与关键词雷达 | UC-013 | TC-WEB-004 | listRadar / runTask |
 | REQ-WEB-006 | 表现层权限、审计与隐私 | UC-011、UC-012 | TC-WEB-002、TC-WEB-003 | 全部 web 接口 |
+| REQ-PRJ-016 | 软件项目档案与项目起点 | UC-015 | TC-PRJ-001 | createProjectMilestone / listProjectMilestones |
+| REQ-PRJ-017 | 版本库管理（Git/SVN） | UC-016 | TC-PRJ-002 | registerCodeRepository / listCodeRepositories |
+| REQ-PRJ-018 | 制品仓库管理（Maven/Docker） | UC-017 | TC-PRJ-003 | registerArtifactRepository / listArtifactRepositories |
+| REQ-PRJ-019 | 部署环境与 SSH 发布 | UC-018 | TC-PRJ-004 | registerDeployEnvironment / createReleaseOrder / approveReleaseOrder |
+| REQ-PRJ-020 | 测试统一管理 | UC-019 | TC-PRJ-005 | createTestPlan / createTestRun / recordTestResult |
+| REQ-PRJ-021 | 专门测试 Agent 协同 | UC-020 | TC-PRJ-006 | createTestRun / recordTestResult / listDefects |
+| REQ-PRJ-022 | 时间管理、日历与关键节点 | UC-021 | TC-PRJ-007 | createProjectMilestone / listProjectMilestones |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 |
@@ -1034,7 +1041,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：14 个 UC 全部在被映射的 REQ 中出现（UC-001..014 逐条可见）；主文档 39 条功能需求 + 11 份员工分册 130 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：21 个 UC 全部在被映射的 REQ 中出现（UC-001..021 逐条可见）；主文档 39 条功能需求 + 11 份员工分册 145 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 
@@ -1064,13 +1071,13 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 - [ ] frontmatter 九字段齐全，`doc_id` 唯一，`updated` 为 2026-11-06，`status` 为评审稿。
 - [ ] 首段写明"解决什么问题/谁何时用"，`## 目录` 覆盖 13 章且锚点可跳转。
 - [ ] 十一条设计原则逐条给出"对需求的约束"并落到具体 REQ 编号。
-- [ ] 主文档 39 条 + 员工分册 130 条功能需求编号连续不重复，域与 `usecases.yaml`/分册一致。
+- [ ] 主文档 39 条 + 员工分册 145 条功能需求编号连续不重复，域与 `usecases.yaml`/分册一致。
 - [ ] 每条功能需求 3~5 条 AC，AC 均可观测（含码值、阈值或字段名）。
 - [ ] 26 条 NFR 覆盖性能、可靠性、安全合规、可运维性、Web 表现层五类且判据可验证。
 - [ ] 视图授权表 8 个视图与产品设计 §2.2 逐字一致，敏感字段不落视图。
 - [ ] 补贴白名单三类来源 + 四类排除 + "候选不参与计算"三项齐备。
 - [ ] 审计三条保留期口径（30 年 / 合同期 + 5 年 / ≥5 年）与哈希链链头持久化均已写成 AC。
-- [ ] §12 追溯表覆盖 UC-001..014 全部十四个用例，无孤立需求；员工分册由各自 AC 直验。
+- [ ] §12 追溯表覆盖 UC-001..021 全部二十一个用例，无孤立需求；员工分册由各自 AC 直验。
 - [ ] 全文无未决占位标记，无设计文档与 spec 之外的新增数值。
 - [ ] 文末两节齐备，`## 与其他文档的关系` 位于全文最后。
 
@@ -1081,8 +1088,8 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 | 上游 | `OPC-玄机 · 一人公司中枢-产品设计.md`（v2.12，1022 行） | 唯一产品事实来源；本文的原则、范围、十一线能力、流程治理、审计口径均取自该文档，逐条标注章节号 |
 | 上游 | `OPC-玄机 · 技术选型与系统架构.md`（v2.12，567 行） | 唯一技术事实来源；本文 NFR 与超时绑定、向量参数、RPO/RTO、审计分区等口径取自该文档 |
 | 上游 | `spec/opc-xuanji/usecases.yaml`（baselineTag `v2.11-20261106`） | 需求的域划分与 UC/TC 映射依据；REQ-VIEW/TOKEN/CONFLICT/WF/AUDIT/TASK 的编号归属直接对齐其 `requirement` 字段 |
-| 上游 | `spec/opc-xuanji/api.yaml` | 需求到接口的落点依据；34 个 `/api/v1` operation 与 14 个错误码为本文 §12 追溯表的接口列来源 |
-| 上游 | `spec/opc-xuanji/entities.yaml`（54 个实体） | 本文 §11 视图—实体—表落点依据；schema 分层 `biz/ref/audit/stat/vec` 以其为准 |
+| 上游 | `spec/opc-xuanji/api.yaml` | 需求到接口的落点依据；62 个 `/api/v1` operation 与 17 个错误码为本文 §12 追溯表的接口列来源 |
+| 上游 | `spec/opc-xuanji/entities.yaml`（76 个实体） | 本文 §11 视图—实体—表落点依据；schema 分层 `biz/ref/audit/stat/vec` 以其为准 |
 | 上游 | `spec/opc-xuanji/modules.yaml`（17 个模块） | 需求实现边界的模块归属依据；`src/platform`、`src/workflow`、`src/scheduler`、`src/api` 为落地目录 |
 | 下游 | `OPC-IRS-001-接口需求规格说明.md` | 本文的功能需求在接口层的展开；本文每条带接口落点的 REQ 在 IRS 中均有对应接口章节或工具契约条目 |
 | 下游 | `docs/过程资产/pa-index.md` | 本文的验收证据（G1 门禁输出、TC 执行记录）按门禁登记于此 |

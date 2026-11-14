@@ -1,23 +1,23 @@
 ---
 doc_id: OPC-IRS-001
 title: OPC-玄机 · 一人公司中枢 接口需求规格说明
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D1
 owner: 玄机文档组
-upstream: ["spec/opc-xuanji/api.yaml（0.3.0，34 operation）", "spec/opc-xuanji/usecases.yaml（v2.11 基线）", "OPC-SRS-001-软件需求规格说明.md（v0.3）", "OPC-玄机 · 技术选型与系统架构.md（v2.12）"]
+upstream: ["spec/opc-xuanji/api.yaml（0.4.0，62 operation）", "spec/opc-xuanji/usecases.yaml（v2.11 基线）", "OPC-SRS-001-软件需求规格说明.md（v0.3）", "PA-OPC-023", "OPC-玄机 · 技术选型与系统架构.md（v2.12）"]
 gate: G1
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # OPC-玄机 · 一人公司中枢 接口需求规格说明
 
-本文档解决"中枢对外到底承诺什么形状"这个问题：把 `spec/opc-xuanji/api.yaml` 的 34 个 `/api/v1` operation与 DSH 上的 `opc_*` 工具，写成开发可直接照做、测试可直接照验的接口需求——每个接口的用途、调用方、入参出参、错误码、幂等与重试、鉴权与审计六项齐全，并且统一 Result 口径（成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`）。使用者与时机：后端在 D2 设计前用它确定契约边界；前端/插件在联调前用它对齐字段；测试在 G2 契约门禁前用它逐 operation 断言。凡本文未在 `api.yaml` 登记的错误码、字段、枚举值，一律视为契约外内容，不得实现。
+本文档解决"中枢对外到底承诺什么形状"这个问题：把 `spec/opc-xuanji/api.yaml` 的 62 个 `/api/v1` operation 与 DSH 上的 `opc_*` 工具，写成开发可直接照做、测试可直接照验的接口需求——每个接口的用途、调用方、入参出参、错误码、幂等与重试、鉴权与审计六项齐全，并且统一 Result 口径（成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`）。使用者与时机：后端在 D2 设计前用它确定契约边界；前端/插件在联调前用它对齐字段；测试在 G2 契约门禁前用它逐 operation 断言。凡本文未在 `api.yaml` 登记的错误码、字段、枚举值，一律视为契约外内容，不得实现。
 
 ## 目录
 
 1. [通用约定（Result 口径与横切规则）](#1-通用约定result-口径与横切规则)
-2. [接口清单（34 个 /api/v1 operation）](#2-接口清单34-个-apiv1-operation)
+2. [接口清单（62 个 /api/v1 operation）](#2-接口清单62-个-apiv1-operation)
 3. [平台类接口（P1–P6）](#3-平台类接口p1p6)
 4. [流程类接口（P7–P10）](#4-流程类接口p7p10)
 5. [审计类接口（P11–P12）](#5-审计类接口p11p12)
@@ -85,7 +85,7 @@ updated: 2026-11-06
 | ERR-TASK-002 | 404 | 任务不存在 | runTask |
 | ERR-SYS-001 | 500 / 503 | 未分类系统错误；依赖不可用 | 全部接口（兜底） |
 
-14 个错误码与 `api.yaml` 的 `errorCodes` 列表一一对应，新增错误码必须先登记 `api.yaml` 再实现；本文不引入第 15 个码。
+19 个错误码与 `api.yaml` 的 `errorCodes` 列表一一对应，新增错误码必须先登记 `api.yaml` 再实现；本文不引入第 20 个码。
 
 ### 1.3 调用方与鉴权约定
 
@@ -142,7 +142,7 @@ updated: 2026-11-06
 - 新增/修改接口、字段、枚举、错误码，必须先改 `api.yaml`，再改本文，再改实现，同一需求同一提交序列（不允许先改代码后补 spec）。
 - 破坏性变更（删字段、改语义、收紧必填）须在本文"与其他文档的关系"记录变更点并升 `version`。
 
-## 2. 接口清单（34 个 /api/v1 operation）
+## 2. 接口清单（62 个 /api/v1 operation）
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -180,8 +180,23 @@ updated: 2026-11-06
 | P32 | POST | `/api/v1/employees/{pluginId}/toggle` | toggleEmployee | 启用/停用员工插件 | 老板 | 200 | ERR-EMP-001 | REQ-EMP-002 |
 | P33 | POST | `/api/v1/employees/{pluginId}/export` | exportEmployeePackage | 导出员工包 | 老板 | 201 | ERR-EMP-001 | REQ-EMP-006 |
 | P34 | POST | `/api/v1/employees/import` | importEmployeePackage | 导入员工包（dry-run/确认） | 老板 | 200/422 | ERR-EMP-001 | REQ-EMP-007 |
+| P35 | GET | `/api/v1/projects/{projectId}/milestones` | listProjectMilestones | 列出项目里程碑/关键节点 | 老板 / 项目监理 | 200 | ERR-PRJ-001 | REQ-PRJ-016、022 |
+| P36 | POST | `/api/v1/projects/{projectId}/milestones` | createProjectMilestone | 新建里程碑/关键节点 | 项目监理 | 201 | ERR-PRJ-001 | REQ-PRJ-016、022 |
+| P37 | GET | `/api/v1/projects/{projectId}/repositories` | listCodeRepositories | 列出 Git/SVN 版本库 | 老板 / 项目监理 | 200 | ERR-PRJ-001 | REQ-PRJ-017 |
+| P38 | POST | `/api/v1/projects/{projectId}/repositories` | registerCodeRepository | 登记 Git/SVN 版本库 | 项目监理 | 201 | ERR-PRJ-001、003 | REQ-PRJ-017 |
+| P39 | GET | `/api/v1/projects/{projectId}/artifacts` | listArtifactRepositories | 列出 Maven/Docker 制品库 | 老板 / 项目监理 | 200 | ERR-PRJ-001 | REQ-PRJ-018 |
+| P40 | POST | `/api/v1/projects/{projectId}/artifacts` | registerArtifactRepository | 登记 Maven/Docker 制品库 | 项目监理 | 201 | ERR-PRJ-001、003 | REQ-PRJ-018 |
+| P41 | GET | `/api/v1/projects/{projectId}/environments` | listDeployEnvironments | 列出部署环境 | 老板 / 项目监理 | 200 | ERR-PRJ-001 | REQ-PRJ-019 |
+| P42 | POST | `/api/v1/projects/{projectId}/environments` | registerDeployEnvironment | 登记 SSH 部署环境 | 项目监理 | 201 | ERR-PRJ-001、003 | REQ-PRJ-019 |
+| P43 | GET | `/api/v1/projects/{projectId}/releases` | listReleaseOrders | 列出发布单 | 老板 / 项目监理 | 200 | ERR-PRJ-001 | REQ-PRJ-019 |
+| P44 | POST | `/api/v1/projects/{projectId}/releases` | createReleaseOrder | 创建发布单 | 项目监理 | 201 | ERR-PRJ-001 | REQ-PRJ-019 |
+| P45 | POST | `/api/v1/releases/{releaseId}/approve` | approveReleaseOrder | 审批发布单 | 老板 | 200 | ERR-PRJ-001、002 | REQ-PRJ-019 |
+| P46 | POST | `/api/v1/projects/{projectId}/test-plans` | createTestPlan | 创建测试计划 | 项目监理 / 测试 Agent | 201 | ERR-PRJ-001 | REQ-PRJ-020 |
+| P47 | POST | `/api/v1/test-runs` | createTestRun | 创建测试执行批次 | 项目监理 / 测试 Agent | 201 | ERR-PRJ-001 | REQ-PRJ-020、021 |
+| P48 | POST | `/api/v1/test-runs/{runId}/results` | recordTestResult | 记录逐用例结果 | 项目监理 / 测试 Agent | 201 | ERR-PRJ-001 | REQ-PRJ-020、021 |
+| P49 | GET | `/api/v1/projects/{projectId}/defects` | listDefects | 列出项目缺陷 | 老板 / 项目监理 | 200 | ERR-PRJ-001 | REQ-PRJ-020、021 |
 
-服务地址：`http://127.0.0.1:3081`（单机部署，DSH Web 内嵌路由；`api.yaml` servers 段）。六个 tag 对应章节：`platform`→§3，`workflow`→§4，`audit`→§5，`scheduler`→§6，`web`→§7，`employees`→§7.4。
+服务地址：`http://127.0.0.1:3081`（单机部署，DSH Web 内嵌路由；`api.yaml` servers 段）。七个 tag 对应章节：`platform`→§3，`workflow`→§4，`audit`→§5，`scheduler`→§6，`web`→§7，`employees`→§7.4，`project`→§7.5。
 
 ## 3. 平台类接口（P1–P6）
 
@@ -786,6 +801,28 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **与 DSH 工具**：`opc_employee_list`、`opc_employee_install`、`opc_employee_toggle`、`opc_employee_export`、`opc_employee_import` 与 P29–P34 一一映射；导入导出与停用同样走审计。
 
+### 7.5 项目研发接口（P35–P49）
+
+| 接口 | 入参 | 出参 | 失败语义 |
+| :--- | :--- | :--- | :--- |
+| P35 `GET /projects/{projectId}/milestones` | — | `milestones[]` | 项目不存在 404 `ERR-PRJ-001` |
+| P36 `POST /projects/{projectId}/milestones` | `name, targetDate, stage?, actualDate?, status?, owner?, dependencies?, evidence?` | `milestone` | 日期非法/必填缺失 400；创建写审计 |
+| P37 `GET /projects/{projectId}/repositories` | — | `repositories[]` | 项目不存在 404 |
+| P38 `POST /projects/{projectId}/repositories` | `name, kind ∈ {git,svn}, url, defaultRef?, authRef?, syncMode?` | `repository` | 明文 `authRef` 400 `ERR-PRJ-003` |
+| P39 `GET /projects/{projectId}/artifacts` | — | `artifacts[]` | 项目不存在 404 |
+| P40 `POST /projects/{projectId}/artifacts` | `name, kind ∈ {maven,docker,npm,other}, url, namespace?, authRef?, retentionPolicy?` | `artifact` | 明文 `authRef` 400 `ERR-PRJ-003` |
+| P41 `GET /projects/{projectId}/environments` | — | `environments[]` | 项目不存在 404 |
+| P42 `POST /projects/{projectId}/environments` | `envType ∈ {dev,test,staging,prod}, name, host, sshUser, port?, authRef?, jumpHostRef?, isolationLevel?, approvalPolicy?` | `environment` | 生产 `auto` 400；凭据明文 400 |
+| P43 `GET /projects/{projectId}/releases` | — | `releases[]` | 项目不存在 404 |
+| P44 `POST /projects/{projectId}/releases` | `environmentId, version, requestedBy, artifactRefs?, repoRefs?, changeNote?, rollbackVersion?` | `release` | 环境不属于项目 404；生产缺回滚版本 400 |
+| P45 `POST /releases/{releaseId}/approve` | `approver` | `release` | 不存在 404；非 pending 409 `ERR-PRJ-002` |
+| P46 `POST /projects/{projectId}/test-plans` | `version, scope?, testTypes?, entryCriteria?, exitCriteria?, environmentId?, owner?, startDate?, endDate?` | `testPlan` | 必填缺失 400；初始 `draft` |
+| P47 `POST /test-runs` | `projectId, version, executor, executorType?, planId?, suiteId?, environmentId?` | `testRun` | 项目不存在 404；初始 `running` |
+| P48 `POST /test-runs/{runId}/results` | `caseId, result ∈ {passed,failed,blocked,skipped}, evidence?, failureReason?` | `testResult` | 批次不存在 404；失败/阻塞置批次 `failed` |
+| P49 `GET /projects/{projectId}/defects` | — | `defects[]` | 项目不存在 404；空列表返回 `[]` |
+
+**项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
+
 ## 8. DSH 工具契约（工具即接口）
 
 ### 8.1 "工具即接口"的八条约定（与 Java/TS 实现语言无关）
@@ -844,6 +881,22 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | `opc_vehicle_subsidy_confirm` | 补贴标准确认 | `standardId`、`decision` | `{code,data:{standardId,status}}` | 非官方来源：拒绝进入候选；候选不参与计算 |
 | `opc_inv_stock_txn_write` | 出入库（幂等） | `skuId`、`qty`、`unitPrice`、`type` | `{code,data:{stockTxnId,idempotentHit,confirmCard}}` | 四要素不全：返回确认卡，不落库 |
 | `opc_inv_sku_upsert` | SKU 维护 | `name`、`unit` | `{code,data:{skuId,aliases[]}}` | 一别名多 SKU：拒绝，要求消歧 |
+
+#### 8.3.1 情报日报与数据源工具（`opc_intel_*`，v2.13 契约）
+
+| 工具名 | 用途 | 必填参数 | 返回结构 | 失败语义 |
+| :--- | :--- | :--- | :--- | :--- |
+| `opc_intel_source_manage` | 数据源注册/更新/停用 | `name`、`sourceType` | `{code,data:{sourceId,status}}` | 缺 `authRef` 却要求认证：拒绝；版权 `restricted` 不启用采集 |
+| `opc_intel_project_scope_manage` | 项目情报空间配置 | `projectId`、`name`、`timezone`、`briefTime` | `{code,data:{projectId,configVersion}}` | 同一项目重复建空间：409；`briefTime` 非法：400 |
+| `opc_intel_keyword_manage` | 项目关键词维护 | `projectId`、`keyword`、`matchType` | `{code,data:{topicId,version}}` | 非法正则/布尔式：400；跨项目改关键词：403 |
+| `opc_intel_tag_manage` | 项目标签字典维护 | `projectId`、`name` | `{code,data:{tagId,status}}` | 同项目重名：409；跨项目引用：403 |
+| `opc_intel_collect_manage` | 触发采集/重跑来源 | `projectId`（可选 `sourceId`） | `{code,data:{collectRunId,status,fetched,inserted}}` | 未配置适配器：标 `blocked`，不返回虚构条数 |
+| `opc_intel_analysis_manage` | 触发分析/重跑条目 | `projectId`（可选 `itemId`） | `{code,data:{analyzed,filtered}}` | 无待分析条目返回 0 并标注“本期无新增” |
+| `opc_intel_brief_manage` | 生成/读取项目日报 | `projectId`、`briefDate` | `{code,data:{briefId,version,status,itemCount}}` | 无条目生成空白简报；已推送版本不覆盖 |
+| `opc_intel_pipeline_manage` | 查询/重跑流水线阶段 | `projectId`、`stage` | `{code,data:{stage,status,counters}}` | 前置未完成：`skipped` 并带原因，不伪造成功 |
+| `opc_intel_push_manage` | 推送日报/查询送达 | `briefId` | `{code,data:{sent,pending,status}}` | 外部渠道不可用：降级 inapp 并标“外部渠道未送达” |
+
+上述工具与 `OPC-SRS-106` REQ-INT-011..018 对应；本地规则流水线已在 `src/domains/intel/daily.ts` 落地，外部采集与投递适配器属 Phase 2，未配置时按失败语义降级。
 
 工具族与 `modules.yaml` 的模块一一对应：`finance`→`opc.domains.finance`，`legal`→`opc.domains.legal`，`admin`→`opc.domains.admin`，`strategy`→`opc.domains.strategy`，`project`→`opc.domains.project`，`intel`→`opc.domains.intel`，`crm`→`opc.domains.crm`，`vehicle`→`opc.domains.vehicle`，`inv`→`opc.domains.inventory`，`hub`→`opc.platform` + `opc.workflow` + `opc.scheduler` + `opc.audit`。
 
@@ -907,42 +960,57 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 ### 9.1 接口 × 错误码矩阵
 
-| 接口 | ERR-VIEW-001 | ERR-AUTHZ-001 | ERR-TOKEN-001 | ERR-CONFLICT-001 | ERR-WF-001 | ERR-WF-002 | ERR-WF-003 | ERR-WF-004 | ERR-AUDIT-001 | ERR-TASK-001 | ERR-TASK-002 | ERR-WEB-001 | ERR-EMP-001 | ERR-SYS-001 |
-| :---------------------- | :----------: | :-----------: | :-----------: | :--------------: | :--------: | :--------: | :--------: | :--------: | :-----------: | :----------: | :----------: | :----------: | :---------: |
-| P1 health |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P2 queryView | ✓ | ✓ |  |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P3 issueToken |  |  | ✓ |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P4 consumeToken |  |  | ✓ |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P5 openConflict |  |  |  | ✓ |  |  |  |  |  |  |  |  |  | ✓ |
-| P6 resolveConflict |  |  |  | ✓ |  |  |  |  |  |  |  |  |  | ✓ |
-| P7 registerWorkflow |  |  |  |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |
-| P8 startInstance |  |  |  |  |  |  | ✓ |  |  |  |  |  |  | ✓ |
-| P9 completeNode |  |  |  |  |  |  |  | ✓ |  |  |  |  |  | ✓ |
-| P10 recordVerdict |  |  |  |  | ✓ |  |  |  |  |  |  |  |  | ✓ |
-| P11 listAudits |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
-| P12 exportAudits |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
-| P13 listTasks |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P14 upsertTask |  |  |  |  |  |  |  |  |  | ✓ |  |  |  | ✓ |
-| P15 runTask |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
-| P16 getDailyReport |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P17 getWebManifest |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P18 getDashboard |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P19 listIngestInbox |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
-| P20 ingestText |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P21 confirmIngest |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P22 grantSession |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P23 revokeSession |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P24 getSessionContext |  |  | ✓ |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P25 searchMemory |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P26 proposeMemory |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P27 confirmMemoryProposal |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ |
-| P28 listRadar | | | | | | | | | | | | | | ✓ |
-| P29 listEmployees | | | | | | | | | | | | | | ✓ |
-| P30 getEmployee | | | | | | | | | | | | | ✓ | ✓ |
-| P31 installEmployee | | | | | | | | | | | | | ✓ | ✓ |
-| P32 toggleEmployee | | | | | | | | | | | | | ✓ | ✓ |
-| P33 exportEmployeePackage | | | | | | | | | | | | | ✓ | ✓ |
-| P34 importEmployeePackage | | | | | | | | | | | | | ✓ | ✓ |
+| 接口 | ERR-VIEW-001 | ERR-AUTHZ-001 | ERR-TOKEN-001 | ERR-CONFLICT-001 | ERR-WF-001 | ERR-WF-002 | ERR-WF-003 | ERR-WF-004 | ERR-AUDIT-001 | ERR-TASK-001 | ERR-TASK-002 | ERR-WEB-001 | ERR-EMP-001 | ERR-PRJ-001 | ERR-PRJ-002 | ERR-PRJ-003 | ERR-SYS-001 |
+| :---------------------- | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: |
+| P1 health |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P2 queryView | ✓ | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P3 issueToken |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P4 consumeToken |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P5 openConflict |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P6 resolveConflict |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P7 registerWorkflow |  |  |  |  | ✓ | ✓ |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P8 startInstance |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |  |  |  | ✓ |
+| P9 completeNode |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |  |  | ✓ |
+| P10 recordVerdict |  |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P11 listAudits |  |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |  | ✓ |
+| P12 exportAudits |  |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |  | ✓ |
+| P13 listTasks |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P14 upsertTask |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |  | ✓ |
+| P15 runTask |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  |  | ✓ |
+| P16 getDailyReport |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P17 getWebManifest |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P18 getDashboard |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P19 listIngestInbox |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P20 ingestText |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P21 confirmIngest |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P22 grantSession |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P23 revokeSession |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P24 getSessionContext |  |  | ✓ |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P25 searchMemory |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P26 proposeMemory |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P27 confirmMemoryProposal |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  | ✓ |
+| P28 listRadar |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P29 listEmployees |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| P30 getEmployee |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  | ✓ |
+| P31 installEmployee |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  | ✓ |
+| P32 toggleEmployee |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  | ✓ |
+| P33 exportEmployeePackage |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  | ✓ |
+| P34 importEmployeePackage |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  | ✓ |
+| P35 listProjectMilestones |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P36 createProjectMilestone |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P37 listCodeRepositories |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P38 registerCodeRepository |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ | ✓ |
+| P39 listArtifactRepositories |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P40 registerArtifactRepository |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ | ✓ |
+| P41 listDeployEnvironments |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P42 registerDeployEnvironment |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  | ✓ | ✓ |
+| P43 listReleaseOrders |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P44 createReleaseOrder |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P45 approveReleaseOrder |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ | ✓ |  | ✓ |
+| P46 createTestPlan |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P47 createTestRun |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P48 recordTestResult |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
+| P49 listDefects |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  | ✓ |
 
 ### 9.2 失败语义三原则
 
@@ -992,6 +1060,21 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P32 | REQ-EMP-002 | — | TC-EMP-002 | 有依赖插件未先停用 409 |
 | P33 | REQ-EMP-006 | — | TC-EMP-003 | 包 checksum 一致；默认不含业务数据 |
 | P34 | REQ-EMP-007 | — | TC-EMP-003 | dry-run/confirm；非法包 422；导入默认停用 |
+| P35 | REQ-PRJ-016、022 | UC-015、021 | TC-PRJ-001、007 | 项目不存在 404 `ERR-PRJ-001`；里程碑目标日期不被自动改写 |
+| P36 | REQ-PRJ-016、022 | UC-015、021 | TC-PRJ-001、007 | 必填 `name/targetDate`；创建写审计 |
+| P37 | REQ-PRJ-017 | UC-016 | TC-PRJ-002 | 返回登记列表；不返回凭据明文 |
+| P38 | REQ-PRJ-017 | UC-016 | TC-PRJ-002 | 明文 `authRef` 400 `ERR-PRJ-003`；`env:/secret:/vault:/ssh-agent:` 通过 |
+| P39 | REQ-PRJ-018 | UC-017 | TC-PRJ-003 | 返回制品库列表；保留策略只展示 |
+| P40 | REQ-PRJ-018 | UC-017 | TC-PRJ-003 | 明文凭据拒绝；登记写审计 |
+| P41 | REQ-PRJ-019 | UC-018 | TC-PRJ-004 | 返回环境列表；不返回凭据明文 |
+| P42 | REQ-PRJ-019 | UC-018 | TC-PRJ-004 | 生产 `approvalPolicy=auto` 400；`manual` 通过 |
+| P43 | REQ-PRJ-019 | UC-018 | TC-PRJ-004 | 发布单列表按 id 倒序 |
+| P44 | REQ-PRJ-019 | UC-018 | TC-PRJ-004 | 生产缺 `rollbackVersion` 400；非生产自动策略 `policy:auto` |
+| P45 | REQ-PRJ-019 | UC-018 | TC-PRJ-004 | 非 pending 409 `ERR-PRJ-002`；审批写审计 |
+| P46 | REQ-PRJ-020 | UC-019 | TC-PRJ-005、006 | 进入/退出标准落库；初始 `draft` |
+| P47 | REQ-PRJ-020、021 | UC-019、020 | TC-PRJ-005、006 | `executorType` 枚举 human/agent/ci；初始 `running` |
+| P48 | REQ-PRJ-020、021 | UC-019、020 | TC-PRJ-005、006 | blocked/skipped 不计通过；失败置批次 `failed` |
+| P49 | REQ-PRJ-020、021 | UC-019、020 | TC-PRJ-005、006 | 返回缺陷列表；空列表返回 `[]` |
 
 ### 10.2 G2 契约门禁验收命令
 
@@ -1018,19 +1101,20 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 | 0.1 | 2026-11-05 | 首版：16 个接口 + 34 个工具契约 + Result 口径 | `api.yaml` 0.1.0；`usecases.yaml` |
 | 0.2 | 2026-11-06 | v2.10：新增 P17–P28 Web 接口、`ERR-WEB-001`、10 个 `opc_web_*` 工具 | `api.yaml` 0.2.0；UC-010..014 |
 | 0.3 | 2026-11-06 | v2.11：新增 P29–P34 员工插件/员工包接口、`ERR-EMP-001`、5 个 `opc_employee_*` 工具 | `api.yaml` 0.3.0；员工分册 |
+| 0.4 | 2026-11-14 | v2.12：新增 P35–P49 项目研发接口、`ERR-PRJ-001..003` | `api.yaml` 0.4.0；SRS-105 REQ-PRJ-016..022 |
 
 ## 自检清单
 
 - [ ] frontmatter 九字段齐全，`doc_id` 为 `OPC-IRS-001` 且与 SRS 不重号，`updated` 为 2026-11-06。
 - [ ] 首段写明"解决什么问题/谁何时用"，`## 目录` 覆盖 9 章且锚点可跳转。
-- [ ] 34 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
+- [ ] 62 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
 - [ ] 每个接口六项齐全：用途、调用方、入参、出参、错误码、幂等与重试 + 审计。
 - [ ] Result 口径写死为"成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`"，并有成功/失败两个可复制示例。
-- [ ] 14 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应，未引入第 15 个码。
+- [ ] 19 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应，未引入第 20 个码。
 - [ ] 工具契约表含工具名、用途、必填参数、返回结构、失败语义五列，覆盖 `hub` + 十一族共 31 个实现工具（含员工目录/员工包）。
 - [ ] TI-1..TI-8 八条"工具即接口"约定齐备，且明确与 Java/TS 实现语言无关。
 - [ ] §8.1 矩阵中每个接口的 ✓ 与 §3~§6 各接口错误码表述一致。
-- [ ] §10.1 映射覆盖 UC-001..014 全部十四个用例与 34 个接口。
+- [ ] §10.1 映射覆盖 UC-001..021 全部二十一个用例与 62 个接口。
 - [ ] 全文无未决占位标记，无 `api.yaml` 与设计文档之外的新增数值或字段。
 - [ ] 文末两节齐备，`## 与其他文档的关系` 位于全文最后。
 
@@ -1042,7 +1126,7 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 | 上游 | `spec/opc-xuanji/usecases.yaml`（baselineTag `gate-G2-20261105`） | 接口与用例/测试的映射依据；本文 §9.1 的 UC 与 TC 列直接引用其条目 |
 | 上游 | `OPC-SRS-001-软件需求规格说明.md` | 需求的接口层展开对象；本文每个接口标注对应 REQ，SRS §12 追溯表的"接口"列反向指向本文 |
 | 上游 | `OPC-玄机 · 技术选型与系统架构.md`（v2.11） | 横切约束来源：超时绑定（`AbortSignal.timeout(300_000)`）、缓存与 `evidence_hash` 口径、PgBouncer 不支持跨语句 `SET`、审计链头表、`write_targets` 判定规则 |
-| 上游 | `spec/opc-xuanji/entities.yaml` | 出参字段的存储侧依据（snake_case 列名 → camelCase 接口字段的映射）；54 个实体与接口的 `x-entity` 标注对应 |
+| 上游 | `spec/opc-xuanji/entities.yaml` | 出参字段的存储侧依据（snake_case 列名 → camelCase 接口字段的映射）；76 个实体与接口的 `x-entity` 标注对应 |
 | 上游 | `spec/opc-xuanji/modules.yaml` | 工具族到模块的归属依据；§7.3 末尾给出九个域族与 `opc.*` 包的对应 |
 | 下游 | `OPC-SDD-001-系统设计说明.md` | 按本文契约做分层与实现设计；接口实现不得超出本文登记的错误码与字段 |
 | 下游 | `OPC-STD-001-测试设计说明.md`、`OPC-STP-001-测试计划.md` | 按本文 §9.1 的契约断言生成契约测试；`TC-*` 与接口一一对应 |

@@ -7,7 +7,7 @@ stage: D2
 owner: 集成验证组
 upstream: ["OPC-SRS-001 软件需求规格说明", "OPC-IRS-001 接口需求规格说明", "OPC-STP-001 测试计划", "OPC-STD-001 测试设计说明", "spec/opc-xuanji/usecases.yaml"]
 gate: G2
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # OPC-玄机 · 一人公司中枢 需求追踪矩阵（OPC-RTM-001）
@@ -54,13 +54,13 @@ updated: 2026-11-06
 | 对象 | 数量 | 来源 |
 | :--- | :--- | :--- |
 | 主文档功能需求 | 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7） | SRS §4 |
-| 员工需求 | 130 条（11 份分册） | `docs/员工需求/` |
+| 员工需求 | 145 条（11 份分册） | `docs/员工需求/` |
 | 非功能需求 | 26 条（NFR-001..022 + NFR-WEB-001..004） | SRS §10 |
-| 用例 | 14 条（UC-001..014） | `usecases.yaml` |
-| HTTP operation | 34 个 | `api.yaml` |
+| 用例 | 21 条（UC-001..021） | `usecases.yaml` |
+| HTTP operation | 62 个 | `api.yaml` |
 | DSH 工具 | 31 个 | `src/plugin/index.ts` |
-| 实体 | 54 个 | `entities.yaml` / `migrations/` |
-| 模块 | 20 条 | `modules.yaml` |
+| 实体 | 76 个 | `entities.yaml` / `migrations/` |
+| 模块 | 21 条 | `modules.yaml` |
 
 ## 2. 总览
 
@@ -75,7 +75,7 @@ updated: 2026-11-06
 | WEB | 6 | UC-010..014 | `src/web/*.ts`、`src/api/http.ts` | `test/integration/web.test.ts`、`unit/web.test.ts` | 已实现（宿主适配 Phase 2） |
 | EMP | 7 | — | `src/employees/*.ts` | `test/integration/employees.test.ts`、`unit/employees.test.ts` | 已实现（签名 Phase 2） |
 | NFR | 26 | — | 跨模块 | 跨测试 + 人工审计 | 已实现/部分 Phase 2 |
-| 员工分册 | 130 | 见各分册 | manifest 已实现，业务域 Phase 2 | `unit/employees.test.ts` | manifest 已实现；业务 Phase 2 |
+| 员工分册 | 145 | 见各分册 | manifest 已实现，业务域 Phase 2 | `unit/employees.test.ts` | manifest 已实现；业务 Phase 2 |
 
 ## 3. 平台功能需求矩阵
 
@@ -113,6 +113,13 @@ updated: 2026-11-06
 | REQ-WEB-004 | 驾驶舱只读聚合 | UC-012 | TC-WEB-003 | getDashboard | `web/dashboard.ts` | `web.test.ts` |
 | REQ-WEB-005 | 插件雷达与关键词雷达 | UC-013 | TC-WEB-004 | listRadar / runTask | `web/plugin-score.ts`、`scheduler/tasks/index.ts` | `web.test.ts`、`unit/web.test.ts` |
 | REQ-WEB-006 | 表现层权限、审计与隐私 | UC-011/012 | TC-WEB-002/003 | 全部 web 接口 | `web/services.ts`、`api/http.ts` | `web.test.ts` |
+| REQ-PRJ-016 | 软件项目档案与项目起点 | UC-015 | TC-PRJ-001 | createProjectMilestone / listProjectMilestones | `domains/project/software.ts` | `project-software.test.ts` |
+| REQ-PRJ-017 | 版本库管理（Git/SVN） | UC-016 | TC-PRJ-002 | registerCodeRepository / listCodeRepositories | `domains/project/software.ts` | `project-software.test.ts` |
+| REQ-PRJ-018 | 制品仓库管理（Maven/Docker） | UC-017 | TC-PRJ-003 | registerArtifactRepository / listArtifactRepositories | `domains/project/software.ts` | `project-software.test.ts` |
+| REQ-PRJ-019 | 部署环境与 SSH 发布 | UC-018 | TC-PRJ-004 | registerDeployEnvironment / createReleaseOrder / approveReleaseOrder | `domains/project/software.ts` | `project-software.test.ts` |
+| REQ-PRJ-020 | 测试统一管理 | UC-019 | TC-PRJ-005 | createTestPlan / createTestRun / recordTestResult | `domains/project/software.ts` | `project-software.test.ts` |
+| REQ-PRJ-021 | 专门测试 Agent 协同 | UC-020 | TC-PRJ-006 | createTestRun / recordTestResult / listDefects | `domains/project/software.ts` | `project-software.test.ts` |
+| REQ-PRJ-022 | 时间管理、日历与关键节点 | UC-021 | TC-PRJ-007 | createProjectMilestone / listProjectMilestones | `domains/project/software.ts` | `project-software.test.ts` |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list | `employees/catalog.ts` | `employees.test.ts`、`unit/employees.test.ts` |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle | `employees/index.ts` | `employees.test.ts` |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 | `employees/catalog.ts`、`plugin/index.ts` | `employees.test.ts` |
@@ -131,14 +138,14 @@ updated: 2026-11-06
 | OPC-SRS-102 | 法务官 | LEG | `opc_legal` | 12 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
 | OPC-SRS-103 | 行政总管 | ADM | `opc_admin` | 12 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
 | OPC-SRS-104 | 战略参谋 | STR | `opc_strategy` | 10 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
-| OPC-SRS-105 | 项目监理 | PRJ | `opc_project` | 15 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
-| OPC-SRS-106 | 情报官 | INT | `opc_intel` | 10 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
+| OPC-SRS-105 | 项目监理 | PRJ | `opc_project` | 22 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
+| OPC-SRS-106 | 情报官 | INT | `opc_intel` | 18 | `employees/catalog.ts`、`domains/intel/daily.ts` | 规则流水线已实现；外部采集/推送/重试 Phase 2 | `unit/employees.test.ts`、`unit/intel.test.ts` |
 | OPC-SRS-107 | 客户管家 | CRM | `opc_crm` | 12 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
 | OPC-SRS-108 | 车务官 | VEH | `opc_vehicle` | 12 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
 | OPC-SRS-109 | 货栈总管 | INV | `opc_inv` | 12 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
 | OPC-SRS-110 | WBS 员工 | WBS | `opc_wbs` | 10 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
 | OPC-SRS-111 | 外宣员工 | PUB | `opc_publicity` | 10 | `employees/catalog.ts` | Phase 2 | `unit/employees.test.ts` |
-| **合计** | — | — | — | **130** | 已实现 | 待 Phase 2 | manifest 校验已覆盖 |
+| **合计** | — | — | — | **145** | 已实现 | 待 Phase 2 | manifest 校验已覆盖 |
 
 > 说明：REQ 数为各分册文档中 `REQ-*` 条目统计，具体编号以各分册为准；业务实现未落地前，测试只覆盖 manifest、依赖、导入导出与隔离约束，不宣称业务功能通过。
 
@@ -191,6 +198,13 @@ updated: 2026-11-06
 | UC-012 | 驾驶舱快照聚合 | REQ-WEB-004 | TC-WEB-003 | `test/integration/web.test.ts` |
 | UC-013 | 插件雷达与关键词雷达 | REQ-WEB-005 | TC-WEB-004 | `test/integration/web.test.ts` |
 | UC-014 | 插件栏入口与右栏清单 | REQ-WEB-001 | TC-WEB-005 | `test/integration/web.test.ts` |
+| UC-015 | 软件项目起点与里程碑登记 | REQ-PRJ-016 | TC-PRJ-001 | `test/integration/project-software.test.ts` |
+| UC-016 | Git/SVN 版本库登记 | REQ-PRJ-017 | TC-PRJ-002 | `test/integration/project-software.test.ts` |
+| UC-017 | Maven/Docker 制品库登记 | REQ-PRJ-018 | TC-PRJ-003 | `test/integration/project-software.test.ts` |
+| UC-018 | SSH 环境登记与发布审批 | REQ-PRJ-019 | TC-PRJ-004 | `test/integration/project-software.test.ts` |
+| UC-019 | 测试计划与执行记录 | REQ-PRJ-020 | TC-PRJ-005 | `test/integration/project-software.test.ts` |
+| UC-020 | 测试 Agent 回归与报告 | REQ-PRJ-021 | TC-PRJ-006 | `test/integration/project-software.test.ts` |
+| UC-021 | 时间管理与关键节点提醒 | REQ-PRJ-022 | TC-PRJ-007 | `test/integration/project-software.test.ts` |
 
 ## 7. 缺口与处置
 
@@ -198,7 +212,7 @@ updated: 2026-11-06
 | :--- | :--- | :--- | :--- |
 | 真实 LLM Verifier 调用未接 | 流程评判依赖调用方 samples | Phase 2 接 `dsh-llm-verifier`；当前高风险人工复核 | P2 |
 | 三关测试/影子运行未落地 | 自动固化闭环不完整 | Phase 2 接 `dsh-workflow-ptc` | P2 |
-| 11 条员工线业务实现未落地 | 员工功能不可用 | 按法务→项目→情报→货栈→车务分批 | P2 |
+| 员工线业务实现未落地（项目监理研发要素已落 API/DDL） | 其余员工功能不可用 | 按法务→项目→情报→货栈→车务分批 | P2 |
 | DSH Web 宿主未真实验证 | 面板/会话桥可能不兼容 | 三档适配验证 | P2 |
 | 员工包签名/验签未实现 | 导入来源可信度不足 | Phase 2 加签名与可信源 | P2 |
 | 备份恢复未演练 | RPO/RTO 未证实 | 每月一次恢复演练 | 运维 |
@@ -209,13 +223,13 @@ updated: 2026-11-06
 
 ## 8. 自检清单
 
-- [x] frontmatter 九字段齐全，`doc_id` 为 `OPC-RTM-001`，`status` 为评审稿，`updated` 为 2026-11-06。
+- [x] frontmatter 九字段齐全，`doc_id` 为 `OPC-RTM-001`，`status` 为评审稿，`updated` 为 2026-11-14。
 - [x] 追踪链覆盖“需求→用例→接口→实现→测试→证据”。
-- [x] 数量口径（39/130/26/14/34/31/54/20）与 SRS、README、spec、发布说明一致。
+- [x] 数量口径（39/145/26/21/62/31/76/21）与 SRS、README、spec、发布说明一致。
 - [x] 平台 39 条功能需求逐条映射 UC/TC/接口/实现/测试文件。
 - [x] 11 份员工分册按文档、插件 ID、REQ 数、manifest、实现状态、测试映射。
 - [x] 26 条 NFR 逐条给验证方式、证据与状态，区分已实现/已定义/待演练。
-- [x] 14 条 UC 全部映射到测试位置。
+- [x] 21 条 UC 全部映射到测试位置。
 - [x] 缺口表与 SDD 10.1、STR 未覆盖项、RMP 风险一致。
 - [x] 明确未覆盖项标注归属阶段，不把 Phase 2 写成通过。
 

@@ -1,24 +1,24 @@
 ---
 doc_id: OPC-DBDD-001
 title: OPC-玄机 · 一人公司中枢 数据库设计说明
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D2
 owner: OPC-玄机 架构组
-upstream: ["OPC-PRD-001 一人公司中枢-产品设计 v2.11", "OPC-ARCH-001 技术选型与系统架构 v2.11", "spec/opc-xuanji/entities.yaml", "migrations/0001_init.sql + 0002_token_code.sql + 0003_audit_export_cursor.sql + 0004_web_layer.sql + 0005_employee_lines.sql"]
+upstream: ["OPC-PRD-001 一人公司中枢-产品设计 v2.11", "OPC-ARCH-001 技术选型与系统架构 v2.11", "spec/opc-xuanji/entities.yaml", "migrations/0001_init.sql + 0002_token_code.sql + 0003_audit_export_cursor.sql + 0004_web_layer.sql + 0005_employee_lines.sql + 0006_project_software.sql + 0007_intel_daily.sql"]
 gate: G2
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # OPC-玄机 · 一人公司中枢 数据库设计说明（OPC-DBDD-001）
 
-本文档解决“共享数据层究竟建成什么样、为什么这样建、改动时哪条线不能碰”的问题：把 `biz/ref/audit/stat/vec` 五个语义 schema 的职责边界、54 张表的列与约束、关键索引（审计复合主键、向量 HNSW、令牌唯一、幂等唯一）、迁移链与不可变约束、备份与 30 年审计归档一次讲清。DBA 在预装扩展、建库与迁移时用第 5 章；后端在改表、加索引、写迁移前用第 3、4、7 章；审计与合规在取证、归档、保留期判定时用第 6 章。文中所有数字取自 `migrations/` 下的真实 DDL 与本地/私有部署的 `opc_test` 库基线实测（37 表 / 272 列 / 58 索引 / 75 个约束对象）+ v2.10 Web 层 8 表 + v2.11 员工线 9 表，不取自设想。
+本文档解决“共享数据层究竟建成什么样、为什么这样建、改动时哪条线不能碰”的问题：把 `biz/ref/audit/stat/vec` 五个语义 schema 的职责边界、76 张表的列与约束、关键索引（审计复合主键、向量 HNSW、令牌唯一、幂等唯一）、迁移链与不可变约束、备份与 30 年审计归档一次讲清。DBA 在预装扩展、建库与迁移时用第 5 章；后端在改表、加索引、写迁移前用第 3、4、7 章；审计与合规在取证、归档、保留期判定时用第 6 章。文中所有数字取自 `migrations/` 下的真实 DDL 与本地/私有部署的 `opc_test` 库基线实测（37 表 / 272 列 / 58 索引 / 75 个约束对象）+ v2.10 Web 层 8 表 + v2.11 员工线 9 表 + v2.12 项目研发 12 表 + v2.13 情报日报 10 表，不取自设想。
 
 ## 目录
 
 - [1. 文档定位与数据口径](#1-文档定位与数据口径)
 - [2. schema 分层与边界](#2-schema-分层与边界)
-- [3. 表结构（54 张）](#3-表结构54-张)
+- [3. 表结构（76 张）](#3-表结构76-张)
 - [4. 关键索引设计](#4-关键索引设计)
 - [5. 扩展、迁移链与不可变约束](#5-扩展迁移链与不可变约束)
 - [6. 备份、审计归档与保留期](#6-备份审计归档与保留期)
@@ -42,11 +42,11 @@ updated: 2026-11-06
 
 ### 1.2 数据字典口径
 
-口径由 `migrations/0001_init.sql` 头部约定统一规定，全库无例外（37 张基线 + 8 张 Web 表 + 9 张员工线表全部符合）。
+口径由 `migrations/0001_init.sql` 头部约定统一规定，全库无例外（37 张基线 + 8 张 Web 表 + 9 张员工线表 + 12 张项目研发表全部符合）。
 
 | 口径 | 规则 | 库内例证 |
 | :--- | :--- | :--- |
-| 主键 | `bigint GENERATED ALWAYS AS IDENTITY`，54 张表全部如此；复合主键仅审计表 | `biz.ledger.id`、`audit.audit_log (id, created_at)` |
+| 主键 | `bigint GENERATED ALWAYS AS IDENTITY`，76 张表全部如此；复合主键仅审计表 | `biz.ledger.id`、`audit.audit_log (id, created_at)` |
 | 对外标识 | 不用自增主键对外暴露；用 uuid 或 16 字节随机 hex | `audit.workflow_instance.instance_uuid`（`DEFAULT gen_random_uuid()`）、`ref.token.token_code`（应用侧 `randomBytes(16).toString("hex")`） |
 | 金额 | `numeric(18,2)`；单价单独放宽到 4 位小数；里程 2 位；评分 2 位；置信度 2 位 | `biz.ledger.amount`、`biz.stock_txn.unit_price numeric(18,4)`、`biz.vehicle_log.km numeric(10,2)`、`audit.verifier_verdict.confidence numeric(3,2)` |
 | 时间 | 时间点一律 `timestamptz`；只有“日历日”语义用 `date` | `created_at/started_at/expires_at` 为 timestamptz；`entry_date/trip_date/due/deadline/report_date/decided_on/quoted_on/published_at` 为 date |
@@ -63,10 +63,10 @@ updated: 2026-11-06
 cd /path/to/opc-xuanji
 set -a; . ./.env; set +a      # 把 .env 载入当前 shell；下文 psql 用 $OPC_PG_DSN 与 $OPC_TEST_DSN
 
-# 1) 迁移链是否已全部应用（应输出 0001/0002/0003/0004/0005 五条）
+# 1) 迁移链是否已全部应用（应输出 0001–0007 七条）
 node scripts/migrate.ts --test
 
-# 2) 表数（应输出 biz 21 / ref 6 / audit 6 / stat 11 / vec 1，合计 45）
+# 2) 表数（应输出 biz 44 / ref 11 / audit 6 / stat 14 / vec 1，合计 76）
 psql "$OPC_PG_DSN" -c \
   "select table_schema, count(*) from information_schema.tables
    where table_schema in ('biz','ref','audit','stat','vec') group by 1 order by 1;"
@@ -85,10 +85,10 @@ psql "$OPC_PG_DSN" -c \
 
 | schema | 放什么 | 禁止放什么 | 实测表数 | 代表表 |
 | :--- | :--- | :--- | :--- | :--- |
-| `biz` | 有生命周期的业务实体（台账、合同、客户、项目、库存、车务、WBS、外宣） | 码表、统计宽表、审计流水 | 28 | `biz.ledger`、`biz.contract`、`biz.conflict_queue` |
+| `biz` | 有生命周期的业务实体（台账、合同、客户、项目、库存、车务、WBS、外宣、情报） | 码表、统计宽表、审计流水 | 44 | `biz.ledger`、`biz.contract`、`biz.conflict_queue` |
 | `ref` | 码表与注册表（授权、令牌、员工插件、风险规则、流程版本、会话授权、员工包） | 高频业务流水 | 8 | `ref.view_grant`、`ref.workflow_registry` |
 | `audit` | 只追加的审计与流程实例痕迹 | 任何需要 UPDATE 的业务状态 | 6 | `audit.audit_log`、`audit.workflow_instance` |
-| `stat` | 调度配置、运行记录、通知、晨报、Web 归置/记忆/驾驶舱/雷达（可重算可覆盖） | 被业务表外键引用的主数据 | 11 | `stat.task_schedule`、`stat.daily_report` |
+| `stat` | 调度配置、运行记录、通知、晨报、Web 归置/记忆/驾驶舱/雷达、情报运行记录（可重算可覆盖） | 被业务表外键引用的主数据 | 14 | `stat.task_schedule`、`stat.daily_report` |
 | `vec` | 向量列与知识分块 | 与业务事务强耦合的大字段 | 1 | `vec.embedding vector(1024)` |
 
 边界的两条硬规则：
@@ -99,12 +99,12 @@ psql "$OPC_PG_DSN" -c \
 ```mermaid
 flowchart LR
   subgraph 可写业务数据
-    BIZ["biz 21 表<br/>台账 / 合同 / 客户 / 项目 / 库存 / 车务"]
+    BIZ["biz 44 表<br/>台账 / 合同 / 客户 / 项目 / 库存 / 车务 / 情报"]
     REF["ref 6 表<br/>授权 / 令牌 / 员工 / 风险规则 / 流程版本 / 会话授权"]
   end
   subgraph 只追加与可重算
     AUD["audit 6 表<br/>审计日志 / 链头 / 导出 / 实例 / 节点 / 评判"]
-    STAT["stat 11 表<br/>调度 / 运行 / 通知 / 晨报 + Web 7 表"]
+    STAT["stat 14 表<br/>调度 / 运行 / 通知 / 晨报 + Web 7 + 情报 3"]
   end
   subgraph 可重建
     VEC["vec 1 表<br/>向量 1024 维 + HNSW"]
@@ -132,7 +132,7 @@ flowchart LR
 
 跨 schema 的引用只存 id、不建 FK 的三处代表：`audit.audit_log.workflow_instance_id`（审计在实例删除后仍需可读）、`biz.conflict_queue.frozen_unit_id`（多态冻结单元：ledger/contract/stock_txn/vehicle_log 四选一）、`biz.ledger.project_id`（业务弱引用，避免跨域锁）。
 
-### 2.3 54 张表清单总览
+### 2.3 76 张表清单总览
 
 基线列数合计 272（37 表）；v2.10 Web 层新增 8 表另计。下表是第 3 章的索引页：先看清单定位，再进 3.x 看列级定义。
 
@@ -148,7 +148,7 @@ flowchart LR
 | 8 | `biz.action_item` | 会议行动项 | 5 | 主键 |
 | 9 | `biz.objective` | 目标与关键结果 | 4 | 主键 |
 | 10 | `biz.decision` | 决策与裁决留痕 | 6 | 主键 |
-| 11 | `biz.project` | 项目 | 8 | `progress BETWEEN 0 AND 100` |
+| 11 | `biz.project` | 项目（含研发档案） | 16 | `progress BETWEEN 0 AND 100` |
 | 12 | `biz.customer` | 客户基础信息 | 7 | 主键 |
 | 13 | `biz.customer_sensitive` | 客户敏感字段（私有） | 5 | 唯一 `(customer_id, field)`；FK 级联 |
 | 14 | `biz.commitment` | 客户承诺 | 6 | FK 级联 |
@@ -192,11 +192,33 @@ flowchart LR
 | 52 | `biz.channel_account` | 渠道账号 | 6 | 唯一 `(channel, account_name)` |
 | 53 | `ref.employee_package` | 员工包 | 11 | `package_code` 唯一 |
 | 54 | `ref.employee_import_job` | 员工包导入任务 | 7 | `status` CHECK |
+| 55 | `biz.project_milestone` | 项目里程碑/关键节点 | 10 | `status` CHECK；`(project_id,target_date)` 索引 |
+| 56 | `biz.work_log` | 工时记录 | 8 | `hours` CHECK；`(project_id,work_date)` 索引 |
+| 57 | `ref.code_repository` | Git/SVN 版本库 | 10 | `kind/sync_mode/sync_status` CHECK；唯一 `(project_id,name)` |
+| 58 | `ref.artifact_repository` | Maven/Docker 制品库 | 9 | `kind/status` CHECK；唯一 `(project_id,name)` |
+| 59 | `ref.deploy_environment` | SSH 部署环境 | 12 | `env_type/approval_policy` CHECK；唯一 `(project_id,name)` |
+| 60 | `biz.release_order` | 发布单 | 13 | `status` CHECK；项目/环境索引 |
+| 61 | `biz.test_plan` | 测试计划 | 12 | `status` CHECK；唯一 `(project_id,version)` |
+| 62 | `biz.test_case` | 测试用例 | 13 | `priority/kind/status` CHECK；唯一 `(project_id,case_code)` |
+| 63 | `biz.test_suite` | 测试套件 | 6 | `status` CHECK；唯一 `(project_id,name)` |
+| 64 | `biz.test_run` | 测试执行批次 | 11 | `executor_type/status` CHECK；`(project_id,status)` 索引 |
+| 65 | `biz.test_result` | 测试逐例结果 | 7 | `result` CHECK；唯一 `(run_id,case_id)` |
+| 66 | `biz.defect` | 缺陷 | 11 | `severity/status` CHECK；`(project_id,status,severity)` 索引 |
+| 67 | `biz.intel_project_scope` | 项目情报空间 | 14 | `UNIQUE(project_id)`；`brief_time` 正则 CHECK |
+| 68 | `biz.source` | 采集数据源 | 19 | `source_type/copyright_status/status` CHECK；`index(status,enabled)` |
+| 69 | `biz.source_binding` | 来源-项目绑定 | 6 | `UNIQUE(source_id,project_id)`；`index(project_id,enabled)` |
+| 70 | `biz.watch_topic` | 项目关键词规则 | 11 | `match_type` CHECK；`UNIQUE(project_id,keyword)` |
+| 71 | `biz.intel_tag` | 项目标签字典 | 8 | `status` CHECK；`UNIQUE(project_id,name)` |
+| 72 | `biz.intel_item` | 情报条目 | 23 | `status/info_type/risk_level` CHECK；`UNIQUE(project_id,idempotency_key)` |
+| 73 | `biz.intel_brief` | 情报日报 | 14 | `status/brief_type` CHECK；`UNIQUE(project_id,brief_date,brief_type,version)` |
+| 74 | `stat.intel_collect_run` | 采集运行 | 16 | `status` CHECK；`idempotency_key` 唯一 |
+| 75 | `stat.intel_pipeline_run` | 流水线运行 | 10 | `stage/status` CHECK；`idempotency_key` 唯一 |
+| 76 | `stat.intel_push_log` | 推送记录 | 10 | `status` CHECK；`UNIQUE(brief_id,channel,target)` |
 
-清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，明细见 3.6）：
+清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，明细见 3.6–3.9）：
 
 ```sql
--- 按 schema 统计表与列（基线：biz 21/148、ref 5/39、audit 6/50、stat 4/27、vec 1/8；v2.10：ref +1、stat +7）
+-- 按 schema 统计表与列（v2.13 后：biz 44、ref 11、audit 6、stat 14、vec 1；列数随增量表变化）
 SELECT table_schema AS schema,
        count(DISTINCT table_name) AS tables,
        count(*)                   AS columns
@@ -205,7 +227,7 @@ WHERE table_schema IN ('biz','ref','audit','stat','vec')
 GROUP BY table_schema ORDER BY table_schema;
 ```
 
-## 3. 表结构（54 张）
+## 3. 表结构（76 张）
 
 本章按 schema 分节。每张表给出列级定义（列名 / 类型 / 可空 / 默认 / 说明）与索引约束，字段口径见 1.2。所有表主键均为 `id bigint GENERATED ALWAYS AS IDENTITY`，为避免重复，下文不再逐行标注主键列，只在“索引与约束”里写明主键名。
 
@@ -785,6 +807,48 @@ GROUP BY table_schema ORDER BY table_schema;
 
 **EmployeePlugin 扩展**：`0005` 为 `ref.employee_plugin` 增加 `version`、`manifest`、`installed_at`、`disabled_reason`、`package_code`；旧行默认 `version='0.1.0'`，保持向后兼容。
 
+### 3.8 软件研发项目管理（v2.12 新增 12 张）
+
+> 迁移：`migrations/0006_project_software.sql`；实体：`ProjectMilestone`、`WorkLog`、`CodeRepository`、`ArtifactRepository`、`DeployEnvironment`、`ReleaseOrder`、`TestPlan`、`TestCase`、`TestSuite`、`TestRun`、`TestResult`、`Defect`。同时为 `biz.project` 增加 8 列。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `biz.project_milestone` | `project_id, name, stage, target_date, actual_date, status, owner, dependencies, evidence` | `status` CHECK；`index(project_id,target_date)` | 关键节点/里程碑；目标日期不因实际日期自动改写 |
+| `biz.work_log` | `project_id, task_id, worker, work_date, hours, source, note` | `hours` CHECK `>0 AND <=24`；`index(project_id,work_date)` | 工时事实记录，不折算绩效 |
+| `ref.code_repository` | `project_id, name, kind, url, default_ref, auth_ref, sync_mode, sync_status, last_synced_at` | `kind/sync_mode/sync_status` CHECK；`UNIQUE(project_id,name)` | Git/SVN 地址；`auth_ref` 只存引用，不存明文 |
+| `ref.artifact_repository` | `project_id, name, kind, url, namespace, auth_ref, retention_policy, status` | `kind/status` CHECK；`UNIQUE(project_id,name)` | Maven/Docker 仓库；保留策略仅建议，不自动删除 |
+| `ref.deploy_environment` | `project_id, env_type, name, host, port, ssh_user, auth_ref, jump_host_ref, isolation_level, approval_policy, status` | `env_type/approval_policy/isolation_level` CHECK；`UNIQUE(project_id,name)` | 开发/测试/预发/生产；生产默认 `manual` 审批 |
+| `biz.release_order` | `project_id, environment_id, version, artifact_refs, repo_refs, change_note, rollback_version, requested_by, approved_by, status, executed_at, health_check` | `status` CHECK；`index(project_id,status)`、`index(environment_id,status)` | 发布单；生产发布与回滚需人工审批 |
+| `biz.test_plan` | `project_id, version, scope, test_types, entry_criteria, exit_criteria, environment_id, owner, start_date, end_date, status` | `status` CHECK；`UNIQUE(project_id,version)` | 测试计划；进入/退出标准显式记录 |
+| `biz.test_case` | `project_id, plan_id, case_code, title, preconditions, steps, expected, priority, kind, requirement_ref, version, status` | `priority/kind/status` CHECK；`UNIQUE(project_id,case_code)` | 手工/自动用例；变更保留版本 |
+| `biz.test_suite` | `project_id, name, case_ids, environment_id, status` | `status` CHECK；`UNIQUE(project_id,name)` | 用例集合；`case_ids` 为 jsonb |
+| `biz.test_run` | `project_id, plan_id, suite_id, environment_id, version, executor, executor_type, started_at, ended_at, status` | `executor_type/status` CHECK；`index(project_id,status)` | 执行批次；人类/Agent/CI 均记录 |
+| `biz.test_result` | `run_id, case_id, result, evidence, failure_reason, executed_at` | `result` CHECK；`UNIQUE(run_id,case_id)` | 逐用例结果；未执行不得记为通过 |
+| `biz.defect` | `project_id, severity, title, repro_steps, affected_version, test_case_id, requirement_ref, owner, status, regression_result` | `severity/status` CHECK；`index(project_id,status,severity)` | 缺陷与回归；关闭需验证证据 |
+
+**`biz.project` 扩展**：`0006` 增加 `start_date`、`target_end_date`、`actual_start_date`、`actual_end_date`、`timezone`、`work_calendar`、`tech_stack`、`software_profile`；旧行保持 NULL，读取时按“未登记”处理，不填充默认日期。
+
+**安全口径**：版本库/制品库/SSH 凭据一律只落 `auth_ref`（环境变量或密钥引用），DDL 不设明文列；SSH 主机指纹、命令白名单与发布审批由应用层执行并写审计。
+
+### 3.9 情报日报与数据源管理（v2.13 新增 10 张）
+
+> 迁移：`migrations/0007_intel_daily.sql`；实体：`IntelProjectScope`、`Source`、`SourceBinding`、`WatchTopic`、`IntelTag`、`IntelItem`、`IntelBrief`、`IntelCollectRun`、`IntelPipelineRun`、`IntelPushLog`。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `biz.intel_project_scope` | `project_id, name, timezone, brief_time, lookback_hours, max_items, push_channels, recipients, quiet_hours, template, status, config_version, last_brief_at` | `UNIQUE(project_id)`；`brief_time` 正则 CHECK；`status` CHECK | 每个项目一个情报空间；停用不删历史 |
+| `biz.source` | `name, source_type, url, auth_ref, credibility, copyright_status, license_note, collect_interval_minutes, rate_limit_per_hour, timeout_ms, enabled, status, last_success_at, last_failure_at, consecutive_failures, last_error, checkpoint, created_by` | `source_type/copyright_status/status` CHECK；`index(status,enabled)`、部分索引 `source_due_idx` | 采集源注册与健康；`auth_ref` 只存引用，不落明文 |
+| `biz.source_binding` | `source_id, project_id, enabled, priority, tags` | `UNIQUE(source_id,project_id)`；`index(project_id,enabled)` | 来源可被多个项目显式绑定；未绑定不参与该项目采集 |
+| `biz.watch_topic` | `project_id, keyword, match_type, synonyms, exclude_terms, tags, priority, enabled, version, created_by` | `match_type` CHECK；`UNIQUE(project_id,keyword)`；`index(project_id,enabled)` | 项目独立关键词；版本递增留痕 |
+| `biz.intel_tag` | `project_id, name, category, parent_id, color, description, status` | `UNIQUE(project_id,name)`；`status` CHECK | 项目标签字典；`parent_id` 支持层级 |
+| `biz.intel_item` | `project_id, source_id, external_id, url, title, summary, content_hash, language, author, published_at, collected_at, entities, tags, relevance_score, sentiment, info_type, risk_level, confidence, dedupe_group, status, analysis, idempotency_key` | `UNIQUE(project_id,idempotency_key)`；`status/info_type/risk_level/sentiment` CHECK；`index(project_id,status,relevance_score)` | 原始与分析后条目；`idempotency_key` 防重复入库 |
+| `biz.intel_brief` | `project_id, brief_date, brief_type, title, status, coverage, sections, item_ids, source_count, item_count, generated_at, pushed_at, version` | `UNIQUE(project_id,brief_date,brief_type,version)`；`status/brief_type` CHECK | 简报版本化；已推送版本不覆盖 |
+| `stat.intel_collect_run` | `source_id, project_id, idempotency_key, started_at, ended_at, status, fetched, inserted, duplicates, http_status, latency_ms, error, checkpoint_before, checkpoint_after` | `idempotency_key` 唯一；`status` CHECK；来源/项目时间索引 | 单次采集事实；失败不写 0 冒充无数据 |
+| `stat.intel_pipeline_run` | `project_id, pipeline_date, stage, status, started_at, ended_at, counters, error, idempotency_key` | `stage/status` CHECK；`idempotency_key` 唯一；`index(project_id,pipeline_date,stage)` | 五阶段运行记录；幂等键防重复执行 |
+| `stat.intel_push_log` | `brief_id, project_id, channel, target, status, attempts, sent_at, acked_at, error` | `UNIQUE(brief_id,channel,target)`；`status` CHECK；`index(project_id,status,sent_at)` | 推送送达追踪；外部渠道失败降级站内 |
+
+**安全口径**：数据源凭据只落 `auth_ref`；采集失败标 `blocked/failed`，不伪造条目；简报按版本保留，推送状态以 `intel_push_log` 为准。
+
 ## 4. 关键索引设计
 
 基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）。
@@ -890,7 +954,7 @@ SELECT extname, extversion FROM pg_extension ORDER BY 1;
 
 没有 `vector` 扩展时，`vec.embedding` 建表会直接失败；没有 `pgcrypto` 时，`gen_random_uuid()` 在 PG 13 之后已内置，但保留扩展可兼容更老的运行环境。
 
-### 5.2 迁移链（五条，只增不改）
+### 5.2 迁移链（七条，只增不改）
 
 | 版本文件 | 内容 | 引入的变更 |
 | :--- | :--- | :--- |
@@ -899,6 +963,8 @@ SELECT extname, extversion FROM pg_extension ORDER BY 1;
 | `0003_audit_export_cursor.sql` | `audit.audit_export.last_audit_id` 列 | 审计增量导出游标 |
 | `0004_web_layer.sql` | `stat`/`ref` 新增 8 张 Web 表 + 索引 | 归置、会话授权、记忆、驾驶舱、雷达 |
 | `0005_employee_lines.sql` | `biz` 新增 7 张 WBS/外宣表；`ref` 新增 2 张员工包表；`employee_plugin` 扩展 manifest/生命周期列 | WBS、外宣、员工包导入导出 |
+| `0006_project_software.sql` | `biz` 新增 9 张项目研发表并扩展 `project` 8 列；`ref` 新增 3 张版本库/制品库/环境表 | 软件研发项目管理（SRS-105 REQ-PRJ-016..022） |
+| `0007_intel_daily.sql` | `biz` 新增 7 张情报空间/来源/关键词标签/条目/日报表；`stat` 新增 3 张采集/流水线/推送运行表 | 情报日报与数据源管理（SRS-106 REQ-INT-011..018） |
 
 ```mermaid
 flowchart TB
@@ -1026,12 +1092,12 @@ await pool.end();
 
 | 对账 | 方法 | 当前结论 |
 | :--- | :--- | :--- |
-| spec ↔ DDL | `spec/opc-xuanji/entities.yaml` 的 54 个 `table:` 字段对 `pg_class` 表名 | 54 / 54 命中，无多无少 |
-| DDL ↔ 本文 | 基线 272 列/58 索引/75 约束；v2.10 Web 层 8 表另计 | 基线 2026-11-05 实测；Web 层待测试库复跑 |
-| DDL ↔ 代码 | 代码中出现的表名与列名逐个回查 DDL | 一致；偏差仅 7.2 列出的四项 |
+| spec ↔ DDL | `spec/opc-xuanji/entities.yaml` 的 `table:` 字段对 `pg_class` 表名 | 76 / 76 命中，无多无少 |
+| DDL ↔ 本文 | 基线 272 列/58 索引/75 约束；v2.10 Web 层 8 表、v2.11 员工线 9 表、v2.12 项目研发 12 表、v2.13 情报 10 表另计 | 基线 2026-11-05 实测；增量表待测试库复跑 |
+| DDL ↔ 代码 | 代码中出现的表名与列名逐个回查 DDL | 一致；偏差仅 7.2 列出的五项 |
 
 ```bash
-# spec 里的 54 个表名
+# spec 里的 76 个表名
 grep -oP '(?<=table: ).*' spec/opc-xuanji/entities.yaml | sort | head -40
 # 库里的表名
 psql "$OPC_PG_DSN" -Atc \
@@ -1058,15 +1124,17 @@ psql "$OPC_PG_DSN" -Atc \
 | `audit_log` 分区 | 复合主键已预留，未分区 | 按月分区与 `ATTACH PARTITION` 脚本 |
 | CSV / PDF 归档 | 只实现 JSONL | CSV 导出；关键凭证 PDF（Pandoc + 固定模板） |
 | `biz.lead` / `biz.dd_report` 等域表 | 表已建，业务读写属 Phase 2 域模块 | 情报官与其余 8 个域模块的读写路径 |
+| v2.12 项目研发 12 表 | 表已建；API 路由与读写服务属 Phase 2 | 版本库/制品库登记、SSH 发布执行、测试计划与执行接口 |
+| v2.13 情报 10 表 | 表与本地规则流水线已建；外部采集适配器、IM/邮件推送与 REST 路由属 Phase 2 | RSS/API/MCP 采集、渠道投递、情报驾驶舱页签 |
 
 ## 8. 自检清单
 
 - [x] frontmatter 九字段齐全，`doc_id` 为 `OPC-DBDD-001`、`status` 为评审稿、`updated` 为 2026-11-06。
-- [x] 54 张表逐张给出列级定义，与 `migrations/0001-0005` 逐列一致（基线 272 列 + Web/员工线新增列）。
-- [x] 五个 schema 的职责、禁止项与实测表数（21/5/6/4/1）已写明。
+- [x] 76 张表逐张给出列级定义，与 `migrations/0001-0007` 逐列一致（基线 272 列 + Web/员工线/项目研发/情报新增列）。
+- [x] 五个 schema 的职责、禁止项与当前表数（biz 44 / ref 11 / audit 6 / stat 14 / vec 1）已写明。
 - [x] 关键索引四类（复合主键、HNSW、token_code、幂等键）各有 SQL 原文与选择理由。
 - [x] 扩展版本（vector 0.8.0 / pgcrypto 1.3 / unaccent 1.1）与“由 DBA 预装”的边界已写明。
-- [x] 迁移链五条、checksum 不可变语义与可复制的迁移命令已给出。
+- [x] 迁移链七条、checksum 不可变语义与可复制的迁移命令已给出。
 - [x] 审计归档的 JSONL 字段（12 个）、SHA-256、`prev_export_hash` 链、链头与游标已写明。
 - [x] 30 年保留、分区触发条件与分区键前置设计（复合主键）已写明。
 - [x] 数据字典口径（金额、时间、JSON、枚举、对外标识）逐条有库内例证。
@@ -1078,7 +1146,7 @@ psql "$OPC_PG_DSN" -Atc \
 | :--- | :--- | :--- |
 | `OPC-玄机 · 一人公司中枢-产品设计.md`（v2.10） | 上游：定义业务实体与保留期要求 | 表名/列名以本文与 DDL 为准，偏差见 7.2 |
 | `OPC-玄机 · 技术选型与系统架构.md`（v2.10） | 上游：定义 PG16+/pgvector、HNSW 参数、分区与备份基线 | 本文落到具体 DDL；实测运行版本为 PostgreSQL 17.11 |
-| `spec/opc-xuanji/entities.yaml` | 同层：实体与表名映射（45 条） | 45/45 命中；可空性偏差见 7.2 第 1 条 |
+| `spec/opc-xuanji/entities.yaml` | 同层：实体与表名映射（76 条） | 76/76 命中；可空性偏差见 7.2 第 1 条 |
 | [OPC-SDD-001 系统设计说明](OPC-SDD-001-系统设计说明.md) | 下游：本文件是其第 3 层“共享数据层”的结构细化 | 表结构与索引以本文为准 |
 | [migrations/0001_init.sql](../migrations/0001_init.sql) | 结构真值 | 两者不一致时先修迁移再改本文 |
 | [docs/uml/opc-er.mmd](uml/opc-er.mmd) | 图形视图：核心 12 张表 ER | 图覆盖核心链路，全量看本文第 3 章 |
