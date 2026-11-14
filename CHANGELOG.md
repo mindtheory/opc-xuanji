@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **项目管理与情报管理 Web 面**：新增 `/api/v1/admin/*` 管理面 27 个 operation 与「项目管理」「情报管理」两个页签；项目侧覆盖里程碑/版本库/制品库/环境/发布/测试计划/用例/套件/批次/缺陷/工时 CRUD 与发布审批；情报侧覆盖情报空间/数据源/绑定/主题/标签 CRUD、条目状态处理、日报详情与五阶段流水线手动触发；驾驶舱新增项目研发与情报指标。
+- `client.js` 新增可复用管理组件（项目选择、KPI、分割视图、通用 CRUD 表单、状态徽标、详情面板）与 27 条管理面路由的前端接线。
+
 - **软件研发项目管理**：`OPC-SRS-105` 新增 REQ-PRJ-016..022（项目起点与软件研发档案、Git/SVN 版本库、Maven/Docker 制品库、开发/测试/生产 SSH 部署环境、发布单与人工审批、测试计划/用例/批次/结果与缺陷、测试 Agent 协同、里程碑与时间管理）；新增 `src/domains/project/software.ts` 与 15 个 HTTP operation（`/api/v1/projects/*`、`/api/v1/releases/*`、`/api/v1/test-runs*`）；新增 12 张表（`0006_project_software.sql`，实体 54→66）；凭据仅接受 `env:/secret:/vault:/ssh-agent:` 引用，生产强制人工审批；`opc_project` manifest 升至 `0.2.0` 并扩展工具/写目标/流程。
 - `docs/过程资产/PA-OPC-022-软件研发项目管理需求扩展.md`: change record, boundaries, landing status, and verification.
 

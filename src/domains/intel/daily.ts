@@ -263,7 +263,7 @@ export class IntelPipelineService {
     this.pool = pool;
   }
 
-  async scopes(): Promise<IntelScope[]> {
+  async scopes(projectId?: number): Promise<IntelScope[]> {
     const rows = await this.pool.query<{
       project_id: number;
       name: string;
@@ -276,7 +276,10 @@ export class IntelPipelineService {
       template: string | null;
     }>(
       `SELECT project_id, name, timezone, brief_time, lookback_hours, max_items, push_channels, quiet_hours, template
-       FROM biz.intel_project_scope WHERE status = 'active' ORDER BY project_id`,
+       FROM biz.intel_project_scope
+       WHERE status = 'active' AND ($1::bigint IS NULL OR project_id = $1)
+       ORDER BY project_id`,
+      [projectId ?? null],
     );
     return rows.rows.map((row) => ({
       projectId: Number(row.project_id),
@@ -324,8 +327,8 @@ export class IntelPipelineService {
   }
 
   /** 采集阶段：摄取采集器产出；未配置适配器的到期来源标 blocked，不生成条目。 */
-  async collectAll(now: Date, rawItems: RawIntelItem[] = [], options: { force?: boolean } = {}): Promise<CollectResult> {
-    const scopes = await this.scopes();
+  async collectAll(now: Date, rawItems: RawIntelItem[] = [], options: { force?: boolean; projectId?: number } = {}): Promise<CollectResult> {
+    const scopes = await this.scopes(options.projectId);
     const result: CollectResult = { projects: scopes.length, sourcesDue: 0, inserted: 0, duplicates: 0, blocked: 0, skipped: 0 };
     for (const scope of scopes) {
       const date = localDate(now, scope.timezone);
@@ -456,8 +459,8 @@ export class IntelPipelineService {
   }
 
   /** 分析阶段：按项目关键词/标签评分、去重标记；只输出可解释结果。 */
-  async analyze(now: Date, options: { force?: boolean } = {}): Promise<{ projects: number; analyzed: number; filtered: number }> {
-    const scopes = await this.scopes();
+  async analyze(now: Date, options: { force?: boolean; projectId?: number } = {}): Promise<{ projects: number; analyzed: number; filtered: number }> {
+    const scopes = await this.scopes(options.projectId);
     let analyzed = 0;
     let filtered = 0;
     for (const scope of scopes) {
@@ -546,8 +549,8 @@ export class IntelPipelineService {
   }
 
   /** 汇总阶段：只统计本轮窗口内的条目状态，作为简报覆盖度依据。 */
-  async aggregate(now: Date, options: { force?: boolean } = {}): Promise<{ projects: number; items: number }> {
-    const scopes = await this.scopes();
+  async aggregate(now: Date, options: { force?: boolean; projectId?: number } = {}): Promise<{ projects: number; items: number }> {
+    const scopes = await this.scopes(options.projectId);
     let items = 0;
     for (const scope of scopes) {
       const date = localDate(now, scope.timezone);
@@ -570,8 +573,8 @@ export class IntelPipelineService {
   }
 
   /** 简报阶段：按项目本地 brief_time 到点生成；同日已存在则跳过，重跑另起版本。 */
-  async buildBriefs(now: Date, options: { force?: boolean } = {}): Promise<BriefResult[]> {
-    const scopes = await this.scopes();
+  async buildBriefs(now: Date, options: { force?: boolean; projectId?: number } = {}): Promise<BriefResult[]> {
+    const scopes = await this.scopes(options.projectId);
     const output: BriefResult[] = [];
     for (const scope of scopes) {
       const date = localDate(now, scope.timezone);
@@ -698,8 +701,8 @@ export class IntelPipelineService {
   }
 
   /** 推送阶段：外部渠道无适配器时落 inapp 并标明未送达，不静默失败。 */
-  async push(now: Date, options: { force?: boolean } = {}): Promise<{ projects: number; briefs: number; sent: number; pending: number }> {
-    const scopes = await this.scopes();
+  async push(now: Date, options: { force?: boolean; projectId?: number } = {}): Promise<{ projects: number; briefs: number; sent: number; pending: number }> {
+    const scopes = await this.scopes(options.projectId);
     let briefs = 0;
     let sent = 0;
     let pending = 0;

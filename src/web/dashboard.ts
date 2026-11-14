@@ -109,6 +109,47 @@ export class DashboardService {
       const publication = await client.query<{ n: number }>(
         "SELECT count(*)::int AS n FROM biz.publication WHERE status IN ('pending','approved','scheduled')",
       );
+      const projectPulse = await client.query<{
+        milestones_overdue: number;
+        milestones_due_7d: number;
+        releases_pending: number;
+        defects_open: number;
+        test_failures: number;
+        test_results: number;
+        test_passed: number;
+        repos_failed: number;
+      }>(
+        `SELECT
+           (SELECT count(*)::int FROM biz.project_milestone
+             WHERE target_date < current_date AND status NOT IN ('achieved','cancelled')) AS milestones_overdue,
+           (SELECT count(*)::int FROM biz.project_milestone
+             WHERE target_date BETWEEN current_date AND current_date + 7
+               AND status NOT IN ('achieved','cancelled')) AS milestones_due_7d,
+           (SELECT count(*)::int FROM biz.release_order WHERE status = 'pending') AS releases_pending,
+           (SELECT count(*)::int FROM biz.defect WHERE status IN ('open','in_progress','reopened')) AS defects_open,
+           (SELECT count(*)::int FROM biz.test_run WHERE status IN ('failed','blocked')) AS test_failures,
+           (SELECT count(*)::int FROM biz.test_result) AS test_results,
+           (SELECT count(*)::int FROM biz.test_result WHERE result = 'passed') AS test_passed,
+           (SELECT count(*)::int FROM ref.code_repository WHERE sync_status = 'failed') AS repos_failed`,
+      );
+      const intelPulse = await client.query<{
+        scopes_active: number;
+        sources_active: number;
+        sources_blocked: number;
+        items_new: number;
+        briefs_7d: number;
+        pipeline_failures: number;
+      }>(
+        `SELECT
+           (SELECT count(*)::int FROM biz.intel_project_scope WHERE status = 'active') AS scopes_active,
+           (SELECT count(*)::int FROM biz.source WHERE status = 'active') AS sources_active,
+           (SELECT count(*)::int FROM biz.source WHERE status = 'blocked') AS sources_blocked,
+           (SELECT count(*)::int FROM biz.intel_item WHERE collected_at >= now() - ($1::int * interval '1 day')) AS items_new,
+           (SELECT count(*)::int FROM biz.intel_brief WHERE brief_date >= current_date - 7) AS briefs_7d,
+           (SELECT count(*)::int FROM stat.intel_pipeline_run
+             WHERE status = 'failed' AND started_at > now() - interval '24 hours') AS pipeline_failures`,
+        [days],
+      );
 
       await client.query("COMMIT");
 
@@ -117,6 +158,25 @@ export class DashboardService {
       const projectRow = projects.rows[0] ?? { blocked: 0, running: 0 };
       const workflowRow = workflow.rows[0] ?? { running: 0, blocked: 0 };
       const conflictRow = conflicts.rows[0] ?? { n: 0, frozen_amount: "0" };
+      const projectPulseRow = projectPulse.rows[0] ?? {
+        milestones_overdue: 0,
+        milestones_due_7d: 0,
+        releases_pending: 0,
+        defects_open: 0,
+        test_failures: 0,
+        test_results: 0,
+        test_passed: 0,
+        repos_failed: 0,
+      };
+      const intelPulseRow = intelPulse.rows[0] ?? {
+        scopes_active: 0,
+        sources_active: 0,
+        sources_blocked: 0,
+        items_new: 0,
+        briefs_7d: 0,
+        pipeline_failures: 0,
+      };
+      const testPassRate = projectPulseRow.test_results === 0 ? 0 : Math.round((projectPulseRow.test_passed / projectPulseRow.test_results) * 1000) / 10;
 
       frozen = { count: conflictRow.n, amount: Number(ledgerRow.frozen_amount) };
       metrics = [
@@ -136,9 +196,25 @@ export class DashboardService {
         metric("radar_new", "雷达新条目", radar.rows[0]?.n ?? 0, "count", "web", "stat.radar_item"),
         metric("wbs_overdue", "WBS 逾期工作包", wbs.rows[0]?.n ?? 0, "count", "wbs", "biz.wbs_node"),
         metric("publication_pending", "外宣待发/待审", publication.rows[0]?.n ?? 0, "count", "publicity", "biz.publication"),
+        metric("project_milestones_overdue", "逾期里程碑", projectPulseRow.milestones_overdue, "count", "project", "biz.project_milestone"),
+        metric("project_milestones_due_7d", "7 天内里程碑", projectPulseRow.milestones_due_7d, "count", "project", "biz.project_milestone"),
+        metric("project_releases_pending", "待批发布单", projectPulseRow.releases_pending, "count", "project", "biz.release_order"),
+        metric("project_defects_open", "未关闭缺陷", projectPulseRow.defects_open, "count", "project", "biz.defect"),
+        metric("project_test_failures", "失败/阻塞测试批次", projectPulseRow.test_failures, "count", "project", "biz.test_run"),
+        metric("project_test_pass_rate", "测试通过率", testPassRate, "%", "project", "biz.test_result"),
+        metric("project_repos_failed", "版本库同步异常", projectPulseRow.repos_failed, "count", "project", "ref.code_repository"),
+        metric("intel_scopes_active", "情报空间", intelPulseRow.scopes_active, "count", "intel", "biz.intel_project_scope"),
+        metric("intel_sources_active", "活跃情报源", intelPulseRow.sources_active, "count", "intel", "biz.source"),
+        metric("intel_sources_blocked", "异常情报源", intelPulseRow.sources_blocked, "count", "intel", "biz.source"),
+        metric("intel_items_new", "区间新增情报", intelPulseRow.items_new, "count", "intel", "biz.intel_item"),
+        metric("intel_briefs_7d", "7 天日报", intelPulseRow.briefs_7d, "count", "intel", "biz.intel_brief"),
+        metric("intel_pipeline_failures", "24h 流水线失败", intelPulseRow.pipeline_failures, "count", "intel", "stat.intel_pipeline_run"),
       ];
       if (frozen.count > 0) warnings.push(`含 ${frozen.count} 笔待裁决冲突，总额含冻结，暂缓计入`);
       if (Number(ledgerRow.inflow) === 0 && Number(ledgerRow.outflow) === 0) warnings.push("所选区间无台账数据");
+      if (projectPulseRow.test_failures > 0) warnings.push(`有 ${projectPulseRow.test_failures} 个测试批次失败或阻塞`);
+      if (intelPulseRow.sources_blocked > 0) warnings.push(`有 ${intelPulseRow.sources_blocked} 个情报源处于 blocked`);
+      if (intelPulseRow.pipeline_failures > 0) warnings.push(`24h 内有 ${intelPulseRow.pipeline_failures} 次情报流水线失败`);
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       const last = await this.pool.query<{

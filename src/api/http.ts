@@ -27,6 +27,7 @@ import type { EmployeeManifest } from "../employees/catalog.ts";
 import type { SuperAgentService } from "../agents/service.ts";
 import type { HindsightSyncService } from "../memory/sync.ts";
 import type { ProjectSoftwareService } from "../domains/project/software.ts";
+import type { AdminService } from "../domains/admin/service.ts";
 
 export interface WebServices {
   ingest: IngestService;
@@ -49,6 +50,7 @@ export interface ApiContext {
   web: WebServices;
   employees: EmployeePackageService;
   software: ProjectSoftwareService;
+  admin?: AdminService;
   agents?: SuperAgentService;
   memorySync?: HindsightSyncService;
   archiveDir: string;
@@ -105,6 +107,18 @@ function requireId(params: Record<string, string>, key: string): number {
 function requireMemorySync(ctx: ApiContext): HindsightSyncService {
   if (ctx.memorySync === undefined) throw new OpcError(ERR.HINDSIGHT_UNAVAILABLE, "未装配 Hindsight 记忆桥", 503);
   return ctx.memorySync;
+}
+
+function requireAdmin(ctx: ApiContext): AdminService {
+  if (ctx.admin === undefined) throw new OpcError(ERR.SYS, "未装配管理服务", 503);
+  return ctx.admin;
+}
+
+function optionalId(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new OpcError(ERR.INT_INVALID, `${field} 必须是正整数`, 400);
+  return parsed;
 }
 
 function requireAgents(ctx: ApiContext): SuperAgentService {
@@ -816,6 +830,233 @@ export const ROUTES: Route[] = [
       return { status: 200, data: await ctx.software.listDefects(requireId(params, "projectId")) };
     },
   },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listProjects() } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 201, data: await requireAdmin(ctx).createProject(body) };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await requireAdmin(ctx).updateProject(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/summary$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await requireAdmin(ctx).projectSummary(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/releases$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listReleases(requireId(params, "projectId")) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/releases$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await requireAdmin(ctx).createRelease(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/releases\/([^/]+)\/approve$/,
+    keys: ["releaseId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await requireAdmin(ctx).approveRelease(requireId(params, "releaseId"), body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/releases\/([^/]+)\/reject$/,
+    keys: ["releaseId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await requireAdmin(ctx).rejectRelease(requireId(params, "releaseId"), body) };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/api\/v1\/admin\/releases\/([^/]+)$/,
+    keys: ["releaseId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await requireAdmin(ctx).deleteRelease(requireId(params, "releaseId")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/test-runs$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listTestRuns(requireId(params, "projectId")) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/test-runs$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await requireAdmin(ctx).createTestRun(requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/test-runs\/([^/]+)\/results$/,
+    keys: ["runId"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await requireAdmin(ctx).recordTestResult(requireId(params, "runId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/items$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      const projectId = requireId({ projectId: String(query.get("projectId") ?? "") }, "projectId");
+      return {
+        status: 200,
+        data: { items: await requireAdmin(ctx).listIntelItems(projectId, query.get("status"), Number(query.get("limit") ?? 100)) },
+      };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/intel\/items\/([^/]+)$/,
+    keys: ["itemId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await requireAdmin(ctx).updateIntelItem(requireId(params, "itemId"), body) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/briefs$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      const projectId = requireId({ projectId: String(query.get("projectId") ?? "") }, "projectId");
+      return { status: 200, data: { items: await requireAdmin(ctx).listIntelBriefs(projectId) } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/briefs\/([^/]+)$/,
+    keys: ["briefId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await requireAdmin(ctx).getIntelBrief(requireId(params, "briefId")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/runs$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      const projectId = requireId({ projectId: String(query.get("projectId") ?? "") }, "projectId");
+      return { status: 200, data: await requireAdmin(ctx).listIntelRuns(projectId) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/intel\/run\/([^/]+)$/,
+    keys: ["stage"],
+    async handler(ctx, params, body, query) {
+      const projectId = requireId({ projectId: String(body.projectId ?? query.get("projectId") ?? "") }, "projectId");
+      return { status: 200, data: await requireAdmin(ctx).triggerIntel(params.stage, projectId) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/summary$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      const projectId = requireId({ projectId: String(query.get("projectId") ?? "") }, "projectId");
+      return { status: 200, data: await requireAdmin(ctx).intelSummary(projectId) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/([^/]+)$/,
+    keys: ["resource"],
+    async handler(ctx, params, _body, query) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listIntelResource(params.resource, optionalId(query.get("projectId"), "projectId")) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/intel\/([^/]+)$/,
+    keys: ["resource"],
+    async handler(ctx, params, body, query) {
+      const projectId = optionalId(body.projectId ?? query.get("projectId"), "projectId");
+      return { status: 201, data: await requireAdmin(ctx).createIntelResource(params.resource, projectId, body) };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/intel\/([^/]+)\/([^/]+)$/,
+    keys: ["resource", "resourceId"],
+    async handler(ctx, params, body, query) {
+      const projectId = optionalId(body.projectId ?? query.get("projectId"), "projectId");
+      return { status: 200, data: await requireAdmin(ctx).updateIntelResource(params.resource, projectId, requireId(params, "resourceId"), body) };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/api\/v1\/admin\/intel\/([^/]+)\/([^/]+)$/,
+    keys: ["resource", "resourceId"],
+    async handler(ctx, params, _body, query) {
+      return { status: 200, data: await requireAdmin(ctx).removeIntelResource(params.resource, optionalId(query.get("projectId"), "projectId"), requireId(params, "resourceId")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/([^/]+)$/,
+    keys: ["projectId", "resource"],
+    async handler(ctx, params) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listProjectResource(params.resource, requireId(params, "projectId")) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/([^/]+)$/,
+    keys: ["projectId", "resource"],
+    async handler(ctx, params, body) {
+      return { status: 201, data: await requireAdmin(ctx).createProjectResource(params.resource, requireId(params, "projectId"), body) };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/([^/]+)\/([^/]+)$/,
+    keys: ["projectId", "resource", "resourceId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await requireAdmin(ctx).updateProjectResource(params.resource, requireId(params, "projectId"), requireId(params, "resourceId"), body) };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/([^/]+)\/([^/]+)$/,
+    keys: ["projectId", "resource", "resourceId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await requireAdmin(ctx).removeProjectResource(params.resource, requireId(params, "projectId"), requireId(params, "resourceId")) };
+    },
+  },
+
 ];
 
 export function createApiHandler(ctx: ApiContext): (req: IncomingMessage, res: ServerResponse) => void {

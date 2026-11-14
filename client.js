@@ -81,6 +81,8 @@ window.__ModuleLoader__.load({
     function apiGet(path) { return api("GET", path); }
     function apiPost(path, body) { return api("POST", path, body); }
     function apiPut(path, body) { return api("PUT", path, body); }
+    function apiPatch(path, body) { return api("PATCH", path, body); }
+    function apiDelete(path, body) { return api("DELETE", path, body); }
     function qs(params) {
       var parts = [];
       for (var k in params) {
@@ -231,6 +233,33 @@ window.__ModuleLoader__.load({
       ".ocField textarea{font-family:var(--oc-mono);min-height:64px;resize:vertical}",
       ".ocFormRow{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}",
       ".ocFormRow>.ocField{flex:1 1 140px;min-width:120px}",
+      // admin console
+      ".ocSplit{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}",
+      ".ocSplitMain{min-width:0;display:flex;flex-direction:column;gap:8px}",
+      ".ocSplitSide{min-width:0;display:flex;flex-direction:column;gap:8px;position:sticky;top:0;max-height:calc(100vh - 200px);overflow:auto}",
+      ".ocFormStack{display:flex;flex-direction:column;gap:8px}",
+      ".ocFormStack .ocField{flex:none}",
+      ".ocField textarea{min-height:56px}",
+      ".ocBar{height:8px;border-radius:999px;background:var(--oc-surface-2);overflow:hidden;border:1px solid var(--oc-border)}",
+      ".ocBar>i{display:block;height:100%;background:var(--oc-accent);border-radius:999px;transition:width .3s ease}",
+      ".ocMeta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12px}",
+      ".ocMeta b{font-variant-numeric:tabular-nums}",
+      ".ocMetric.ok b{color:var(--oc-ok)}.ocMetric.warn b{color:var(--oc-warn)}.ocMetric.bad b{color:var(--oc-bad)}",
+      ".ocDetail{display:flex;flex-direction:column;gap:8px}",
+      ".ocDetail h4{margin:0;font-size:12px;letter-spacing:.02em;opacity:.7}",
+      ".ocDetailList{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}",
+      ".ocDetailItem{border:1px solid var(--oc-border);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:3px;background:var(--oc-surface)}",
+      ".ocDetailItem a{color:var(--oc-accent);text-decoration:none;word-break:break-all}",
+      ".ocDetailItem a:hover{text-decoration:underline}",
+      ".ocTag{display:inline-flex;align-items:center;border:1px solid var(--oc-border-strong);border-radius:999px;padding:1px 7px;font-size:10.5px;margin:1px 3px 1px 0;opacity:.85}",
+      ".ocJson{max-height:260px;overflow:auto;margin:0;padding:8px;border:1px solid var(--oc-border);border-radius:8px;background:var(--oc-surface);font-family:var(--oc-mono);font-size:11px;white-space:pre-wrap}",
+      ".ocStickyActions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}",
+      ".ocHint{font-size:11px;opacity:.6;line-height:1.45}",
+      ".ocDangerText{color:var(--oc-bad)}",
+      ".ocProgressWrap{display:flex;align-items:center;gap:8px;min-width:180px;max-width:340px;flex:1 1 180px}",
+      ".ocProgressWrap .ocBar{flex:1}",
+      "@media (max-width:1100px){.ocSplit{grid-template-columns:minmax(0,1fr) 300px}}",
+      "@media (max-width:860px){.ocSplit{grid-template-columns:1fr}.ocSplitSide{position:static;max-height:none;overflow:visible}}",
       // motion / responsive
       "@media (prefers-reduced-motion:reduce){.ocRoot *,.ocRoot *::before,.ocRoot *::after{animation:none!important;transition:none!important}}",
       "@media (pointer:coarse){.ocBtn,.ocNavItem,.ocTab,.ocSegItem{min-height:40px}}",
@@ -254,6 +283,8 @@ window.__ModuleLoader__.load({
       sync: [h("path", { key: "a", d: "M20 11a8 8 0 0 0-14-4.5L4 9" }), h("path", { key: "b", d: "M4 4v5h5" }), h("path", { key: "c", d: "M4 13a8 8 0 0 0 14 4.5L20 15" }), h("path", { key: "d", d: "M20 20v-5h-5" })],
       radar: [h("circle", { key: "a", cx: 12, cy: 12, r: 8.5 }), h("circle", { key: "b", cx: 12, cy: 12, r: 4.5 }), h("path", { key: "c", d: "M12 12 17 7" }), h("circle", { key: "d", cx: 12, cy: 12, r: 0.8 })],
       settings: [h("circle", { key: "a", cx: 12, cy: 12, r: 3 }), h("path", { key: "b", d: "M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" })],
+      layers: [h("path", { key: "a", d: "m12 4 8 4-8 4-8-4 8-4Z" }), h("path", { key: "b", d: "m4 12 8 4 8-4" }), h("path", { key: "c", d: "m4 16 8 4 8-4" })],
+      target: [h("circle", { key: "a", cx: 12, cy: 12, r: 8.5 }), h("circle", { key: "b", cx: 12, cy: 12, r: 4.5 }), h("circle", { key: "c", cx: 12, cy: 12, r: 1 })],
       refresh: [h("path", { key: "a", d: "M20 11a8 8 0 1 0-2.3 6.3" }), h("path", { key: "b", d: "M20 4v7h-7" })],
       back: [h("path", { key: "a", d: "M19 12H5" }), h("path", { key: "b", d: "m11 18-6-6 6-6" })],
       x: [h("path", { key: "a", d: "M6 6l12 12" }), h("path", { key: "b", d: "M18 6 6 18" })],
@@ -412,7 +443,7 @@ window.__ModuleLoader__.load({
         dash ? h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } },
           groupOrder.map(function (g) {
             return h("div", { key: g },
-              h("div", { className: "ocH", style: { marginBottom: 6 } }, g),
+              h("div", { className: "ocH", style: { marginBottom: 6 } }, groupLabel(g)),
               h("div", { className: "ocMetrics" }, groups[g].map(function (m) {
                 return h("div", { className: "ocMetric", key: m.id, title: m.source || "" },
                   h("span", null, m.label), h("b", null, fmtNum(m.value) + (m.unit ? " " + m.unit : "")));
@@ -1012,13 +1043,957 @@ window.__ModuleLoader__.load({
           h("div", { className: "ocMuted" }, "本面板是 OPC-玄机 的控制台：所有写操作经中枢视图/令牌/流程/审计统一入口，员工不直连数据库。")));
     }
 
+    // ================= 项目管理 =================
+    var GROUP_LABELS = {
+      finance: "财务", legal: "法务", admin: "行政", strategy: "战略", project: "项目", intel: "情报",
+      crm: "客户", inventory: "货栈", vehicle: "车务", wbs: "WBS", publicity: "外宣",
+      platform: "平台", workflow: "流程", scheduler: "调度", web: "网站",
+    };
+    function groupLabel(id) { return GROUP_LABELS[id] || id; }
+
+    function toneOf(value) {
+      var v = String(value === null || value === undefined ? "" : value).toLowerCase();
+      if (["active", "approved", "achieved", "passed", "sent", "ok", "synced", "resolved", "closed", "ready", "briefed", "acked", "succeeded", "achieved"].indexOf(v) >= 0) return "ok";
+      if (["pending", "running", "planned", "in_progress", "draft", "collected", "analyzed", "partial", "queued", "scheduled", "open", "reopened", "new", "auto_draft"].indexOf(v) >= 0) return "warn";
+      if (["failed", "blocked", "delayed", "rejected", "error", "timeout", "critical", "high"].indexOf(v) >= 0) return "bad";
+      return "mute";
+    }
+
+    function fieldOf(fields, key) {
+      for (var i = 0; i < fields.length; i += 1) if (fields[i].key === key) return fields[i];
+      return { key: key, label: key, type: "text" };
+    }
+
+    function formDraft(fields, row) {
+      var draft = {};
+      for (var i = 0; i < fields.length; i += 1) {
+        var field = fields[i];
+        var value = row ? row[field.key] : undefined;
+        if (value === undefined && field.default !== undefined) value = field.default;
+        if (field.type === "json") {
+          draft[field.key] = value === undefined || value === null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2);
+        } else if (field.type === "bool") {
+          draft[field.key] = value === false || value === "false" ? "false" : "true";
+        } else if (field.type === "date") {
+          draft[field.key] = value === undefined || value === null || value === "" ? "" : value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+        } else {
+          draft[field.key] = value === undefined || value === null ? "" : String(value);
+        }
+      }
+      return draft;
+    }
+
+    function emptyDraft(fields) { return formDraft(fields, null); }
+
+    function payloadFromDraft(fields, draft) {
+      var payload = {};
+      for (var i = 0; i < fields.length; i += 1) {
+        var field = fields[i];
+        var raw = draft[field.key];
+        if (raw === "" || raw === undefined || raw === null) {
+          if (field.required) throw new Error(field.label + " 为必填项");
+          continue;
+        }
+        if (field.type === "json") {
+          try { payload[field.key] = JSON.parse(raw); }
+          catch (e) { throw new Error(field.label + " 不是合法 JSON"); }
+        } else if (field.type === "bool") {
+          payload[field.key] = raw === true || raw === "true";
+        } else if (field.type === "number" || field.type === "int") {
+          var n = Number(raw);
+          if (!isFinite(n)) throw new Error(field.label + " 必须是数字");
+          payload[field.key] = n;
+        } else {
+          payload[field.key] = raw;
+        }
+      }
+      return payload;
+    }
+
+    function fieldNode(field, value, onChange) {
+      if (field.type === "enum") {
+        var options = field.options || (field.enum || []).map(function (x) { return { value: x, label: x }; });
+        if (!field.required) options = [{ value: "", label: "请选择" }].concat(options);
+        return h(Select, { label: field.label, value: value || "", options: options, onChange: onChange });
+      }
+      if (field.type === "bool") {
+        return h(Select, { label: field.label, value: String(value), options: [{ value: "true", label: "启用" }, { value: "false", label: "停用" }], onChange: onChange });
+      }
+      if (field.type === "json") return h(Area, { label: field.label, value: value || "", rows: 4, onChange: onChange });
+      if (field.type === "textarea") return h(Area, { label: field.label, value: value || "", rows: 3, onChange: onChange });
+      if (field.type === "number" || field.type === "int") return h(NumField, { label: field.label, value: value === "" ? "" : Number(value), onChange: onChange });
+      if (field.type === "date") return h(Field, { label: field.label, type: "date", value: value || "", onChange: onChange });
+      return h(Field, { label: field.label, value: value || "", placeholder: field.placeholder || "", onChange: onChange, required: field.required });
+    }
+
+    function cellNode(field, row) {
+      var value = row[field.key];
+      if (value === null || value === undefined || value === "") return h("span", { className: "ocMuted" }, "-");
+      if (field.type === "bool") return h(Badge, { tone: value ? "ok" : "mute" }, value ? "是" : "否");
+      if (field.type === "enum") return h(Badge, { tone: toneOf(value) }, String(value));
+      if (field.type === "date") return h("span", { className: "ocMono" }, String(value).slice(0, 10));
+      if (field.type === "json") return h("span", { className: "ocEllip", title: fmtVal(value) }, short(fmtVal(value), 42));
+      if (field.type === "number" || field.type === "int") return h("span", { className: "ocMono" }, fmtNum(value));
+      if (field.type === "authRef") return h("span", { className: "ocMono" }, String(value));
+      if (field.key === "name" || field.key === "title" || field.key === "keyword" || field.key === "version" || field.key === "caseCode") return h("b", null, short(value, 44));
+      return h("span", { className: "ocEllip", title: String(value) }, short(value, 44));
+    }
+
+    function adminListPath(scope, projectId, resource) {
+      if (scope === "project") return "/admin/projects/" + projectId + "/" + resource;
+      if (resource === "sources") return "/admin/intel/sources";
+      return "/admin/intel/" + resource + (projectId ? qs({ projectId: projectId }) : "");
+    }
+    function adminCreate(scope, projectId, resource, payload) {
+      if (scope === "project") return apiPost("/admin/projects/" + projectId + "/" + resource, payload);
+      return apiPost("/admin/intel/" + resource, resource === "sources" ? payload : Object.assign({ projectId: projectId }, payload));
+    }
+    function adminUpdate(scope, projectId, resource, id, payload) {
+      if (scope === "project") return apiPut("/admin/projects/" + projectId + "/" + resource + "/" + id, payload);
+      return apiPut("/admin/intel/" + resource + "/" + id, resource === "sources" ? payload : Object.assign({ projectId: projectId }, payload));
+    }
+    function adminRemove(scope, projectId, resource, id) {
+      if (scope === "project") return apiDelete("/admin/projects/" + projectId + "/" + resource + "/" + id);
+      return apiDelete("/admin/intel/" + resource + "/" + id + (resource === "sources" || !projectId ? "" : qs({ projectId: projectId })));
+    }
+
+    function KpiGrid(props) {
+      var items = props.items || [];
+      return h("div", { className: "ocMetrics" }, items.map(function (item, index) {
+        return h("div", { className: "ocMetric" + (item.tone ? " " + item.tone : ""), key: item.id || index, title: item.hint || "" },
+          h("span", null, item.label),
+          h("b", null, item.unit === "%" ? fmtNum(item.value) + "%" : fmtNum(item.value) + (item.unit ? " " + item.unit : "")));
+      }));
+    }
+
+    function EntityForm(props) {
+      var draftS = react.useState(formDraft(props.fields, props.initial || {}));
+      var draft = draftS[0], setDraft = draftS[1];
+      var errS = react.useState("");
+      var err = errS[0], setErr = errS[1];
+      react.useEffect(function () {
+        setDraft(formDraft(props.fields, props.initial || {}));
+        setErr("");
+      }, [props.formKey]);
+      function submit() {
+        var payload;
+        try { payload = payloadFromDraft(props.fields, draft); }
+        catch (e) { setErr(String((e && e.message) || e)); return; }
+        setErr("");
+        props.onSubmit(payload);
+      }
+      function update(key, value) {
+        setDraft(function (prev) {
+          var next = Object.assign({}, prev);
+          next[key] = value;
+          return next;
+        });
+      }
+      return h("div", { className: "ocFormStack" },
+        err ? h("div", { className: "ocErr" }, err) : null,
+        props.fields.map(function (field) {
+          return h("div", { key: field.key }, fieldNode(field, draft[field.key], function (value) { update(field.key, value); }));
+        }),
+        h("div", { className: "ocStickyActions" },
+          h(Btn, { kind: "primary", disabled: props.busy, onClick: submit }, props.submitLabel || "保存"),
+          props.onCancel ? h(Btn, { disabled: props.busy, onClick: props.onCancel }, "取消") : null));
+    }
+
+    function DeleteBtn(props) {
+      var confirmS = react.useState(false);
+      var confirm = confirmS[0], setConfirm = confirmS[1];
+      if (!confirm) return h(Btn, { kind: "danger", disabled: props.disabled, onClick: function () { setConfirm(true); } }, props.label || "删除");
+      return h("span", { className: "ocStickyActions" },
+        h(Btn, { kind: "danger", disabled: props.disabled, onClick: function () { setConfirm(false); props.onConfirm(); } }, "确认删除"),
+        h(Btn, { disabled: props.disabled, onClick: function () { setConfirm(false); } }, "取消"));
+    }
+
+    function CrudSection(props) {
+      var scope = props.scope || "project";
+      var ui = props.ui;
+      var listS = useLoad(function () { return apiGet(adminListPath(scope, props.projectId, props.resource)); }, [scope, props.projectId, props.resource]);
+      var rows = (listS[0].data && listS[0].data.items) || [];
+      var modeS = react.useState("idle");
+      var mode = modeS[0], setMode = modeS[1];
+      var editS = react.useState(null);
+      var editing = editS[0], setEditing = editS[1];
+      var draftS = react.useState(emptyDraft(ui.fields));
+      var draft = draftS[0], setDraft = draftS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      var formErrS = react.useState("");
+      var formErr = formErrS[0], setFormErr = formErrS[1];
+      react.useEffect(function () {
+        setMode("idle"); setEditing(null); setDraft(emptyDraft(ui.fields)); setFormErr("");
+      }, [props.projectId, props.resource]);
+      function startCreate() { setMode("create"); setEditing(null); setDraft(emptyDraft(ui.fields)); setFormErr(""); }
+      function startEdit(row) { setMode("edit"); setEditing(row); setDraft(formDraft(ui.fields, row)); setFormErr(""); }
+      function reset() { setMode("idle"); setEditing(null); setDraft(emptyDraft(ui.fields)); setFormErr(""); }
+      function save() {
+        var payload;
+        try { payload = payloadFromDraft(ui.fields, draft); }
+        catch (e) { setFormErr(String((e && e.message) || e)); return; }
+        setBusy(true); setFormErr("");
+        var promise = mode === "edit" && editing
+          ? adminUpdate(scope, props.projectId, props.resource, editing.id, payload)
+          : adminCreate(scope, props.projectId, props.resource, payload);
+        promise.then(function () {
+          props.flash((mode === "edit" ? "已更新 " : "已创建 ") + ui.label, true);
+          reset(); listS[1](); if (props.onChanged) props.onChanged();
+        }).catch(function (e) {
+          setFormErr(String((e && e.message) || e));
+        }).then(function () { setBusy(false); });
+      }
+      function remove(row) {
+        setBusy(true);
+        adminRemove(scope, props.projectId, props.resource, row.id)
+          .then(function () { props.flash("已删除 " + ui.label, true); if (editing && editing.id === row.id) reset(); listS[1](); if (props.onChanged) props.onChanged(); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(false); });
+      }
+      var columns = (ui.table || ui.fields.map(function (f) { return f.key; })).map(function (key) {
+        var field = fieldOf(ui.fields, key);
+        return { key: key, label: field.label, render: function (row) { return field.render ? field.render(row) : cellNode(field, row); } };
+      });
+      columns.push({ key: "__ops", label: "操作", render: function (row) {
+        return h("div", { className: "ocStickyActions" },
+          h(Btn, { disabled: busy, onClick: function () { startEdit(row); } }, "编辑"),
+          h(DeleteBtn, { disabled: busy, onConfirm: function () { remove(row); } }));
+      } });
+      var side = mode === "idle"
+        ? h("div", { className: "ocSection" },
+            h("div", { className: "ocH" }, ui.label + "操作"),
+            h("div", { className: "ocHint" }, ui.hint || "选择左侧记录编辑，或新建一条。"),
+            h("div", { className: "ocStickyActions" }, h(Btn, { kind: "primary", onClick: startCreate }, "新建" + ui.label)))
+        : h("div", { className: "ocSection" },
+            h("div", { className: "ocH" }, (mode === "edit" ? "编辑" : "新建") + ui.label, editing ? h("span", { className: "ocCount" }, "#" + editing.id) : null),
+            formErr ? h("div", { className: "ocErr" }, formErr) : null,
+            h("div", { className: "ocFormStack" }, ui.fields.map(function (field) {
+              return h("div", { key: field.key }, fieldNode(field, draft[field.key], function (value) {
+                setDraft(function (prev) { var next = Object.assign({}, prev); next[field.key] = value; return next; });
+              }));
+            })),
+            h("div", { className: "ocStickyActions" },
+              h(Btn, { kind: "primary", disabled: busy, onClick: save }, "保存"),
+              h(Btn, { disabled: busy, onClick: reset }, "取消"),
+              mode === "edit" ? h(DeleteBtn, { disabled: busy, onConfirm: function () { remove(editing); } }) : null));
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocH" }, ui.label, h("span", { className: "ocCount", style: { marginLeft: "8px" } }, String(rows.length)),
+          h("span", { className: "ocMuted", style: { marginLeft: "auto" } }, ui.hint || "")),
+        h(ErrLine, { error: listS[0].error, onRetry: listS[1] }),
+        h("div", { className: "ocSplit" },
+          h("div", { className: "ocSplitMain" },
+            h(Table, { columns: columns, rows: rows, loading: listS[0].loading, empty: ui.empty || "暂无" + ui.label, emptyHint: ui.emptyHint, emptyIcon: "layers" })),
+          h("div", { className: "ocSplitSide" }, side)));
+    }
+
+    var PROJECT_FORM_FIELDS = [
+      { key: "name", label: "项目名称", type: "text", required: true },
+      { key: "projectType", label: "项目类型", type: "text", placeholder: "software" },
+      { key: "stage", label: "阶段", type: "text", required: true, default: "initiation" },
+      { key: "progress", label: "进度 %", type: "int", min: 0, max: 100, default: 0 },
+      { key: "startDate", label: "计划开始", type: "date" },
+      { key: "targetEndDate", label: "计划结束", type: "date" },
+      { key: "actualStartDate", label: "实际开始", type: "date" },
+      { key: "actualEndDate", label: "实际结束", type: "date" },
+      { key: "timezone", label: "时区", type: "text", default: "Asia/Shanghai" },
+      { key: "costActual", label: "实际成本", type: "number" },
+      { key: "softwareProfile", label: "软件研发档案（JSON）", type: "json" },
+      { key: "techStack", label: "技术栈（JSON）", type: "json" },
+      { key: "workCalendar", label: "工作日历（JSON）", type: "json" },
+      { key: "blockers", label: "阻塞项（JSON）", type: "json" },
+    ];
+
+    function ProjectForm(props) {
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      function submit(payload) {
+        setBusy(true);
+        var promise = props.project ? apiPut("/admin/projects/" + props.project.id, payload) : apiPost("/admin/projects", payload);
+        promise.then(function () {
+          props.flash(props.project ? "项目已更新" : "项目已创建", true);
+          props.onDone();
+        }).catch(function (e) {
+          props.flash(String((e && e.message) || e), false);
+        }).then(function () { setBusy(false); });
+      }
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocH" }, props.project ? "编辑项目" : "新建项目"),
+        h(EntityForm, { fields: PROJECT_FORM_FIELDS, initial: props.project || {}, formKey: props.project ? props.project.id : "new-project", busy: busy, submitLabel: props.project ? "保存" : "创建", onCancel: props.onCancel, onSubmit: submit }));
+    }
+
+    var PROJECT_UI = {
+      milestones: {
+        label: "里程碑", hint: "项目起点、关键节点与目标日期。", table: ["name", "targetDate", "status", "owner"],
+        fields: [
+          { key: "name", label: "名称", type: "text", required: true },
+          { key: "stage", label: "阶段", type: "text" },
+          { key: "targetDate", label: "目标日期", type: "date", required: true },
+          { key: "actualDate", label: "实际日期", type: "date" },
+          { key: "status", label: "状态", type: "enum", enum: ["planned", "in_progress", "achieved", "delayed", "cancelled"], default: "planned" },
+          { key: "owner", label: "负责人", type: "text" },
+          { key: "dependencies", label: "依赖（JSON）", type: "json" },
+          { key: "evidence", label: "证据/说明", type: "textarea" },
+        ],
+      },
+      repositories: {
+        label: "版本库", hint: "只登记元数据；凭据只接受 env:/secret:/vault:/ssh-agent: 引用。", table: ["name", "kind", "url", "syncStatus"],
+        fields: [
+          { key: "name", label: "名称", type: "text", required: true },
+          { key: "kind", label: "类型", type: "enum", enum: ["git", "svn"], required: true, default: "git" },
+          { key: "url", label: "仓库地址", type: "text", required: true, placeholder: "git@host:group/repo.git" },
+          { key: "defaultRef", label: "默认分支", type: "text", default: "main" },
+          { key: "authRef", label: "凭据引用", type: "authRef", placeholder: "env:GIT_TOKEN" },
+          { key: "syncMode", label: "同步方式", type: "enum", enum: ["manual", "schedule", "webhook"], default: "manual" },
+          { key: "syncStatus", label: "同步状态", type: "enum", enum: ["pending", "synced", "failed", "disabled"], default: "pending" },
+        ],
+      },
+      artifacts: {
+        label: "制品库", hint: "Maven/Docker 等制品仓库登记；凭据只存引用。", table: ["name", "kind", "url", "status"],
+        fields: [
+          { key: "name", label: "名称", type: "text", required: true },
+          { key: "kind", label: "类型", type: "enum", enum: ["maven", "docker", "npm", "other"], required: true, default: "docker" },
+          { key: "url", label: "仓库地址", type: "text", required: true },
+          { key: "namespace", label: "命名空间", type: "text" },
+          { key: "authRef", label: "凭据引用", type: "authRef", placeholder: "secret:HARBOR_TOKEN" },
+          { key: "retentionPolicy", label: "保留策略（JSON）", type: "json" },
+          { key: "status", label: "状态", type: "enum", enum: ["active", "disabled"], default: "active" },
+        ],
+      },
+      environments: {
+        label: "部署环境", hint: "SSH 环境登记；生产环境必须使用 manual 审批。", table: ["envType", "name", "host", "status"],
+        fields: [
+          { key: "envType", label: "环境类型", type: "enum", enum: ["dev", "test", "staging", "prod"], required: true, default: "dev" },
+          { key: "name", label: "名称", type: "text", required: true },
+          { key: "host", label: "主机", type: "text", required: true },
+          { key: "port", label: "端口", type: "int", min: 1, max: 65535, default: 22 },
+          { key: "sshUser", label: "SSH 用户", type: "text", required: true },
+          { key: "authRef", label: "凭据引用", type: "authRef", placeholder: "ssh-agent:deploy" },
+          { key: "jumpHostRef", label: "跳板机引用", type: "text" },
+          { key: "isolationLevel", label: "隔离级别", type: "enum", enum: ["shared", "dedicated"], default: "shared" },
+          { key: "approvalPolicy", label: "审批策略", type: "enum", enum: ["auto", "manual"], default: "manual" },
+          { key: "status", label: "状态", type: "enum", enum: ["active", "disabled"], default: "active" },
+        ],
+      },
+      "test-plans": {
+        label: "测试计划", hint: "进入/退出标准显式登记。", table: ["version", "status", "owner", "startDate"],
+        fields: [
+          { key: "version", label: "版本", type: "text", required: true },
+          { key: "scope", label: "范围", type: "textarea" },
+          { key: "testTypes", label: "测试类型（JSON）", type: "json" },
+          { key: "entryCriteria", label: "进入标准", type: "textarea" },
+          { key: "exitCriteria", label: "退出标准", type: "textarea" },
+          { key: "environmentId", label: "环境 ID", type: "int" },
+          { key: "owner", label: "负责人", type: "text" },
+          { key: "startDate", label: "开始日期", type: "date" },
+          { key: "endDate", label: "结束日期", type: "date" },
+          { key: "status", label: "状态", type: "enum", enum: ["draft", "active", "closed", "cancelled"], default: "draft" },
+        ],
+      },
+      "test-cases": {
+        label: "测试用例", hint: "用例编号、步骤与优先级；未执行/阻塞不得计为通过。", table: ["caseCode", "title", "priority", "status"],
+        fields: [
+          { key: "caseCode", label: "用例编号", type: "text", required: true, placeholder: "TC-LOGIN-001" },
+          { key: "title", label: "标题", type: "text", required: true },
+          { key: "preconditions", label: "前置条件", type: "textarea" },
+          { key: "steps", label: "步骤（JSON）", type: "json" },
+          { key: "expected", label: "预期结果", type: "textarea" },
+          { key: "priority", label: "优先级", type: "enum", enum: ["P0", "P1", "P2", "P3"], default: "P2" },
+          { key: "kind", label: "类型", type: "enum", enum: ["manual", "auto"], default: "manual" },
+          { key: "requirementRef", label: "需求引用", type: "text" },
+          { key: "version", label: "版本", type: "text", default: "1" },
+          { key: "status", label: "状态", type: "enum", enum: ["draft", "approved", "deprecated"], default: "draft" },
+        ],
+      },
+      "test-suites": {
+        label: "测试套件", hint: "把用例组织为可执行套件。", table: ["name", "status", "environmentId"],
+        fields: [
+          { key: "name", label: "套件名称", type: "text", required: true },
+          { key: "caseIds", label: "用例 ID（JSON 数组）", type: "json" },
+          { key: "environmentId", label: "环境 ID", type: "int" },
+          { key: "status", label: "状态", type: "enum", enum: ["active", "disabled"], default: "active" },
+        ],
+      },
+      defects: {
+        label: "缺陷", hint: "S1–S4 分级；解决后记录回归结果。", table: ["severity", "title", "status", "owner"],
+        fields: [
+          { key: "severity", label: "严重级别", type: "enum", enum: ["S1", "S2", "S3", "S4"], required: true, default: "S3" },
+          { key: "title", label: "标题", type: "text", required: true },
+          { key: "reproSteps", label: "复现步骤", type: "textarea" },
+          { key: "affectedVersion", label: "影响版本", type: "text" },
+          { key: "testCaseId", label: "关联用例 ID", type: "int" },
+          { key: "requirementRef", label: "需求引用", type: "text" },
+          { key: "owner", label: "负责人", type: "text" },
+          { key: "status", label: "状态", type: "enum", enum: ["open", "in_progress", "resolved", "closed", "reopened"], default: "open" },
+          { key: "regressionResult", label: "回归结果", type: "text" },
+        ],
+      },
+      "work-logs": {
+        label: "工时", hint: "按人按日记录工时（0–24 小时）。", table: ["workDate", "worker", "hours", "source"],
+        fields: [
+          { key: "worker", label: "成员", type: "text", required: true },
+          { key: "workDate", label: "工作日期", type: "date", required: true },
+          { key: "hours", label: "工时", type: "number", required: true, min: 0.01, max: 24 },
+          { key: "source", label: "来源", type: "enum", enum: ["manual", "import", "agent"], default: "manual" },
+          { key: "note", label: "备注", type: "textarea" },
+          { key: "taskId", label: "任务 ID", type: "int" },
+        ],
+      },
+    };
+
+    var PROJECT_VIEWS = [
+      { id: "milestones", label: "里程碑" },
+      { id: "repositories", label: "版本库" },
+      { id: "artifacts", label: "制品库" },
+      { id: "environments", label: "环境" },
+      { id: "releases", label: "发布" },
+      { id: "test-plans", label: "测试计划" },
+      { id: "test-cases", label: "测试用例" },
+      { id: "test-suites", label: "测试套件" },
+      { id: "test-runs", label: "测试批次" },
+      { id: "defects", label: "缺陷" },
+      { id: "work-logs", label: "工时" },
+    ];
+
+    function ReleasesSection(props) {
+      var relS = useLoad(function () { return apiGet("/admin/projects/" + props.projectId + "/releases"); }, [props.projectId]);
+      var envS = useLoad(function () { return apiGet("/admin/projects/" + props.projectId + "/environments"); }, [props.projectId]);
+      var releases = (relS[0].data && relS[0].data.items) || [];
+      var environments = (envS[0].data && envS[0].data.items) || [];
+      var approverS = react.useState("boss");
+      var approver = approverS[0], setApprover = approverS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      var resetS = react.useState(0);
+      var resetKey = resetS[0], setResetKey = resetS[1];
+      var envMap = {};
+      environments.forEach(function (env) { envMap[env.id] = env.name + " (" + env.envType + ")"; });
+      function reload() { relS[1](); envS[1](); if (props.onChanged) props.onChanged(); }
+      function act(promise, ok) {
+        setBusy(true);
+        promise.then(function () { props.flash(ok, true); reload(); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function approve(row) { act(apiPost("/admin/releases/" + row.id + "/approve", { approver: approver }), "发布单已审批"); }
+      function reject(row) { act(apiPost("/admin/releases/" + row.id + "/reject", { approver: approver }), "发布单已驳回"); }
+      function remove(row) { act(apiDelete("/admin/releases/" + row.id), "发布单已删除"); }
+      var fields = [
+        { key: "version", label: "版本", type: "text", required: true },
+        { key: "environmentId", label: "目标环境", type: "enum", required: true, options: environments.map(function (env) { return { value: String(env.id), label: env.name + " (" + env.envType + ")" }; }) },
+        { key: "rollbackVersion", label: "回滚版本", type: "text", placeholder: "生产发布必填" },
+        { key: "changeNote", label: "变更说明", type: "textarea" },
+        { key: "requestedBy", label: "申请人", type: "text", required: true, default: "boss" },
+        { key: "artifactRefs", label: "制品引用（JSON）", type: "json" },
+        { key: "repoRefs", label: "版本库引用（JSON）", type: "json" },
+      ];
+      var columns = [
+        { key: "version", label: "版本", render: function (r) { return h("b", null, r.version); } },
+        { key: "environmentId", label: "环境", render: function (r) { return h("span", null, envMap[r.environmentId] || ("#" + r.environmentId)); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: toneOf(r.status) }, r.status); } },
+        { key: "rollbackVersion", label: "回滚版本", render: function (r) { return h("span", { className: "ocMono" }, r.rollbackVersion || "-"); } },
+        { key: "requestedBy", label: "申请人", render: function (r) { return h("span", null, r.requestedBy || "-"); } },
+        { key: "approvedBy", label: "审批人", render: function (r) { return h("span", null, r.approvedBy || "-"); } },
+        { key: "ops", label: "操作", render: function (r) {
+            return h("div", { className: "ocStickyActions" },
+              h(Btn, { disabled: busy || r.status !== "pending", onClick: function () { approve(r); } }, "通过"),
+              h(Btn, { kind: "danger", disabled: busy || r.status !== "pending", onClick: function () { reject(r); } }, "驳回"),
+              h(DeleteBtn, { disabled: busy || r.status !== "pending", onConfirm: function () { remove(r); } }));
+          } },
+      ];
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocH" }, "发布单", h("span", { className: "ocCount" }, String(releases.length))),
+        h(ErrLine, { error: relS[0].error || envS[0].error, onRetry: reload }),
+        h("div", { className: "ocSplit" },
+          h("div", { className: "ocSplitMain" },
+            h(Table, { columns: columns, rows: releases, loading: relS[0].loading, empty: "暂无发布单", emptyHint: "选择环境和版本创建发布单；生产发布必须填写回滚版本。", emptyIcon: "flow" })),
+          h("div", { className: "ocSplitSide" },
+            h("div", { className: "ocSection" },
+              h("div", { className: "ocH" }, "新建发布单"),
+              h("div", { className: "ocHint" }, "生产环境按策略进入人工审批；审批人：" + approver),
+              h(Field, { label: "审批人", value: approver, onChange: setApprover }),
+              h(EntityForm, { fields: fields, initial: {}, formKey: "release-" + resetKey + "-" + props.projectId, busy: busy, submitLabel: "提交发布单", onSubmit: function (payload) {
+                act(apiPost("/admin/projects/" + props.projectId + "/releases", payload), "发布单已创建");
+                setResetKey(function (v) { return v + 1; });
+              } })))));
+    }
+
+    function TestRunsSection(props) {
+      var runS = useLoad(function () { return apiGet("/admin/projects/" + props.projectId + "/test-runs"); }, [props.projectId]);
+      var caseS = useLoad(function () { return apiGet("/admin/projects/" + props.projectId + "/test-cases"); }, [props.projectId]);
+      var runs = (runS[0].data && runS[0].data.items) || [];
+      var cases = (caseS[0].data && caseS[0].data.items) || [];
+      var modeS = react.useState("create");
+      var mode = modeS[0], setMode = modeS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      var resetS = react.useState(0);
+      var resetKey = resetS[0], setResetKey = resetS[1];
+      function reload() { runS[1](); caseS[1](); if (props.onChanged) props.onChanged(); }
+      function act(promise, ok) {
+        setBusy(true);
+        promise.then(function () { props.flash(ok, true); reload(); setResetKey(function (v) { return v + 1; }); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(false); });
+      }
+      var createFields = [
+        { key: "version", label: "版本", type: "text", required: true },
+        { key: "executor", label: "执行人", type: "text", required: true, default: "boss" },
+        { key: "executorType", label: "执行类型", type: "enum", enum: ["human", "agent", "ci"], default: "human" },
+        { key: "planId", label: "测试计划 ID", type: "int" },
+        { key: "suiteId", label: "测试套件 ID", type: "int" },
+        { key: "environmentId", label: "环境 ID", type: "int" },
+      ];
+      var resultFields = [
+        { key: "runId", label: "测试批次", type: "enum", required: true, options: runs.map(function (run) { return { value: String(run.id), label: "#" + run.id + " · " + run.version + " · " + run.status }; }) },
+        { key: "caseId", label: "测试用例", type: "enum", required: true, options: cases.map(function (c) { return { value: String(c.id), label: c.caseCode + " · " + c.title }; }) },
+        { key: "result", label: "结果", type: "enum", enum: ["passed", "failed", "blocked", "skipped"], required: true, default: "passed" },
+        { key: "evidence", label: "证据", type: "textarea" },
+        { key: "failureReason", label: "失败原因", type: "textarea" },
+      ];
+      var columns = [
+        { key: "id", label: "#", render: function (r) { return h("span", { className: "ocMono" }, String(r.id)); } },
+        { key: "version", label: "版本", render: function (r) { return h("b", null, r.version); } },
+        { key: "executor", label: "执行人", render: function (r) { return h("span", null, r.executor); } },
+        { key: "executorType", label: "类型", render: function (r) { return h(Badge, { tone: "mute" }, r.executorType); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: toneOf(r.status) }, r.status); } },
+        { key: "startedAt", label: "开始", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.startedAt)); } },
+      ];
+      var createForm = h(EntityForm, {
+        fields: createFields, initial: {}, formKey: "run-create-" + resetKey + "-" + props.projectId, busy: busy, submitLabel: "创建批次",
+        onSubmit: function (payload) { act(apiPost("/admin/projects/" + props.projectId + "/test-runs", payload), "测试批次已创建"); },
+      });
+      var resultForm = h(EntityForm, {
+        fields: resultFields, initial: {}, formKey: "run-result-" + resetKey + "-" + props.projectId, busy: busy, submitLabel: "记录结果",
+        onSubmit: function (payload) {
+          var runId = payload.runId;
+          delete payload.runId;
+          act(apiPost("/admin/test-runs/" + runId + "/results", payload), "测试结果已记录");
+        },
+      });
+      var sideForm = h("div", { className: "ocSection" },
+        h("div", { className: "ocSeg", role: "group", "aria-label": "测试批次操作" },
+          h("button", { type: "button", className: "ocSegItem" + (mode === "create" ? " on" : ""), "aria-pressed": mode === "create" ? "true" : "false", onClick: function () { setMode("create"); } }, "新建批次"),
+          h("button", { type: "button", className: "ocSegItem" + (mode === "result" ? " on" : ""), "aria-pressed": mode === "result" ? "true" : "false", onClick: function () { setMode("result"); } }, "录入结果")),
+        mode === "create" ? createForm : resultForm);
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocH" }, "测试批次", h("span", { className: "ocCount" }, String(runs.length))),
+        h(ErrLine, { error: runS[0].error || caseS[0].error, onRetry: reload }),
+        h("div", { className: "ocSplit" },
+          h("div", { className: "ocSplitMain" },
+            h(Table, { columns: columns, rows: runs, loading: runS[0].loading, empty: "暂无测试批次", emptyHint: "创建批次并逐用例记录结果；失败/阻塞不会计为通过。", emptyIcon: "check" })),
+          h("div", { className: "ocSplitSide" }, sideForm)));
+    }
+
+    function ProjectsTab(props) {
+      var projectsS = useLoad(function () { return apiGet("/admin/projects"); }, []);
+      var projects = (projectsS[0].data && projectsS[0].data.items) || [];
+      var selS = react.useState("");
+      var selected = selS[0], setSelected = selS[1];
+      var viewS = react.useState("milestones");
+      var view = viewS[0], setView = viewS[1];
+      var formS = react.useState(null);
+      var form = formS[0], setForm = formS[1];
+      react.useEffect(function () {
+        if (!selected && projects.length) setSelected(String(projects[0].id));
+      }, [projects.length, selected]);
+      var project = null;
+      for (var i = 0; i < projects.length; i += 1) if (String(projects[i].id) === String(selected)) project = projects[i];
+      var summaryS = useLoad(function () { return selected ? apiGet("/admin/projects/" + selected + "/summary") : Promise.resolve(null); }, [selected]);
+      var summary = summaryS[0].data || {};
+      function reloadAll() { projectsS[1](); summaryS[1](); }
+      function done() { setForm(null); projectsS[1](); summaryS[1](); }
+      var body = null;
+      if (project) {
+        if (view === "releases") body = h(ReleasesSection, { key: "releases-" + selected, projectId: selected, flash: props.flash, onChanged: function () { summaryS[1](); } });
+        else if (view === "test-runs") body = h(TestRunsSection, { key: "test-runs-" + selected, projectId: selected, flash: props.flash, onChanged: function () { summaryS[1](); } });
+        else body = h(CrudSection, { key: selected + "-" + view, scope: "project", projectId: selected, resource: view, ui: PROJECT_UI[view], flash: props.flash, onChanged: function () { summaryS[1](); } });
+      }
+      return h(Fragment, null,
+        h(PageHeader, { title: "项目管理", subtitle: projects.length + " 个项目 · 软件研发要素与质量闭环" },
+          h(Select, { label: "当前项目", value: selected, options: projects.map(function (p) { return { value: String(p.id), label: p.name + " · " + p.stage }; }), onChange: setSelected }),
+          h(Btn, { onClick: function () { setForm({ project: null }); } }, "新建"),
+          project ? h(Btn, { onClick: function () { setForm({ project: project }); } }, "编辑项目") : null,
+          h(Btn, { onClick: reloadAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
+        h(ErrLine, { error: projectsS[0].error, onRetry: reloadAll }),
+        form ? h(ProjectForm, { project: form.project, flash: props.flash, onDone: done, onCancel: function () { setForm(null); } }) : null,
+        !projects.length && !projectsS[0].loading
+          ? h(EmptyState, { title: "还没有项目", hint: "先新建项目，再管理里程碑、版本库、环境、发布、测试与缺陷。", icon: "layers", action: h(Btn, { kind: "primary", onClick: function () { setForm({ project: null }); } }, "新建项目") })
+          : project ? h(Fragment, null,
+              h("div", { className: "ocMeta" },
+                h(Badge, { tone: toneOf(project.stage) }, project.stage || "未定阶段"),
+                h("span", { className: "ocMuted" }, "进度"),
+                h("div", { className: "ocProgressWrap" },
+                  h("div", { className: "ocBar" }, h("i", { style: { width: (project.progress || 0) + "%" } })),
+                  h("b", null, (project.progress || 0) + "%")),
+                h("span", { className: "ocMuted" }, "计划 " + (project.startDate ? String(project.startDate).slice(0, 10) : "-") + " → " + (project.targetEndDate ? String(project.targetEndDate).slice(0, 10) : "-")),
+                project.timezone ? h("span", { className: "ocMono" }, project.timezone) : null),
+              summaryS[0].loading ? h("div", { className: "ocMetrics", role: "status", "aria-busy": "true", "aria-label": t("panel.loading") }, [0, 1, 2, 3, 4, 5].map(function (k) { return h("div", { className: "ocMetric", key: k }, h("span", { className: "ocSkel", style: { width: "60%", display: "block" } }), h("span", { className: "ocSkel", style: { width: "40%", height: 20, display: "block", marginTop: 8 } })); }))
+                : h(KpiGrid, { items: [
+                    { label: "里程碑", value: summary.milestonesTotal || 0, hint: "逾期 " + (summary.milestonesOverdue || 0) },
+                    { label: "逾期里程碑", value: summary.milestonesOverdue || 0, tone: (summary.milestonesOverdue || 0) > 0 ? "bad" : "" },
+                    { label: "待批发布", value: summary.releasesPending || 0, tone: (summary.releasesPending || 0) > 0 ? "warn" : "" },
+                    { label: "测试通过率", value: summary.testPassRate || 0, unit: "%", tone: (summary.testPassRate || 0) >= 95 ? "ok" : (summary.testPassRate || 0) > 0 ? "warn" : "" },
+                    { label: "未关闭缺陷", value: summary.defectsOpen || 0, tone: (summary.defectsOpen || 0) > 0 ? "bad" : "ok" },
+                    { label: "版本库异常", value: summary.repositoriesFailed || 0, tone: (summary.repositoriesFailed || 0) > 0 ? "bad" : "ok" },
+                    { label: "累计工时", value: summary.workHours || 0, unit: "h" },
+                  ] }),
+              h("div", { className: "ocSeg", role: "group", "aria-label": "项目管理视图" },
+                PROJECT_VIEWS.map(function (item) {
+                  var on = item.id === view;
+                  return h("button", { key: item.id, type: "button", className: "ocSegItem" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", onClick: function () { setView(item.id); } }, item.label);
+                })),
+              body)
+          : h(SkeletonTable, { columns: [{ key: "a" }, { key: "b" }, { key: "c" }], rows: 5 }));
+    }
+
+    // ================= 情报管理 =================
+    var INTEL_UI = {
+      scopes: {
+        label: "情报空间", hint: "每个项目一个情报空间；日报时间、回看窗口、条目上限与推送渠道。", table: ["name", "briefTime", "lookbackHours", "status"],
+        fields: [
+          { key: "name", label: "空间名称", type: "text", required: true },
+          { key: "timezone", label: "时区", type: "text", default: "Asia/Shanghai" },
+          { key: "briefTime", label: "日报时间", type: "text", default: "08:00", placeholder: "08:00" },
+          { key: "lookbackHours", label: "回看小时", type: "int", min: 1, max: 720, default: 24 },
+          { key: "maxItems", label: "日报条目上限", type: "int", min: 1, max: 200, default: 20 },
+          { key: "pushChannels", label: "推送渠道（JSON）", type: "json" },
+          { key: "recipients", label: "接收人（JSON）", type: "json" },
+          { key: "quietHours", label: "静默时段（JSON）", type: "json" },
+          { key: "template", label: "模板", type: "text" },
+          { key: "status", label: "状态", type: "enum", enum: ["active", "disabled"], default: "active" },
+          { key: "configVersion", label: "配置版本", type: "text", default: "1" },
+        ],
+      },
+      sources: {
+        label: "数据源", hint: "全局数据源；通过「来源绑定」挂到项目。凭据只接受引用。", table: ["name", "sourceType", "credibility", "status"],
+        fields: [
+          { key: "name", label: "名称", type: "text", required: true },
+          { key: "sourceType", label: "类型", type: "enum", enum: ["rss", "api", "web", "search", "mcp", "manual"], required: true, default: "rss" },
+          { key: "url", label: "地址", type: "text", placeholder: "https://..." },
+          { key: "authRef", label: "凭据引用", type: "authRef", placeholder: "secret:SOURCE_TOKEN" },
+          { key: "credibility", label: "可信度", type: "number", min: 0, max: 1, default: 0.5 },
+          { key: "copyrightStatus", label: "版权状态", type: "enum", enum: ["licensed", "public", "unknown", "restricted"], default: "unknown" },
+          { key: "licenseNote", label: "版权说明", type: "textarea" },
+          { key: "collectIntervalMinutes", label: "采集间隔（分钟）", type: "int", min: 5, max: 10080, default: 60 },
+          { key: "rateLimitPerHour", label: "每小时限流", type: "int", min: 1, max: 10000, default: 60 },
+          { key: "timeoutMs", label: "超时（毫秒）", type: "int", min: 1000, max: 300000, default: 15000 },
+          { key: "enabled", label: "启用", type: "bool", default: true },
+          { key: "status", label: "状态", type: "enum", enum: ["active", "disabled", "blocked"], default: "active" },
+        ],
+      },
+      topics: {
+        label: "关注主题", hint: "关键词/标签决定情报命中与评分；优先级越高权重越大。", table: ["keyword", "matchType", "priority", "enabled"],
+        fields: [
+          { key: "keyword", label: "关键词", type: "text", required: true },
+          { key: "matchType", label: "匹配方式", type: "enum", enum: ["exact", "phrase", "regex", "boolean"], default: "phrase" },
+          { key: "synonyms", label: "同义词（JSON 数组）", type: "json" },
+          { key: "excludeTerms", label: "排除词（JSON 数组）", type: "json" },
+          { key: "tags", label: "标签（JSON 数组）", type: "json" },
+          { key: "priority", label: "优先级", type: "int", min: 1, max: 1000, default: 100 },
+          { key: "enabled", label: "启用", type: "bool", default: true },
+          { key: "version", label: "版本", type: "int", default: 1 },
+        ],
+      },
+      tags: {
+        label: "标签", hint: "用于情报归类与日报分区。", table: ["name", "category", "status"],
+        fields: [
+          { key: "name", label: "标签名", type: "text", required: true },
+          { key: "category", label: "分类", type: "text" },
+          { key: "parentId", label: "父标签 ID", type: "int" },
+          { key: "color", label: "颜色", type: "text", placeholder: "#3b82f6" },
+          { key: "description", label: "说明", type: "textarea" },
+          { key: "status", label: "状态", type: "enum", enum: ["active", "disabled"], default: "active" },
+        ],
+      },
+    };
+
+    function bindingsUi(sources) {
+      return {
+        label: "来源绑定", hint: "把全局数据源绑定到当前项目；未绑定的来源不参与采集。", table: ["sourceId", "enabled", "priority"],
+        fields: [
+          { key: "sourceId", label: "数据源", type: "enum", required: true, options: sources.map(function (source) { return { value: String(source.id), label: source.name + " · " + source.sourceType }; }), render: function (row) {
+              var match = null;
+              for (var i = 0; i < sources.length; i += 1) if (String(sources[i].id) === String(row.sourceId)) match = sources[i];
+              return h("span", null, match ? match.name + " · " + match.sourceType : "#" + row.sourceId);
+            } },
+          { key: "enabled", label: "启用", type: "bool", default: true },
+          { key: "priority", label: "优先级", type: "int", min: 1, max: 1000, default: 100 },
+          { key: "tags", label: "标签（JSON）", type: "json" },
+        ],
+      };
+    }
+
+    var INTEL_VIEWS = [
+      { id: "overview", label: "概览" },
+      { id: "scopes", label: "情报空间" },
+      { id: "sources", label: "数据源" },
+      { id: "topics", label: "关注主题" },
+      { id: "tags", label: "标签" },
+      { id: "items", label: "情报条目" },
+      { id: "briefs", label: "日报" },
+      { id: "runs", label: "流水线" },
+    ];
+
+    function IntelItemsSection(props) {
+      var statusS = react.useState("");
+      var status = statusS[0], setStatus = statusS[1];
+      var listS = useLoad(function () {
+        return apiGet("/admin/intel/items" + qs({ projectId: props.projectId, status: status, limit: 200 }));
+      }, [props.projectId, status]);
+      var items = (listS[0].data && listS[0].data.items) || [];
+      var detailS = react.useState(null);
+      var detail = detailS[0], setDetail = detailS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      function setItemStatus(item, next) {
+        setBusy(true);
+        apiPut("/admin/intel/items/" + item.id, { status: next })
+          .then(function () { props.flash("条目状态已更新为 " + next, true); listS[1](); if (props.onChanged) props.onChanged(); setDetail(function (prev) { return prev && prev.id === item.id ? Object.assign({}, prev, { status: next }) : prev; }); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(false); });
+      }
+      var columns = [
+        { key: "title", label: "标题", render: function (r) { return h("div", { className: "ocList" }, h("b", null, short(r.title, 64)), r.summary ? h("span", { className: "ocMuted" }, short(r.summary, 90)) : null); } },
+        { key: "sourceName", label: "来源", render: function (r) { return h("span", null, r.sourceName || "-"); } },
+        { key: "relevanceScore", label: "评分", render: function (r) { return h("span", { className: "ocMono" }, r.relevanceScore === null || r.relevanceScore === undefined ? "-" : String(r.relevanceScore)); } },
+        { key: "riskLevel", label: "风险", render: function (r) { return r.riskLevel ? h(Badge, { tone: toneOf(r.riskLevel) }, r.riskLevel) : h("span", { className: "ocMuted" }, "-"); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: toneOf(r.status) }, r.status); } },
+        { key: "publishedAt", label: "发布", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.publishedAt)); } },
+        { key: "ops", label: "操作", render: function (r) { return h(Btn, { onClick: function () { setDetail(r); } }, "详情"); } },
+      ];
+      var side = detail
+        ? h("div", { className: "ocSection" },
+            h("div", { className: "ocH" }, "情报条目", h("span", { className: "ocCount" }, "#" + detail.id)),
+            h("div", { className: "ocFormStack" },
+              h("div", null, h("b", null, detail.title)),
+              h("div", { className: "ocRow" },
+                h(Badge, { tone: toneOf(detail.status) }, detail.status),
+                detail.sourceName ? h("span", { className: "ocMuted" }, detail.sourceName) : null,
+                detail.relevanceScore !== null && detail.relevanceScore !== undefined ? h("span", { className: "ocMono" }, "score " + detail.relevanceScore) : null),
+              detail.summary ? h("div", { className: "ocMuted", style: { whiteSpace: "pre-wrap" } }, detail.summary) : null,
+              detail.tags && detail.tags.length ? h("div", null, detail.tags.map(function (tag) { return h("span", { className: "ocTag", key: tag }, tag); })) : null,
+              detail.url ? h("a", { href: detail.url, target: "_blank", rel: "noopener noreferrer" }, "打开原文") : null,
+              h("div", { className: "ocStickyActions" },
+                h(Btn, { disabled: busy, onClick: function () { setItemStatus(detail, "analyzed"); } }, "标记已分析"),
+                h(Btn, { disabled: busy, onClick: function () { setItemStatus(detail, "filtered"); } }, "过滤"),
+                h(Btn, { disabled: busy, onClick: function () { setItemStatus(detail, "archived"); } }, "归档"))))
+        : h("div", { className: "ocSection" },
+            h("div", { className: "ocH" }, "条目详情"),
+            h("div", { className: "ocHint" }, "选择左侧条目查看摘要、评分、来源与处理动作。"));
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocH" }, "情报条目", h("span", { className: "ocCount" }, String(items.length))),
+        h("div", { className: "ocSeg", role: "group", "aria-label": "情报条目状态过滤" },
+          [{ id: "", label: "全部" }, { id: "collected", label: "新采集" }, { id: "analyzed", label: "已分析" }, { id: "filtered", label: "已过滤" }, { id: "briefed", label: "已入日报" }, { id: "archived", label: "已归档" }].map(function (item) {
+            var on = item.id === status;
+            return h("button", { key: item.id || "all", type: "button", className: "ocSegItem" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", onClick: function () { setStatus(item.id); } }, item.label);
+          })),
+        h(ErrLine, { error: listS[0].error, onRetry: listS[1] }),
+        h("div", { className: "ocSplit" },
+          h("div", { className: "ocSplitMain" },
+            h(Table, { columns: columns, rows: items, loading: listS[0].loading, empty: "暂无情报条目", emptyHint: "配置数据源与关注主题后，采集/分析流水线会在这里沉淀条目。", emptyIcon: "target" })),
+          h("div", { className: "ocSplitSide" }, side)));
+    }
+
+    function IntelBriefsSection(props) {
+      var listS = useLoad(function () { return apiGet("/admin/intel/briefs" + qs({ projectId: props.projectId })); }, [props.projectId]);
+      var briefs = (listS[0].data && listS[0].data.items) || [];
+      var selS = react.useState("");
+      var selected = selS[0], setSelected = selS[1];
+      var detailS = useLoad(function () { return selected ? apiGet("/admin/intel/briefs/" + selected) : Promise.resolve(null); }, [selected]);
+      var detail = detailS[0].data;
+      var columns = [
+        { key: "briefDate", label: "日期", render: function (r) { return h("span", { className: "ocMono" }, String(r.briefDate).slice(0, 10)); } },
+        { key: "title", label: "标题", render: function (r) { return h("b", null, short(r.title, 60)); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: toneOf(r.status) }, r.status); } },
+        { key: "itemCount", label: "条目", render: function (r) { return h("span", { className: "ocMono" }, String(r.itemCount)); } },
+        { key: "sourceCount", label: "来源", render: function (r) { return h("span", { className: "ocMono" }, String(r.sourceCount)); } },
+        { key: "generatedAt", label: "生成", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.generatedAt)); } },
+        { key: "ops", label: "操作", render: function (r) { return h(Btn, { onClick: function () { setSelected(String(r.id)); } }, "查看"); } },
+      ];
+      var sectionLabels = { headline: "头条", policy: "政策", competitor: "竞品", lead: "线索", risk: "风险", sentiment: "舆情", other: "其他" };
+      var sectionNodes = [];
+      if (detail && detail.sections) {
+        Object.keys(detail.sections).forEach(function (key) {
+          var entries = detail.sections[key];
+          if (!entries || !entries.length) return;
+          sectionNodes.push(h("div", { key: key },
+            h("h4", null, sectionLabels[key] || key),
+            h("ul", { className: "ocDetailList" }, entries.map(function (entry, index) {
+              return h("li", { className: "ocDetailItem", key: entry.id || index },
+                h("b", null, entry.title),
+                entry.summary ? h("span", { className: "ocMuted" }, short(entry.summary, 180)) : null,
+                h("div", { className: "ocRow" },
+                  entry.sourceName ? h("span", { className: "ocMuted" }, entry.sourceName) : null,
+                  entry.score !== null && entry.score !== undefined ? h("span", { className: "ocMono" }, "score " + entry.score) : null,
+                  entry.riskLevel ? h(Badge, { tone: toneOf(entry.riskLevel) }, entry.riskLevel) : null,
+                  entry.url ? h("a", { href: entry.url, target: "_blank", rel: "noopener noreferrer" }, "原文") : null));
+            }))));
+        });
+      }
+      var side = detail
+        ? h("div", { className: "ocSection" },
+            h("div", { className: "ocH" }, "日报详情", h("span", { className: "ocCount" }, "v" + detail.version)),
+            h("div", { className: "ocMeta" }, h(Badge, { tone: toneOf(detail.status) }, detail.status), h("span", { className: "ocMuted" }, String(detail.briefDate).slice(0, 10)), h("span", { className: "ocMono" }, "条目 " + detail.itemCount + " · 来源 " + detail.sourceCount)),
+            h("div", { className: "ocDetail" },
+              h("h4", null, "覆盖度与免责声明"),
+              h("pre", { className: "ocJson" }, JSON.stringify(detail.coverage || {}, null, 2)),
+              sectionNodes.length ? h("div", { className: "ocDetail" }, sectionNodes) : h("div", { className: "ocEmpty" }, "日报暂无分区内容")) )
+        : h("div", { className: "ocSection" },
+            h("div", { className: "ocH" }, "日报详情"),
+            h("div", { className: "ocHint" }, "选择左侧日报查看覆盖度、分区与条目。"));
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocH" }, "情报日报", h("span", { className: "ocCount" }, String(briefs.length))),
+        h(ErrLine, { error: listS[0].error || detailS[0].error, onRetry: function () { listS[1](); if (selected) detailS[1](); } }),
+        h("div", { className: "ocSplit" },
+          h("div", { className: "ocSplitMain" },
+            h(Table, { columns: columns, rows: briefs, loading: listS[0].loading, empty: "暂无情报日报", emptyHint: "在「流水线」触发 brief 阶段生成日报。", emptyIcon: "book" })),
+          h("div", { className: "ocSplitSide" }, side)));
+    }
+
+    function IntelRunsSection(props) {
+      var runS = useLoad(function () { return apiGet("/admin/intel/runs" + qs({ projectId: props.projectId })); }, [props.projectId]);
+      var data = runS[0].data || { pipeline: [], collect: [], push: [] };
+      var busyS = react.useState("");
+      var busy = busyS[0], setBusy = busyS[1];
+      var labels = { analyze: "分析", aggregate: "汇总", brief: "生成日报", push: "推送" };
+      function trigger(stage) {
+        setBusy(stage);
+        apiPost("/admin/intel/run/" + stage, { projectId: props.projectId })
+          .then(function () { props.flash("已触发" + labels[stage], true); runS[1](); if (props.onChanged) props.onChanged(); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(""); });
+      }
+      var pipelineCols = [
+        { key: "stage", label: "阶段", render: function (r) { return h(Badge, { tone: "mute" }, r.stage); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: toneOf(r.status) }, r.status); } },
+        { key: "pipelineDate", label: "日期", render: function (r) { return h("span", { className: "ocMono" }, String(r.pipelineDate || "").slice(0, 10)); } },
+        { key: "startedAt", label: "开始", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.startedAt)); } },
+        { key: "counters", label: "计数", render: function (r) { return h("span", { className: "ocEllip", title: fmtVal(r.counters) }, short(fmtVal(r.counters), 50)); } },
+        { key: "error", label: "错误", render: function (r) { return r.error ? h("span", { className: "ocDangerText" }, short(r.error, 50)) : h("span", { className: "ocMuted" }, "-"); } },
+      ];
+      var collectCols = [
+        { key: "sourceId", label: "来源", render: function (r) { return h("span", { className: "ocMono" }, r.sourceId === null || r.sourceId === undefined ? "-" : String(r.sourceId)); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: toneOf(r.status) }, r.status); } },
+        { key: "fetched", label: "抓取", render: function (r) { return h("span", { className: "ocMono" }, String(r.fetched || 0)); } },
+        { key: "inserted", label: "入库", render: function (r) { return h("span", { className: "ocMono" }, String(r.inserted || 0)); } },
+        { key: "duplicates", label: "去重", render: function (r) { return h("span", { className: "ocMono" }, String(r.duplicates || 0)); } },
+        { key: "error", label: "错误", render: function (r) { return r.error ? h("span", { className: "ocDangerText" }, short(r.error, 50)) : h("span", { className: "ocMuted" }, "-"); } },
+      ];
+      var pushCols = [
+        { key: "briefId", label: "日报", render: function (r) { return h("span", { className: "ocMono" }, "#" + r.briefId); } },
+        { key: "channel", label: "渠道", render: function (r) { return h("span", { className: "ocMono" }, r.channel); } },
+        { key: "target", label: "目标", render: function (r) { return h("span", { className: "ocEllip", title: r.target }, short(r.target, 36)); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: toneOf(r.status) }, r.status); } },
+        { key: "sentAt", label: "发送", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.sentAt)); } },
+        { key: "error", label: "错误", render: function (r) { return r.error ? h("span", { className: "ocDangerText" }, short(r.error, 50)) : h("span", { className: "ocMuted" }, "-"); } },
+      ];
+      return h(Fragment, null,
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "流水线触发", h("span", { className: "ocMuted", style: { marginLeft: "auto" } }, "手动触发会强制重跑当前阶段")),
+          h("div", { className: "ocStickyActions" }, Object.keys(labels).map(function (stage) {
+            return h(Btn, { key: stage, kind: stage === "push" ? "primary" : "", disabled: !!busy, onClick: function () { trigger(stage); } }, labels[stage]);
+          }))),
+        h(ErrLine, { error: runS[0].error, onRetry: runS[1] }),
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "流水线运行", h("span", { className: "ocCount" }, String(data.pipeline.length))),
+          h(Table, { columns: pipelineCols, rows: data.pipeline, loading: runS[0].loading, empty: "暂无流水线运行", emptyIcon: "sync" })),
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "采集运行", h("span", { className: "ocCount" }, String(data.collect.length))),
+          h(Table, { columns: collectCols, rows: data.collect, loading: runS[0].loading, empty: "暂无采集运行", emptyIcon: "sync" })),
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "推送记录", h("span", { className: "ocCount" }, String(data.push.length))),
+          h(Table, { columns: pushCols, rows: data.push, loading: runS[0].loading, empty: "暂无推送记录", emptyIcon: "inbox" })));
+    }
+
+    function IntelTab(props) {
+      var projectsS = useLoad(function () { return apiGet("/admin/projects"); }, []);
+      var projects = (projectsS[0].data && projectsS[0].data.items) || [];
+      var selS = react.useState("");
+      var selected = selS[0], setSelected = selS[1];
+      var viewS = react.useState("overview");
+      var view = viewS[0], setView = viewS[1];
+      react.useEffect(function () {
+        if (!selected && projects.length) setSelected(String(projects[0].id));
+      }, [projects.length, selected]);
+      var project = null;
+      for (var i = 0; i < projects.length; i += 1) if (String(projects[i].id) === String(selected)) project = projects[i];
+      var summaryS = useLoad(function () { return selected ? apiGet("/admin/intel/summary" + qs({ projectId: selected })) : Promise.resolve(null); }, [selected]);
+      var summary = summaryS[0].data || {};
+      var sourcesS = useLoad(function () { return apiGet("/admin/intel/sources"); }, []);
+      var sources = (sourcesS[0].data && sourcesS[0].data.items) || [];
+      function reloadAll() { projectsS[1](); summaryS[1](); sourcesS[1](); }
+      var body = null;
+      if (view === "overview") {
+        body = summaryS[0].loading
+          ? h("div", { className: "ocMetrics", role: "status", "aria-busy": "true", "aria-label": t("panel.loading") }, [0, 1, 2, 3, 4, 5, 6].map(function (k) { return h("div", { className: "ocMetric", key: k }, h("span", { className: "ocSkel", style: { width: "60%", display: "block" } }), h("span", { className: "ocSkel", style: { width: "40%", height: 20, display: "block", marginTop: 8 } })); }))
+          : h(Fragment, null,
+          h(KpiGrid, { items: [
+            { label: "活跃来源", value: summary.sourcesActive || 0, tone: (summary.sourcesActive || 0) > 0 ? "ok" : "" },
+            { label: "异常来源", value: summary.sourcesBlocked || 0, tone: (summary.sourcesBlocked || 0) > 0 ? "bad" : "" },
+            { label: "新采集", value: summary.itemsCollected || 0, tone: (summary.itemsCollected || 0) > 0 ? "warn" : "" },
+            { label: "已分析", value: summary.itemsAnalyzed || 0 },
+            { label: "已入日报", value: summary.itemsBriefed || 0, tone: (summary.itemsBriefed || 0) > 0 ? "ok" : "" },
+            { label: "7 天日报", value: summary.briefsLast7d || 0 },
+            { label: "24h 流水线失败", value: summary.pipelineFailures24h || 0, tone: (summary.pipelineFailures24h || 0) > 0 ? "bad" : "ok" },
+          ] }),
+          summary.hasScope
+            ? h("div", { className: "ocSection" },
+                h("div", { className: "ocH" }, "情报空间", h("span", { className: "ocCount" }, summary.scope ? summary.scope.name : "")),
+                h("div", { className: "ocMeta" },
+                  h(Badge, { tone: toneOf(summary.scope.status) }, summary.scope.status),
+                  h("span", { className: "ocMuted" }, "日报 " + (summary.scope.briefTime || "-")),
+                  h("span", { className: "ocMuted" }, "回看 " + (summary.scope.lookbackHours || "-") + "h"),
+                  h("span", { className: "ocMuted" }, "上限 " + (summary.scope.maxItems || "-") + " 条"),
+                  h("span", { className: "ocMono" }, summary.scope.timezone || "")),
+                h("div", { className: "ocHint" }, "推送渠道：" + fmtVal(summary.scope.pushChannels) + " · 最近日报：" + fmtTime(summary.latestBriefAt)),
+                h("div", { className: "ocStickyActions" },
+                  h(Btn, { onClick: function () { setView("scopes"); } }, "编辑情报空间"),
+                  h(Btn, { onClick: function () { setView("items"); } }, "查看条目"),
+                  h(Btn, { onClick: function () { setView("runs"); } }, "运行流水线")))
+            : h(EmptyState, { title: "尚未创建情报空间", hint: "先为当前项目创建情报空间，配置日报时间、回看窗口与推送渠道。", icon: "target", action: h(Btn, { kind: "primary", onClick: function () { setView("scopes"); } }, "创建情报空间") }));
+      } else if (view === "scopes") {
+        body = h(CrudSection, { key: selected + "-scopes", scope: "intel", projectId: selected, resource: "scopes", ui: INTEL_UI.scopes, flash: props.flash });
+      } else if (view === "sources") {
+        body = h(Fragment, null,
+          h(CrudSection, { key: "intel-sources", scope: "intel", projectId: selected, resource: "sources", ui: INTEL_UI.sources, flash: props.flash, onChanged: function () { sourcesS[1](); summaryS[1](); } }),
+          h(CrudSection, { key: selected + "-bindings", scope: "intel", projectId: selected, resource: "bindings", ui: bindingsUi(sources), flash: props.flash, onChanged: function () { summaryS[1](); } }));
+      } else if (view === "topics") {
+        body = h(CrudSection, { key: selected + "-topics", scope: "intel", projectId: selected, resource: "topics", ui: INTEL_UI.topics, flash: props.flash });
+      } else if (view === "tags") {
+        body = h(CrudSection, { key: selected + "-tags", scope: "intel", projectId: selected, resource: "tags", ui: INTEL_UI.tags, flash: props.flash });
+      } else if (view === "items") {
+        body = h(IntelItemsSection, { key: "items-" + selected, projectId: selected, flash: props.flash, onChanged: function () { summaryS[1](); } });
+      } else if (view === "briefs") {
+        body = h(IntelBriefsSection, { key: "briefs-" + selected, projectId: selected, flash: props.flash });
+      } else {
+        body = h(IntelRunsSection, { key: "runs-" + selected, projectId: selected, flash: props.flash, onChanged: function () { summaryS[1](); } });
+      }
+      return h(Fragment, null,
+        h(PageHeader, { title: "情报管理", subtitle: projects.length + " 个项目 · 数据源、关注主题、日报与五阶段流水线" },
+          h(Select, { label: "当前项目", value: selected, options: projects.map(function (p) { return { value: String(p.id), label: p.name + " · " + p.stage }; }), onChange: setSelected }),
+          h(Btn, { onClick: reloadAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
+        h(ErrLine, { error: projectsS[0].error || summaryS[0].error, onRetry: reloadAll }),
+        project
+          ? h(Fragment, null,
+              h("div", { className: "ocSeg", role: "group", "aria-label": "情报管理视图" },
+                INTEL_VIEWS.map(function (item) {
+                  var on = item.id === view;
+                  return h("button", { key: item.id, type: "button", className: "ocSegItem" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", onClick: function () { setView(item.id); } }, item.label);
+                })),
+              body)
+          : projectsS[0].loading
+            ? h(SkeletonTable, { columns: [{ key: "a" }, { key: "b" }, { key: "c" }], rows: 4 })
+            : h(EmptyState, { title: "还没有项目", hint: "情报空间按项目划分，请先在「项目管理」新建项目。", icon: "target" }));
+    }
+
     // ================= 主控制台 =================
     // 导航按“概览 / 经营 / 治理 / 知识 / 系统”分组，降低 12 个页签的认知负担。
     var NAV_GROUPS = [
       { title: "概览", items: [{ id: "cockpit", label: "驾驶舱", icon: "gauge" }, { id: "domains", label: "业务域", icon: "grid" }] },
-      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
+      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "projects", label: "项目管理", icon: "layers" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
       { title: "治理", items: [{ id: "audits", label: "审计", icon: "shield" }, { id: "conflicts", label: "冲突", icon: "alert" }, { id: "inbox", label: "收件箱", icon: "inbox" }] },
-      { title: "知识", items: [{ id: "memory", label: "记忆", icon: "book" }, { id: "hindsight", label: "记忆同步", icon: "sync" }, { id: "radar", label: "雷达", icon: "radar" }] },
+      { title: "知识", items: [{ id: "memory", label: "记忆", icon: "book" }, { id: "hindsight", label: "记忆同步", icon: "sync" }, { id: "radar", label: "雷达", icon: "radar" }, { id: "intel", label: "情报管理", icon: "target" }] },
       { title: "系统", items: [{ id: "settings", label: "设置", icon: "settings" }] },
     ];
     var TABS = [];
@@ -1063,6 +2038,8 @@ window.__ModuleLoader__.load({
       var body = null;
       if (tab === "cockpit") body = h(CockpitTab, { flash: flashMsg });
       else if (tab === "employees") body = h(EmployeesTab, { flash: flashMsg });
+      else if (tab === "projects") body = h(ProjectsTab, { flash: flashMsg });
+      else if (tab === "intel") body = h(IntelTab, { flash: flashMsg });
       else if (tab === "domains") body = h(DomainsTab, { flash: flashMsg });
       else if (tab === "workflows") body = h(WorkflowsTab, { flash: flashMsg });
       else if (tab === "tasks") body = h(TasksTab, { flash: flashMsg });

@@ -28,6 +28,8 @@ import { IngestService, MemoryService, RadarService, SessionGrantService, type I
 import type { ExtractedFields } from "../web/classifier.ts";
 import { EmployeePackageService } from "../employees/package.ts";
 import { ProjectSoftwareService } from "../domains/project/software.ts";
+import { IntelPipelineService } from "../domains/intel/daily.ts";
+import { AdminService } from "../domains/admin/service.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
 import { SuperAgentsBridge } from "../agents/bridge.ts";
 import { SuperAgentService } from "../agents/service.ts";
@@ -68,6 +70,7 @@ export interface Hub {
   };
   employees: EmployeePackageService;
   software: ProjectSoftwareService;
+  admin: AdminService;
   agents: SuperAgentService;
   memorySync: HindsightSyncService;
   api: ApiContext;
@@ -119,6 +122,8 @@ export function createHub(options: HubConfig = {}): Hub {
   };
   const employees = new EmployeePackageService(pool, audit, { hubVersion: options.version ?? "0.2.1" });
   const software = new ProjectSoftwareService(pool, audit);
+  const intelPipeline = new IntelPipelineService(pool);
+  const admin = new AdminService(pool, audit, software, intelPipeline);
   const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
   const agents = new SuperAgentService(bridge, audit, { archiveDir });
   const hindsight = new HindsightBridge({
@@ -140,6 +145,7 @@ export function createHub(options: HubConfig = {}): Hub {
     web,
     employees,
     software,
+    admin,
     agents,
     memorySync,
     archiveDir,
@@ -683,6 +689,7 @@ export function createHub(options: HubConfig = {}): Hub {
     web,
     employees,
     software,
+    admin,
     agents,
     memorySync,
     api,

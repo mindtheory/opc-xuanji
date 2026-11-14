@@ -42,8 +42,9 @@
 2. ✅ `migrations/0007_intel_daily.sql` 已建 10 张表（biz 7 + stat 3）；`test/helpers.ts` 清库清单已同步。
 3. ✅ `src/employees/catalog.ts` 已扩展 `opc_intel` manifest 与允许写目标。
 4. ✅ `src/domains/intel/daily.ts` 已实现本地流水线；`src/scheduler/tasks/index.ts` 已注册 5 个情报任务。
-5. ⏳ 待落地：真实 RSS/API/MCP 采集适配器、外部 IM/邮件推送通道、阶段超时/重试策略、情报 REST 路由与驾驶舱页签。
-6. ⏳ 待落地：采集器凭据托管方案与各渠道授权；需老板确认后再接真实来源。
+5. ✅ 情报管理 REST（`/api/v1/admin/intel/*`）与驾驶舱页签已落地（见第 6 节）。
+6. ⏳ 待落地：真实 RSS/API/MCP 采集适配器、外部 IM/邮件推送通道、阶段超时/重试策略。
+7. ⏳ 待落地：采集器凭据托管方案与各渠道授权；需老板确认后再接真实来源。
 
 ## 5. 验证
 
@@ -51,3 +52,11 @@
 - 代码级：`npm run typecheck`；`npm run test:unit`（新增 `test/unit/intel.test.ts` 规则评分用例）；`test/integration/intel.test.ts` 覆盖采集幂等→分析→日报→推送。
 - 规格级：`npm run spec:check`（76 实体 / 14 用例 / 21 模块）。
 - 测试级：`npm run docs:check`；有测试库时执行 `npm run migrate:test && npm run test:integration`。
+
+## 6. Web 管理面（本次增量）
+
+- 新增 `/api/v1/admin/intel/*`：情报空间、数据源、来源绑定、关注主题、标签 CRUD；情报条目列表/状态、日报列表/详情、流水线/采集/推送运行记录、手动触发 analyze/aggregate/brief/push、情报 KPI 汇总。
+- `client.js` 新增「情报管理」页签：项目选择、概览 KPI、情报空间、数据源与绑定、关注主题、标签、条目、日报、流水线 8 个视图；CRUD、条目归档/过滤、日报详情与手动触发均可视化完成。
+- 驾驶舱新增情报指标：活跃/异常来源、区间新增情报、7 天日报、24h 流水线失败、情报空间数。
+- 边界不变：未配置适配器仍标 blocked，不伪造条目；外部推送不可用降级站内并留痕。
+- 验证：`test/integration/admin.test.ts` 覆盖情报空间/来源/绑定/主题/标签 CRUD、流水线触发、日报详情与驾驶舱指标。

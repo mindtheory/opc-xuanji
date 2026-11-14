@@ -12,7 +12,7 @@ updated: 2026-11-06
 
 # OPC-玄机 · 一人公司中枢 系统设计说明（OPC-SDD-001）
 
-本文档解决“中枢到底由哪些部件组成、它们按什么顺序与约束协作、坏了退到哪一步”的问题：把 `src/` 里真实存在的 34 个模块文件、62 个 HTTP operation、31 个 DSH 工具、15 个定时任务与 76 张数据表，组织成可评审的四层机制、可复制的启动步骤与明确的失败路径。使用者与时机：开发在动代码前用它确认依赖方向与错误码口径；评审在 G2 用它核对“设计描述=已实现行为”；运维在部署与排障时用第 7、9 章；接手者在第 10 章看清哪些能力只是接口占位。全文坚持一条底线——**只写代码里已经跑得通的行为**：凡未落地的能力（真实 LLM 裁判调用、DSH 运行时内嵌定时器、9 个业务域模块、流程看板与自动固化闭环）一律在 10.1 标为 Phase 2，不混进主流程描述。文中数字（34 个源文件、62 接口、31 工具、19 错误码、8 视图、15 任务、76 张表）均可在 `src/`、`spec/`、`migrations/` 与 `npm test` 输出中复算。
+本文档解决“中枢到底由哪些部件组成、它们按什么顺序与约束协作、坏了退到哪一步”的问题：把 `src/` 里真实存在的 34 个模块文件、89 个 HTTP operation、31 个 DSH 工具、15 个定时任务与 76 张数据表，组织成可评审的四层机制、可复制的启动步骤与明确的失败路径。使用者与时机：开发在动代码前用它确认依赖方向与错误码口径；评审在 G2 用它核对“设计描述=已实现行为”；运维在部署与排障时用第 7、9 章；接手者在第 10 章看清哪些能力只是接口占位。全文坚持一条底线——**只写代码里已经跑得通的行为**：凡未落地的能力（真实 LLM 裁判调用、DSH 运行时内嵌定时器、9 个业务域模块、流程看板与自动固化闭环）一律在 10.1 标为 Phase 2，不混进主流程描述。文中数字（34 个源文件、62 接口、31 工具、21 错误码、8 视图、15 任务、76 张表）均可在 `src/`、`spec/`、`migrations/` 与 `npm test` 输出中复算。
 
 ## 目录
 
@@ -71,7 +71,7 @@ cd /path/to/opc-xuanji
 find src -type f -name "*.ts" | wc -l    # 34 个源文件
 grep -c "pattern: /" src/api/http.ts     # 34 条 HTTP 路由
 grep -c 'name: "opc_' src/plugin/index.ts # 31 个 opc_* 工具
-grep -cE '^  [A-Z_]+: "ERR-' src/platform/errors.ts  # 19 个错误码
+grep -cE '^  [A-Z_]+: "ERR-' src/platform/errors.ts  # 21 个错误码
 grep -c "id: \"" src/scheduler/tasks/index.ts  # 15 个默认任务
 npm test 2>&1 | grep -E "^. tests"       # 68 个用例（需测试库）
 ```
@@ -106,7 +106,7 @@ npm test 2>&1 | grep -E "^. tests"       # 68 个用例（需测试库）
 flowchart TB
   subgraph 中枢层
     PLUG["plugin/index.ts<br/>31 个 opc_* 工具"]
-    API["api/http.ts<br/>28 条 /api/v1 路由"]
+    API["api/http.ts<br/>89 条 /api/v1 路由"]
     SERVE["scripts/serve.ts<br/>独立进程 + tick"]
   end
   subgraph 平台层
@@ -715,6 +715,13 @@ curl -s -X PUT http://127.0.0.1:3082/api/v1/tasks/invoice_backlog -H 'content-ty
 
 **API/工具**：P29–P34；`opc_employee_list/install/toggle/export/import`；与员工目录服务共用同一实例。
 
+### 5.7 管理面 BFF 与驾驶舱统计（v2.14）
+
+- `AdminService`（`src/domains/admin/service.ts`）以资源白名单复用 CRUD：项目子资源（里程碑/版本库/制品库/环境/测试计划/用例/套件/缺陷/工时）与情报资源（空间/数据源/绑定/主题/标签）；所有写操作写 `actor=boss` 审计，凭据只存 `auth_ref`。
+- 发布/测试批次/测试结果复用 `ProjectSoftwareService` 的既有校验；情报流水线手动触发复用 `IntelPipelineService` 的 `force + projectId` 过滤。
+- HTTP 管理面统一挂 `/api/v1/admin`，共 27 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
+- 删除保护：被发布单引用的环境、被批次引用的计划/套件、被结果引用的用例、仍被绑定的来源、已有条目的情报空间，删除返回 409。
+
 ## 6. 失败与降级路径
 
 失败处理的第一原则是**不静默降级**：该拒就拒、该报就报，拒绝也要留痕。下表按失败来源分三组，逐条给出代码行为与最终返回。
@@ -849,7 +856,7 @@ NODE_ENV=test OPC_PG_DSN="postgresql://<user>:<password>@localhost:5432/opc_test
 
 ## 8. 接口与工具面
 
-中枢对外只有两种面：HTTP `/api/v1`（28 条路由，供 DSH Web 看板与外部集成）与 DSH 工具（26 个 `opc_*`，供模型在会话中调用）。两面共用同一批服务实例（`createHub` 装配一次，两边引用同一对象），因此不存在“工具绕过 HTTP 校验”的旁路。
+中枢对外只有两种面：HTTP `/api/v1`（89 条路由，供 DSH Web 看板与外部集成）与 DSH 工具（31 个 `opc_*`，供模型在会话中调用）。两面共用同一批服务实例（`createHub` 装配一次，两边引用同一对象），因此不存在“工具绕过 HTTP 校验”的旁路。
 
 ### 8.1 统一结果口径
 
@@ -863,7 +870,7 @@ NODE_ENV=test OPC_PG_DSN="postgresql://<user>:<password>@localhost:5432/opc_test
 
 成功恒为 `code: 0`，失败恒为 `code: <http 状态>` + `errorCode` + `message` + `details`（可为 null）。工具侧不返回 HTTP 状态，而是把错误拼成 `ERR-<域>-<000>: message` 抛出，便于模型与审计对账。
 
-### 8.2 二十八条 HTTP 路由
+### 8.2 HTTP 路由（以 `api.yaml` 为准，当前 89 条）
 
 | # | 方法 | 路径 | operationId | 成功码 | 主要错误 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -900,10 +907,10 @@ NODE_ENV=test OPC_PG_DSN="postgresql://<user>:<password>@localhost:5432/opc_test
 cd /path/to/opc-xuanji
 # 规格包内部一致性（写域归属、实体/接口/用例引用），实测 PASS（WARN 为既有追溯缺口）
 npm run spec:check
-# “62 个 operation 均有路由、76 张表在库内存在、19 个错误码集合一致”由该测试断言
+# “89 个 operation 均有路由、76 张表在库内存在、21 个错误码集合一致”由该测试断言
 node --test test/integration/spec.test.ts
 grep -c "operationId" spec/opc-xuanji/api.yaml    # 28
-grep -c "pattern: /" src/api/http.ts             # 28 条路由（Route 接口里的 pattern 声明不计）
+grep -c "pattern: /" src/api/http.ts             # 89 条路由（Route 接口里的 pattern 声明不计）
 ```
 
 ### 8.3 三十一个 DSH 工具
@@ -944,7 +951,7 @@ grep -c "pattern: /" src/api/http.ts             # 28 条路由（Route 接口�
 
 工具参数都带 JSON Schema（`type/properties/required/additionalProperties: false`），契约测试逐条断言名称、描述与 schema 完整性。
 
-### 8.4 十四个错误码
+### 8.4 错误码（当前 21 个）
 
 | 错误码 | 常量名 | 含义 | 典型状态码 |
 | :--- | :--- | :--- | :--- |
@@ -961,6 +968,13 @@ grep -c "pattern: /" src/api/http.ts             # 28 条路由（Route 接口�
 | `ERR-WEB-001` | `WEB_INVALID` | Web 参数非法/未授权/状态冲突/不存在 | 400 / 403 / 404 / 409 |
 | `ERR-EMP-001` | `EMP_INVALID` | 员工 manifest/员工包/状态非法或依赖缺失 | 400 / 404 / 409 / 422 |
 | `ERR-VIEW-001` | `VIEW_UNKNOWN` | 未注册视图/过滤字段不合法 | 404 / 400 |
+| `ERR-PRJ-001` | `PRJ_INVALID` | 项目/里程碑/环境/测试参数非法或不存在 | 400 / 404 / 409 |
+| `ERR-PRJ-002` | `PRJ_RELEASE_STATE` | 发布单状态不可审批/驳回/删除 | 409 |
+| `ERR-PRJ-003` | `PRJ_AUTH_REF` | 凭据不是 env:/secret:/vault:/ssh-agent: 引用 | 400 |
+| `ERR-INT-001` | `INT_INVALID` | 情报资源参数/状态非法 | 400 |
+| `ERR-INT-002` | `INT_NOT_FOUND` | 情报资源不存在 | 404 |
+| `ERR-AGENT-001` | `AGENT_UNAVAILABLE` | Super Agent 不可达/降级 | 503 |
+| `ERR-HINDSIGHT-001` | `HINDSIGHT_UNAVAILABLE` | Hindsight 未装配或不可达 | 503 |
 | `ERR-SYS-001` | `SYS` | 请求体非法、路由不存在、内部错误 | 400 / 404 / 413 / 500 |
 
 ### 8.7 员工插件与员工包接口（v2.11）

@@ -12,12 +12,12 @@ updated: 2026-11-14
 
 # OPC-玄机 · 一人公司中枢 接口需求规格说明
 
-本文档解决"中枢对外到底承诺什么形状"这个问题：把 `spec/opc-xuanji/api.yaml` 的 62 个 `/api/v1` operation 与 DSH 上的 `opc_*` 工具，写成开发可直接照做、测试可直接照验的接口需求——每个接口的用途、调用方、入参出参、错误码、幂等与重试、鉴权与审计六项齐全，并且统一 Result 口径（成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`）。使用者与时机：后端在 D2 设计前用它确定契约边界；前端/插件在联调前用它对齐字段；测试在 G2 契约门禁前用它逐 operation 断言。凡本文未在 `api.yaml` 登记的错误码、字段、枚举值，一律视为契约外内容，不得实现。
+本文档解决"中枢对外到底承诺什么形状"这个问题：把 `spec/opc-xuanji/api.yaml` 的 89 个 `/api/v1` operation 与 DSH 上的 `opc_*` 工具，写成开发可直接照做、测试可直接照验的接口需求——每个接口的用途、调用方、入参出参、错误码、幂等与重试、鉴权与审计六项齐全，并且统一 Result 口径（成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`）。使用者与时机：后端在 D2 设计前用它确定契约边界；前端/插件在联调前用它对齐字段；测试在 G2 契约门禁前用它逐 operation 断言。凡本文未在 `api.yaml` 登记的错误码、字段、枚举值，一律视为契约外内容，不得实现。
 
 ## 目录
 
 1. [通用约定（Result 口径与横切规则）](#1-通用约定result-口径与横切规则)
-2. [接口清单（62 个 /api/v1 operation）](#2-接口清单62-个-apiv1-operation)
+2. [接口清单（89 个 /api/v1 operation）](#2-接口清单89-个-apiv1-operation)
 3. [平台类接口（P1–P6）](#3-平台类接口p1p6)
 4. [流程类接口（P7–P10）](#4-流程类接口p7p10)
 5. [审计类接口（P11–P12）](#5-审计类接口p11p12)
@@ -85,7 +85,7 @@ updated: 2026-11-14
 | ERR-TASK-002 | 404 | 任务不存在 | runTask |
 | ERR-SYS-001 | 500 / 503 | 未分类系统错误；依赖不可用 | 全部接口（兜底） |
 
-19 个错误码与 `api.yaml` 的 `errorCodes` 列表一一对应，新增错误码必须先登记 `api.yaml` 再实现；本文不引入第 20 个码。
+21 个错误码与 `api.yaml` 的 `errorCodes` 列表一一对应，新增错误码必须先登记 `api.yaml` 再实现；本文不引入第 22 个码。
 
 ### 1.3 调用方与鉴权约定
 
@@ -142,7 +142,9 @@ updated: 2026-11-14
 - 新增/修改接口、字段、枚举、错误码，必须先改 `api.yaml`，再改本文，再改实现，同一需求同一提交序列（不允许先改代码后补 spec）。
 - 破坏性变更（删字段、改语义、收紧必填）须在本文"与其他文档的关系"记录变更点并升 `version`。
 
-## 2. 接口清单（62 个 /api/v1 operation）
+## 2. 接口清单（89 个 /api/v1 operation）
+
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P76 管理面（项目与情报 Web 控制台）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -823,6 +825,21 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
+### 7.6 管理面接口（P50–P76，Web 控制台）
+
+管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
+
+| 组 | 接口 | 用途 |
+| :--- | :--- | :--- |
+| 项目 | `GET/POST /admin/projects`、`PUT /admin/projects/{projectId}`、`GET /admin/projects/{projectId}/summary` | 项目列表、新建、更新与研发 KPI 汇总 |
+| 项目子资源 | `GET/POST /admin/projects/{projectId}/{resource}`、`PUT/DELETE /admin/projects/{projectId}/{resource}/{resourceId}` | `resource ∈ {milestones,repositories,artifacts,environments,test-plans,test-cases,test-suites,defects,work-logs}`；创建/更新/删除均写审计；有引用的环境/计划/用例/套件删除返回 409 |
+| 发布 | `GET/POST /admin/projects/{projectId}/releases`、`POST /admin/releases/{releaseId}/approve\|reject`、`DELETE /admin/releases/{releaseId}` | 发布单创建与人工审批；生产仍强制回滚版本与 manual 审批 |
+| 测试 | `GET/POST /admin/projects/{projectId}/test-runs`、`POST /admin/test-runs/{runId}/results` | 测试批次与逐用例结果 |
+| 情报资源 | `GET/POST/PUT/DELETE /admin/intel/{resource}` | `resource ∈ {scopes,sources,bindings,topics,tags}`；项目隔离由 `projectId` 强制 |
+| 情报条目/日报/流水线 | `GET /admin/intel/items`、`PUT /admin/intel/items/{itemId}`、`GET /admin/intel/briefs[/{briefId}]`、`GET /admin/intel/runs`、`POST /admin/intel/run/{stage}`、`GET /admin/intel/summary` | 条目状态、日报详情、运行记录、手动触发 analyze/aggregate/brief/push 与 KPI |
+
+**失败语义**：项目侧复用 `ERR-PRJ-001..003`；情报侧新增 `ERR-INT-001`（参数/状态非法）与 `ERR-INT-002`（资源不存在）。所有写操作记录 `actor=boss` 审计；不返回明文凭据。
+
 ## 8. DSH 工具契约（工具即接口）
 
 ### 8.1 "工具即接口"的八条约定（与 Java/TS 实现语言无关）
@@ -1107,14 +1124,14 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 
 - [ ] frontmatter 九字段齐全，`doc_id` 为 `OPC-IRS-001` 且与 SRS 不重号，`updated` 为 2026-11-06。
 - [ ] 首段写明"解决什么问题/谁何时用"，`## 目录` 覆盖 9 章且锚点可跳转。
-- [ ] 62 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
+- [ ] 89 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
 - [ ] 每个接口六项齐全：用途、调用方、入参、出参、错误码、幂等与重试 + 审计。
 - [ ] Result 口径写死为"成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`"，并有成功/失败两个可复制示例。
-- [ ] 19 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应，未引入第 20 个码。
+- [ ] 21 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应，未引入第 22 个码。
 - [ ] 工具契约表含工具名、用途、必填参数、返回结构、失败语义五列，覆盖 `hub` + 十一族共 31 个实现工具（含员工目录/员工包）。
 - [ ] TI-1..TI-8 八条"工具即接口"约定齐备，且明确与 Java/TS 实现语言无关。
 - [ ] §8.1 矩阵中每个接口的 ✓ 与 §3~§6 各接口错误码表述一致。
-- [ ] §10.1 映射覆盖 UC-001..021 全部二十一个用例与 62 个接口。
+- [ ] §10.1 映射覆盖 UC-001..021 全部二十一个用例与 89 个接口（管理面 27 个见 §7.6）。
 - [ ] 全文无未决占位标记，无 `api.yaml` 与设计文档之外的新增数值或字段。
 - [ ] 文末两节齐备，`## 与其他文档的关系` 位于全文最后。
 

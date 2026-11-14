@@ -23,6 +23,8 @@ tags:
     description: Super Agent 应用层（依赖 dsh-super-agents）——员工部署、认知派活、回流与健康
   - name: project
     description: 项目监理——软件研发要素（里程碑、版本库、制品库、SSH 环境、发布单、测试）
+  - name: admin
+    description: Web 控制台管理面——项目研发与情报管理的 CRUD、汇总、发布审批与流水线触发
 
 errorCodes:
   - ERR-AUTHZ-001
@@ -43,6 +45,8 @@ errorCodes:
   - ERR-PRJ-001
   - ERR-PRJ-002
   - ERR-PRJ-003
+  - ERR-INT-001
+  - ERR-INT-002
   - ERR-SYS-001
 
 paths:
@@ -1333,6 +1337,268 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/admin/projects:
+    get:
+      operationId: listAdminProjects
+      tags: [admin]
+      summary: 控制台项目列表（含软件研发档案字段）
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: createAdminProject
+      tags: [admin]
+      summary: 新建项目（写审计）
+      responses:
+        '201': { description: Created }
+
+  /api/v1/admin/projects/{projectId}:
+    put:
+      operationId: updateAdminProject
+      tags: [admin]
+      summary: 更新项目档案（写审计）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/projects/{projectId}/summary:
+    get:
+      operationId: adminProjectSummary
+      tags: [admin]
+      summary: 项目研发 KPI 汇总（里程碑/版本库/发布/测试/缺陷/工时）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/projects/{projectId}/releases:
+    get:
+      operationId: listAdminReleases
+      tags: [admin]
+      summary: 发布单列表
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: createAdminRelease
+      tags: [admin]
+      summary: 创建发布单（生产强制回滚版本与人工审批）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '201': { description: Created }
+
+  /api/v1/admin/releases/{releaseId}/approve:
+    post:
+      operationId: approveAdminRelease
+      tags: [admin]
+      summary: 审批发布单（写审计）
+      parameters:
+        - { name: releaseId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/releases/{releaseId}/reject:
+    post:
+      operationId: rejectAdminRelease
+      tags: [admin]
+      summary: 驳回发布单（写审计）
+      parameters:
+        - { name: releaseId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/releases/{releaseId}:
+    delete:
+      operationId: deleteAdminRelease
+      tags: [admin]
+      summary: 删除待审批发布单（写审计）
+      parameters:
+        - { name: releaseId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/projects/{projectId}/test-runs:
+    get:
+      operationId: listAdminTestRuns
+      tags: [admin]
+      summary: 测试执行批次列表
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: createAdminTestRun
+      tags: [admin]
+      summary: 创建测试执行批次（human/agent/ci）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '201': { description: Created }
+
+  /api/v1/admin/test-runs/{runId}/results:
+    post:
+      operationId: recordAdminTestResult
+      tags: [admin]
+      summary: 记录逐用例结果（写审计）
+      parameters:
+        - { name: runId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '201': { description: Created }
+
+  /api/v1/admin/intel/items:
+    get:
+      operationId: listAdminIntelItems
+      tags: [admin]
+      summary: 情报条目列表（按项目与状态过滤）
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: integer } }
+        - { name: status, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/items/{itemId}:
+    put:
+      operationId: updateAdminIntelItem
+      tags: [admin]
+      summary: 更新情报条目状态（归档/过滤/已分析）
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/briefs:
+    get:
+      operationId: listAdminIntelBriefs
+      tags: [admin]
+      summary: 情报日报列表
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/briefs/{briefId}:
+    get:
+      operationId: getAdminIntelBrief
+      tags: [admin]
+      summary: 情报日报详情（覆盖度/分区/条目）
+      parameters:
+        - { name: briefId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/runs:
+    get:
+      operationId: listAdminIntelRuns
+      tags: [admin]
+      summary: 情报流水线/采集/推送运行记录
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/run/{stage}:
+    post:
+      operationId: triggerAdminIntel
+      tags: [admin]
+      summary: 手动触发情报阶段（analyze/aggregate/brief/push）
+      parameters:
+        - { name: stage, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/summary:
+    get:
+      operationId: adminIntelSummary
+      tags: [admin]
+      summary: 情报管理 KPI 汇总
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/projects/{projectId}/{resource}:
+    get:
+      operationId: listAdminProjectResource
+      tags: [admin]
+      summary: 项目研发子资源列表（milestones/repositories/artifacts/environments/test-plans/test-cases/test-suites/defects/work-logs）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+        - { name: resource, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: createAdminProjectResource
+      tags: [admin]
+      summary: 项目研发子资源创建（写审计）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+        - { name: resource, in: path, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Created }
+
+  /api/v1/admin/projects/{projectId}/{resource}/{resourceId}:
+    put:
+      operationId: updateAdminProjectResource
+      tags: [admin]
+      summary: 项目研发子资源更新（写审计）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+        - { name: resource, in: path, required: true, schema: { type: string } }
+        - { name: resourceId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    delete:
+      operationId: deleteAdminProjectResource
+      tags: [admin]
+      summary: 项目研发子资源删除（有引用时拒绝，写审计）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+        - { name: resource, in: path, required: true, schema: { type: string } }
+        - { name: resourceId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/{resource}:
+    get:
+      operationId: listAdminIntelResource
+      tags: [admin]
+      summary: 情报管理资源列表（scopes/sources/bindings/topics/tags）
+      parameters:
+        - { name: resource, in: path, required: true, schema: { type: string } }
+        - { name: projectId, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: createAdminIntelResource
+      tags: [admin]
+      summary: 情报管理资源创建（写审计）
+      parameters:
+        - { name: resource, in: path, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Created }
+
+  /api/v1/admin/intel/{resource}/{resourceId}:
+    put:
+      operationId: updateAdminIntelResource
+      tags: [admin]
+      summary: 情报管理资源更新（写审计）
+      parameters:
+        - { name: resource, in: path, required: true, schema: { type: string } }
+        - { name: resourceId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    delete:
+      operationId: deleteAdminIntelResource
+      tags: [admin]
+      summary: 情报管理资源删除（有引用时拒绝，写审计）
+      parameters:
+        - { name: resource, in: path, required: true, schema: { type: string } }
+        - { name: resourceId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
 
 components:
   schemas:

@@ -41,7 +41,8 @@
 4. ✅ `spec/opc-xuanji/usecases.yaml` 新增 UC-015..021；`api.yaml` 新增 P35–P49、`project` tag 与 `ERR-PRJ-001..003`（operation 34→62，错误码 14→19）。
 5. ✅ `src/domains/project/software.ts` 实现登记、查询、发布审批与测试结果写入；`src/api/http.ts` 注册 15 条路由；`ProjectSoftwareService` 注入 `ApiContext`。
 6. ✅ `test/integration/project-software.test.ts` 覆盖 TC-PRJ-001..007（需测试库执行）。
-7. ⏳ 待落地：测试 Agent 角色卡、Git/SVN 同步执行器、SSH 部署/回滚执行器、制品推送；真实凭据托管方案需老板确认。
+7. ✅ Web 管理面（项目管理页签 + `/api/v1/admin/*` + 驾驶舱指标）已落地（见第 6 节）。
+8. ⏳ 待落地：测试 Agent 角色卡、Git/SVN 同步执行器、SSH 部署/回滚执行器、制品推送；真实凭据托管方案需老板确认。
 
 ## 5. 验证
 
@@ -49,3 +50,11 @@
 - 代码级：`opc_project` manifest 校验通过；`npm run typecheck` 0 错误；`npm run test:unit` 39/39；`npm run spec:check` PASS（76 实体 / 21 用例 / 21 模块；其中 v2.13 情报增量 10 实体见 PA-OPC-023）；`npm run docs:check` PASS。
 - 数据库级：`migrations/0001–0006` 顺序可应用；`spec.test.ts` 的实体-列对账与 `project-software.test.ts` 需在测试库复跑。
 - 业务实现测试：登记/查询/发布审批/测试结果已落 API；执行器类能力待 Phase 2。
+
+## 6. Web 管理面（本次增量）
+
+- 新增 `/api/v1/admin/*` 管理面 27 个 operation：项目列表/新建/更新、项目 KPI 汇总、里程碑/版本库/制品库/环境/测试计划/用例/套件/缺陷/工时的统一 CRUD、发布单创建/审批/驳回/删除、测试批次与结果、情报管理资源、情报条目/日报/流水线/汇总。
+- `client.js` 新增「项目管理」页签：项目选择、进度条与 7 项 KPI、11 个子视图（里程碑/版本库/制品库/环境/发布/测试计划/用例/套件/批次/缺陷/工时）；创建/编辑/删除、发布审批均可在面板完成。
+- 驾驶舱新增项目研发指标：逾期里程碑、7 天内里程碑、待批发布、未关闭缺陷、失败/阻塞测试批次、测试通过率、版本库同步异常。
+- 安全边界不变：凭据只接受 `env:/secret:/vault:/ssh-agent:` 引用；生产发布仍强制人工审批；有引用的环境/测试计划/用例/套件删除会被拒绝（409）。
+- 验证：`npm run typecheck`、`npm run test:unit`、`npm run spec:check`（89 operation）、`npm run docs:check`；`test/integration/admin.test.ts` 覆盖管理面 CRUD 与驾驶舱指标（需测试库）。
