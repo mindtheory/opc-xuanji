@@ -28,6 +28,7 @@ import { IngestService, MemoryService, RadarService, SessionGrantService, type I
 import type { ExtractedFields } from "../web/classifier.ts";
 import { EmployeePackageService } from "../employees/package.ts";
 import { ProjectSoftwareService } from "../domains/project/software.ts";
+import { ProjectAutopilotService } from "../domains/project/autopilot.ts";
 import { IntelPipelineService } from "../domains/intel/daily.ts";
 import { AdminService } from "../domains/admin/service.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
@@ -122,8 +123,9 @@ export function createHub(options: HubConfig = {}): Hub {
   };
   const employees = new EmployeePackageService(pool, audit, { hubVersion: options.version ?? "0.2.1" });
   const software = new ProjectSoftwareService(pool, audit);
+  const autopilot = new ProjectAutopilotService(pool, audit);
   const intelPipeline = new IntelPipelineService(pool);
-  const admin = new AdminService(pool, audit, software, intelPipeline);
+  const admin = new AdminService(pool, audit, software, intelPipeline, autopilot);
   const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
   const agents = new SuperAgentService(bridge, audit, { archiveDir });
   const hindsight = new HindsightBridge({
@@ -626,6 +628,21 @@ export function createHub(options: HubConfig = {}): Hub {
         return jsonText(await employees.importPackage(args.package, {
           dryRun: args.dryRun !== false,
           confirm: args.confirm === true,
+        }));
+      },
+    }),
+    tool({
+      name: "opc_project_bootstrap",
+      description: "新建项目后填写版本库并自动生产：浅克隆 → 静态扫描 → 回填项目档案 → 生成开发/测试/部署计划 → 待裁决项入队。不执行仓库代码。",
+      parameters: OBJECT(
+        { projectId: { type: "integer" }, repositoryUrl: { type: "string" }, branch: { type: "string" }, authRef: { type: "string" } },
+        ["projectId", "repositoryUrl"],
+      ),
+      async execute(args) {
+        return jsonText(await admin.bootstrapProject(Number(args.projectId), {
+          url: String(args.repositoryUrl),
+          branch: args.branch === undefined ? undefined : String(args.branch),
+          authRef: args.authRef === undefined ? undefined : String(args.authRef),
         }));
       },
     }),

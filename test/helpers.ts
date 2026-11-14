@@ -11,6 +11,10 @@ export const config = loadConfig();
 export const testDsn = config.testDsn;
 
 const TABLES = [
+  "stat.project_decision",
+  "stat.project_plan",
+  "stat.project_scan",
+  "ref.project_checkout",
   "ref.project_shared_resource",
   "ref.shared_resource",
   "ref.shared_setting",

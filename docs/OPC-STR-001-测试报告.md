@@ -183,6 +183,23 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：基础资源配置在迁移、接口、单元/集成、契约与文档五个层面均已验证；部署后由发版值守按 `npm test` 全量回归。
 
+## 12. v2.16 项目自动驾驶增量验证（2026-11-14）
+
+本节追加记录项目自动驾驶（REQ-PRJ-027..030）的验证结果，不覆盖第 1–11 节。
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0009_project_autopilot.sql` | 业务库 applied 1 / 测试库 applied 1 | `npm run migrate`、`npm run migrate:test` 均 exit 0 |
+| 新增集成用例（`autopilot.test.ts`） | **4/4 pass** | TC-AUTO-001..004，夹具为本地 `file://` git 仓库（无外网依赖） |
+| 全量测试（`npm test`） | **107/107 pass** | v2.15 基线 103 + v2.16 增量 4 |
+| 类型检查 | exit 0 | `npm run typecheck` 无输出 |
+| 规格门禁 | PASS（83 实体 / 25 用例 / 21 模块；102 operation） | `npm run spec:check` |
+| 文档门禁 | PASS（28 份文档） | `npm run docs:check` |
+| 安全项 | 只读扫描、无仓库代码执行、失败不伪造 | 检出仅 `git clone` + 读文件；无 `npm install`/`build`/`run` 调用 |
+| 裁决口径 | 仅 license/ci/deploy_target 三项入队 | 夹具已有测试目录，故无 test_baseline；无公网服务器 → deploy_target |
+
+**结论**：自动驾驶在迁移、接口、扫描、计划生成、裁决闭环与门禁五个层面均已验证；生产发布仍需人工审批，不因自动化放行。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写

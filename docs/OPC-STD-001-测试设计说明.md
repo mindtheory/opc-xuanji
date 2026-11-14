@@ -625,6 +625,19 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.15 增量，基线核算（5.1）只统计基线 68 例；项目研发/情报/基础资源的增量用例统一在 `OPC-STR-001` 的增量验证章节登记，避免两处数字打架。
 
+### 4.26 TC-AUTO-001 … TC-AUTO-004 · 项目自动驾驶（v2.16 增量）
+
+**追溯**：REQ-PRJ-027..030；`test/integration/autopilot.test.ts`；实体 ProjectCheckout、ProjectScan、ProjectPlan、ProjectDecision。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-AUTO-001 | 建项目填版本库自动检出入档 | 本地 git 夹具 `file://`：`checkout.status=ok`、commit 为 40 位 SHA、files>0；`tech_stack.primaryLanguage=javascript`、frameworks 含 express；`software_profile.commit` 40 位；pendingDecisions ≥ 2 |
+| TC-AUTO-002 | 三份计划与测试基线 | plans 的 plan_kind 为 dev/test/deploy；里程碑 5 条；test_plan draft 1 条 + TC-AUTO-001..003 三条用例；部署环境复用默认测试服务器（`ssh_user=canetwork`，env_type=test） |
+| TC-AUTO-003 | 仅裁决项入队并裁决关闭 | 夹具无 LICENSE/CI/公网服务器 → topics = ci/deploy_target/license 且全 pending；裁决后 decided；再次裁决 404 `ERR-AUTO-004` |
+| TC-AUTO-004 | 非法地址与非仓库路径 | `ftp://` → 400 `ERR-AUTO-001`；不存在的 `file://` → 502 `ERR-AUTO-002`；`ref.project_checkout` 留 `failed` 记录且 error 含「检出失败」 |
+
+**结论口径**：本章为 v2.16 增量，基线核算（5.1）只统计基线 68 例；自动驾驶用例在 `OPC-STR-001` §12 登记。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -658,6 +671,10 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-RES-003 | UC-023 / REQ-PRJ-025、026 | `test/integration/admin-shared.test.ts` | 显式选型 1 项、`appliedByDefault=false`；bindDefaults=false → 0 项 |
 | TC-RES-004 | UC-022 / REQ-PRJ-023、024 | `test/integration/admin-shared.test.ts` | 明文 400 `ERR-RES-002`；非法 kind 400 `ERR-RES-001`；服务器类补 debian/ssh |
 | TC-RES-005 | UC-022、023 / REQ-PRJ-023、026 | `test/integration/admin-shared.test.ts` | 绑定后删 409 `ERR-RES-004`；解绑后删 200；再删 404 |
+| TC-AUTO-001 | UC-024 / REQ-PRJ-027、028 | `test/integration/autopilot.test.ts` | 检出 ok + commit SHA；主语言 javascript；档案回填；pending ≥ 2 |
+| TC-AUTO-002 | UC-025 / REQ-PRJ-029 | `test/integration/autopilot.test.ts` | dev/test/deploy 三计划；5 里程碑；3 基线用例；测试环境 ssh_user=canetwork |
+| TC-AUTO-003 | UC-025 / REQ-PRJ-030 | `test/integration/autopilot.test.ts` | 三条裁决全 pending；裁决后 decided；重复裁决 404 |
+| TC-AUTO-004 | UC-024 / REQ-PRJ-027 | `test/integration/autopilot.test.ts` | 非法协议 400；坏仓库 502；失败检出留痕 |
 
 ### 5.1 覆盖核算（60 + 8 = 68）
 

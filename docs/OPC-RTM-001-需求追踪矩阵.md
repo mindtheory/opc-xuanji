@@ -54,9 +54,9 @@ updated: 2026-11-14
 | 对象 | 数量 | 来源 |
 | :--- | :--- | :--- |
 | 主文档功能需求 | 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7） | SRS §4 |
-| 员工需求 | 149 条（11 份分册，v2.15 项目监理 +4） | `docs/员工需求/` |
+| 员工需求 | 153 条（11 份分册，v2.16 项目监理 +4） | `docs/员工需求/` |
 | 非功能需求 | 26 条（NFR-001..022 + NFR-WEB-001..004） | SRS §10 |
-| 用例 | 23 条（UC-001..023） | `usecases.yaml` |
+| 用例 | 25 条（UC-001..025） | `usecases.yaml` |
 | HTTP operation | 62 个 | `api.yaml` |
 | DSH 工具 | 31 个 | `src/plugin/index.ts` |
 | 实体 | 76 个 | `entities.yaml` / `migrations/` |
@@ -124,6 +124,10 @@ updated: 2026-11-14
 | REQ-PRJ-024 | 远程管理方式与公司默认口径 | UC-022 | TC-RES-001 | getSharedResourceDefaults / createSharedResource | `domains/admin/service.ts` | `admin-shared.test.ts` |
 | REQ-PRJ-025 | 新建项目按默认资源选型 | UC-023 | TC-RES-002、003 | createAdminProject / bindProjectSharedResources | `domains/admin/service.ts` | `admin-shared.test.ts` |
 | REQ-PRJ-026 | 项目基础资源绑定与追溯 | UC-023 | TC-RES-003、005 | listProjectSharedResources / unbindProjectSharedResource | `domains/admin/service.ts` | `admin-shared.test.ts` |
+| REQ-PRJ-027 | 建项目自动检出（项目自动驾驶） | UC-024 | TC-AUTO-001 | bootstrapProjectAutopilot / getProjectAutopilot | `domains/project/autopilot.ts` | `autopilot.test.ts` |
+| REQ-PRJ-028 | 仓库静态扫描与档案回填 | UC-024 | TC-AUTO-001 | getProjectAutopilot | `domains/project/autopilot.ts` | `autopilot.test.ts` |
+| REQ-PRJ-029 | 自动生成开发/测试/部署计划 | UC-025 | TC-AUTO-002 | listProjectPlans | `domains/project/autopilot.ts` | `autopilot.test.ts` |
+| REQ-PRJ-030 | 裁决队列与人工放行 | UC-025 | TC-AUTO-003、004 | listProjectDecisions / decideProjectDecision | `domains/project/autopilot.ts` | `autopilot.test.ts` |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list | `employees/catalog.ts` | `employees.test.ts`、`unit/employees.test.ts` |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle | `employees/index.ts` | `employees.test.ts` |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 | `employees/catalog.ts`、`plugin/index.ts` | `employees.test.ts` |
@@ -211,6 +215,8 @@ updated: 2026-11-14
 | UC-021 | 时间管理与关键节点提醒 | REQ-PRJ-022 | TC-PRJ-007 | `test/integration/project-software.test.ts` |
 | UC-022 | 公司基础资源登记与默认口径 | REQ-PRJ-023 | TC-RES-001、004、005 | `test/integration/admin-shared.test.ts` |
 | UC-023 | 新建项目按公司默认资源选型 | REQ-PRJ-025 | TC-RES-002、003 | `test/integration/admin-shared.test.ts` |
+| UC-024 | 建项目填写版本库并自动检出入档 | REQ-PRJ-027 | TC-AUTO-001 | `test/integration/autopilot.test.ts` |
+| UC-025 | 自动生成计划并推送裁决 | REQ-PRJ-029 | TC-AUTO-002、003、004 | `test/integration/autopilot.test.ts` |
 
 ## 7. 缺口与处置
 

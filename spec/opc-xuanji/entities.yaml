@@ -2554,6 +2554,165 @@ entities:
       - name: created_at
         type: timestamptz
         nullable: true
+  - name: ProjectCheckout
+    table: ref.project_checkout
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: repository_id
+        type: bigint
+        nullable: true
+      - name: url
+        type: text
+        nullable: false
+      - name: branch
+        type: varchar(128)
+        nullable: true
+      - name: commit_sha
+        type: varchar(64)
+        nullable: true
+      - name: workspace_path
+        type: text
+        nullable: true
+      - name: file_count
+        type: integer
+        nullable: true
+      - name: size_bytes
+        type: bigint
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: error
+        type: text
+        nullable: true
+      - name: checked_out_at
+        type: timestamptz
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
+  - name: ProjectScan
+    table: stat.project_scan
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: checkout_id
+        type: bigint
+        nullable: true
+      - name: scanner_version
+        type: varchar(16)
+        nullable: false
+      - name: languages
+        type: jsonb
+        nullable: true
+      - name: manifests
+        type: jsonb
+        nullable: true
+      - name: structure
+        type: jsonb
+        nullable: true
+      - name: tests
+        type: jsonb
+        nullable: true
+      - name: ci
+        type: jsonb
+        nullable: true
+      - name: findings
+        type: jsonb
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: created_at
+        type: timestamptz
+        nullable: true
+  - name: ProjectPlan
+    table: stat.project_plan
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: plan_kind
+        type: varchar(8)
+        nullable: false
+      - name: version
+        type: integer
+        nullable: false
+      - name: title
+        type: varchar(128)
+        nullable: false
+      - name: content
+        type: jsonb
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: generated_at
+        type: timestamptz
+        nullable: true
+  - name: ProjectDecision
+    table: stat.project_decision
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: topic
+        type: varchar(32)
+        nullable: false
+      - name: question
+        type: text
+        nullable: false
+      - name: options
+        type: jsonb
+        nullable: true
+      - name: risk_level
+        type: varchar(8)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: decision
+        type: text
+        nullable: true
+      - name: decided_by
+        type: varchar(64)
+        nullable: true
+      - name: decided_at
+        type: timestamptz
+        nullable: true
+      - name: payload
+        type: jsonb
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
   - name: SharedResource
     table: ref.shared_resource
     module: platform

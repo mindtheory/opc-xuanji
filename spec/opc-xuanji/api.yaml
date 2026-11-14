@@ -51,6 +51,10 @@ errorCodes:
   - ERR-RES-002
   - ERR-RES-003
   - ERR-RES-004
+  - ERR-AUTO-001
+  - ERR-AUTO-002
+  - ERR-AUTO-003
+  - ERR-AUTO-004
   - ERR-SYS-001
 
 paths:
@@ -1352,8 +1356,8 @@ paths:
     post:
       operationId: createAdminProject
       tags: [admin]
-      summary: 新建项目（写审计）；默认从公司基础资源按 is_default 选型绑定，可用 resourceIds 显式覆盖
-      description: 请求体可选 resourceIds:number[] 指定本次绑定的基础资源；bindDefaults=false 时不自动绑定。
+      summary: 新建项目（写审计）；可传 repository 触发项目自动驾驶（检出→扫描→回填→计划→裁决）；默认从公司基础资源按 is_default 选型绑定
+      description: 请求体可选 resourceIds:number[] 指定本次绑定的基础资源；bindDefaults=false 时不自动绑定；repository:{url,branch?,authRef?} 存在时自动执行自动驾驶流水线。
       responses:
         '201': { description: Created }
 
@@ -1681,6 +1685,60 @@ paths:
       responses:
         '200': { description: OK }
         '404': { description: ERR-RES-003 }
+
+  /api/v1/admin/projects/{projectId}/autopilot:
+    post:
+      operationId: bootstrapProjectAutopilot
+      tags: [admin]
+      summary: '项目自动驾驶：浅克隆版本库 → 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 裁决项入队'
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '201': { description: Created }
+        '400': { description: ERR-AUTO-001 / ERR-AUTO-003 }
+        '404': { description: ERR-AUTO-001 项目不存在 }
+        '502': { description: ERR-AUTO-002 检出失败 }
+    get:
+      operationId: getProjectAutopilot
+      tags: [admin]
+      summary: 自动驾驶汇总（最近检出、扫描、计划、裁决与回填档案）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/projects/{projectId}/plans:
+    get:
+      operationId: listProjectPlans
+      tags: [admin]
+      summary: 自动生成的开发/测试/部署计划列表
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/projects/{projectId}/decisions:
+    get:
+      operationId: listProjectDecisions
+      tags: [admin]
+      summary: 项目裁决队列（默认全部；status=pending 只看待裁决）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+        - { name: status, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/projects/{projectId}/decisions/{decisionId}/decide:
+    post:
+      operationId: decideProjectDecision
+      tags: [admin]
+      summary: 老板裁决（写审计；仅 pending 可裁决）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+        - { name: decisionId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '404': { description: ERR-AUTO-004 裁决项不存在或已处理 }
 
 components:
   schemas:

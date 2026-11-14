@@ -7,7 +7,7 @@
 运行在 **DeepSeek Harness（DSH ≥ 0.2.1）** 上的 Bundle 插件：以「中枢调度 + 专业员工矩阵 + 三级沉淀 + TS 流程固化」补全一人公司在财税、法务、行政、战略、项目、情报、客户、车务、进销存上的职能短板，并把**公司日常经营中需要定期执行的事**做成配置驱动的自动化任务。
 
 - 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.12、《OPC-玄机 · 技术选型与系统架构.md》v2.12（与本仓库同目录）、《OPC-SDD-003 Super Agent 应用层设计》（应用层定位）
-- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（36 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（97 个 operation）+ PostgreSQL 17 / pgvector 数据层
+- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（37 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（102 个 operation）+ PostgreSQL 17 / pgvector 数据层
 - 应用层依赖：**[mindtheory/dsh-super-agents](https://github.com/mindtheory/dsh-super-agents)**（软依赖，同 profile 安装即得员工超级智能体：部署/派活/回流/健康；未装则 agent 类工具降级，其余功能不受影响）
 - 当前阶段：**v0.1.0 已发布**。CI 在 Node 24.9/24/26 上单元与门禁全绿；PostgreSQL 17 + pgvector 集成 **68/68** 通过。本地跑集成仍需 `OPC_TEST_DSN`。
 
@@ -21,7 +21,7 @@ opc-xuanji/
 │   ├── entities.yaml  api.yaml  modules.yaml  usecases.yaml
 ├── migrations/                               # 只追加的 SQL 迁移链
 │   ├── 0001_init.sql … 0005_employee_lines.sql  0006_project_software.sql
-│   ├── 0007_intel_daily.sql  0008_shared_resources.sql
+│   ├── 0007_intel_daily.sql  0008_shared_resources.sql  0009_project_autopilot.sql
 ├── src/
 │   ├── platform/    # 中枢平台：config/env/errors/views/token/conflict/json
 │   ├── audit/       # 审计统一写入口：哈希链、JSONL 导出、链头
@@ -31,10 +31,10 @@ opc-xuanji/
 │   ├── employees/   # 员工 manifest、目录、员工包导入导出
 │   ├── agents/      # Super Agent 应用层：桥（依赖 dsh-super-agents）、部署/派活/回流
 │   ├── api/         # HTTP /api/v1 契约层
-│   ├── plugin/      # DSH cordis 插件入口（36 个工具）
+│   ├── plugin/      # DSH cordis 插件入口（37 个工具）
 │   └── db/          # 连接池与迁移执行器
 ├── scripts/         # gen-spec / migrate / serve
-├── test/            # 单元 25 + 集成 78（共 103 例；新增 Web/员工用例需测试库）
+├── test/            # 单元 25 + 集成 82（共 107 例；新增 Web/员工用例需测试库）
 ├── docs/员工需求/   # 11 个员工需求分册（一人一份）
 ├── docs/            # 软件工程文档（SRS/IRS/SDD/DBDD/SDP/SCMP/SQAP/RMP/RTM/SVD/STP/STD/STR + UML + PA）
 ├── AGENTS.md        # 主会话 Agent 运行章程（幕僚长/COO 行为约定）
@@ -90,13 +90,14 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | :--- | :--- | :--- |
 | 中枢（Service） | `src/platform`、`src/workflow` | 视图级授权（8 个视图）、一次性令牌（≤5 分钟、单次）、冲突冻结与裁决、审计哈希链、Registry 六项准入守卫、风险硬规则、Verifier 封装、诊断 |
 | 员工（Subagent / 函数） | `ref.employee_plugin` + 工具注册 | 员工不直连库：读经视图、写经中枢、审计统一入口；`write_targets` 决定风险等级 |
+| 项目自动驾驶 | `src/domains/project/autopilot.ts` | 建项目填版本库 → 浅克隆 → 只读静态扫描 → 回填 `tech_stack/software_profile` → 生成开发/测试/部署计划 → 仅裁决项入队；检出上限 2000 文件、不执行仓库代码、生产仍需人工审批 |
 | 基础资源（公司共享） | `src/domains/admin` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记在 `ref.shared_resource`；公司默认口径 Debian + SSH、默认账号 `canetwork` 存 `ref.shared_setting`；新建项目默认按 `is_default` 选型绑定到 `ref.project_shared_resource`；口令只以 `env:OPC_DEFAULT_SSH_PASSWORD` 引用登记，不入库不入仓 |
 | 流程（TS 固化） | `ref.workflow_registry` + `audit.workflow_*` | 版本不可变、代码哈希与测试哈希一致、幂等键 `instance_id + node_id`、三关测试与影子运行在 Phase 2 接 `dsh-workflow-ptc` |
-| 数据（共享层） | `biz/ref/audit/stat/vec` | 79 张表（37 基线 + 8 Web + 9 员工线 + 12 项目研发 + 10 情报日报 + 3 基础资源）；审计 `(id, created_at)` 复合主键为分区预留；pgvector HNSW `m=16, ef_construction=64` |
+| 数据（共享层） | `biz/ref/audit/stat/vec` | 83 张表（37 基线 + 8 Web + 9 员工线 + 12 项目研发 + 10 情报日报 + 3 基础资源 + 4 项目自动驾驶）；审计 `(id, created_at)` 复合主键为分区预留；pgvector HNSW `m=16, ef_construction=64` |
 
 ### HTTP 契约（`/api/v1`）
 
-`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`，管理面 `admin/projects*`、`admin/shared-resources*`（六类基础资源与项目选型）等共 97 个 operation。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
+`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`，管理面 `admin/projects*`、`admin/shared-resources*`（六类基础资源与项目选型）、`admin/projects/{id}/autopilot`（项目自动驾驶）等共 102 个 operation。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
 
 ### Web 界面（DSH 插件栏「OPC驾驶舱」）
 
@@ -121,7 +122,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 
 ### DSH 工具（`opc_*`）
 
-36 个：基线 16 个 + Web 10 个（`opc_web_*`）+ 员工目录/员工包 5 个（`opc_employee_list`、`opc_employee_install`、`opc_employee_toggle`、`opc_employee_export`、`opc_employee_import`）+ Super Agent 5 个（`opc_agent_deploy`、`opc_agent_dispatch`、`opc_agent_result`、`opc_agent_health`、`opc_agent_pause`）。
+37 个：基线 16 个 + Web 10 个（`opc_web_*`）+ 员工目录/员工包 5 个（`opc_employee_list`、`opc_employee_install`、`opc_employee_toggle`、`opc_employee_export`、`opc_employee_import`）+ Super Agent 5 个（`opc_agent_deploy`、`opc_agent_dispatch`、`opc_agent_result`、`opc_agent_health`、`opc_agent_pause`）+ 项目自动驾驶 1 个（`opc_project_bootstrap`）。
 
 插件装配（DSH profile 的 `cordis.patch.yml`）：
 

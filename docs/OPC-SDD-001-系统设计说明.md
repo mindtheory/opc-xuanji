@@ -720,7 +720,8 @@ curl -s -X PUT http://127.0.0.1:3082/api/v1/tasks/invoice_backlog -H 'content-ty
 - `AdminService`（`src/domains/admin/service.ts`）以资源白名单复用 CRUD：项目子资源（里程碑/版本库/制品库/环境/测试计划/用例/套件/缺陷/工时）与情报资源（空间/数据源/绑定/主题/标签）；所有写操作写 `actor=boss` 审计，凭据只存 `auth_ref`。
 - 发布/测试批次/测试结果复用 `ProjectSoftwareService` 的既有校验；情报流水线手动触发复用 `IntelPipelineService` 的 `force + projectId` 过滤。
 - 公司基础资源（v2.15）：`AdminService` 新增 `SHARED_DEF` 资源定义与 `sharedDefaults` / `listSharedResources` / `createSharedResource` / `updateSharedResource` / `removeSharedResource` / `listProjectSharedResources` / `bindProjectSharedResources` / `unbindProjectSharedResource` 方法；六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记在 `ref.shared_resource`，公司默认口径（debian / ssh / canetwork / 凭据引用）存 `ref.shared_setting`，项目绑定存 `ref.project_shared_resource`；`createProject` 默认按 `is_default + active` 选型绑定，`resourceIds` 可显式覆盖。口令只以 `env:/secret:/vault:/ssh-agent:` 引用登记，实际口令由部署环境注入。
-- HTTP 管理面统一挂 `/api/v1/admin`，共 35 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
+- 项目自动驾驶（v2.16）：`ProjectAutopilotService`（`src/domains/project/autopilot.ts`）串联「登记版本库 → 浅克隆（`git clone --depth 1`，超时 120s，env: 凭据经临时 askpass）→ 静态扫描（只读文件，上限 2000 文件，跳过 `.git/node_modules/dist`）→ 回填 `tech_stack/software_profile` → 生成三份计划（dev 里程碑 + test 计划与基线用例 + deploy 复用公司默认测试服务器）→ 裁决项入队」。检出/扫描/计划/裁决分别落 `ref.project_checkout`、`stat.project_scan`、`stat.project_plan`、`stat.project_decision`；检出失败返回 502 且不伪造档案。
+- HTTP 管理面统一挂 `/api/v1/admin`，共 40 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
 - 删除保护：被发布单引用的环境、被批次引用的计划/套件、被结果引用的用例、仍被绑定的来源、已有条目的情报空间，删除返回 409。
 
 ## 6. 失败与降级路径

@@ -1035,6 +1035,10 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-PRJ-024 | 远程管理方式与公司默认口径（debian/ssh） | UC-022 | TC-RES-001 | getSharedResourceDefaults / createSharedResource |
 | REQ-PRJ-025 | 新建项目按默认资源选型 | UC-023 | TC-RES-002、003 | createAdminProject / bindProjectSharedResources |
 | REQ-PRJ-026 | 项目基础资源绑定与追溯 | UC-023 | TC-RES-003、005 | listProjectSharedResources / unbindProjectSharedResource |
+| REQ-PRJ-027 | 建项目自动检出（项目自动驾驶） | UC-024 | TC-AUTO-001 | createAdminProject / bootstrapProjectAutopilot |
+| REQ-PRJ-028 | 仓库静态扫描与档案回填 | UC-024 | TC-AUTO-001 | getProjectAutopilot |
+| REQ-PRJ-029 | 自动生成开发/测试/部署计划 | UC-025 | TC-AUTO-002 | listProjectPlans |
+| REQ-PRJ-030 | 裁决队列与人工放行 | UC-025 | TC-AUTO-003、004 | listProjectDecisions / decideProjectDecision |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 |
@@ -1045,7 +1049,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：23 个 UC 全部在被映射的 REQ 中出现（UC-001..023 逐条可见）；主文档 39 条功能需求 + 11 份员工分册 149 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：25 个 UC 全部在被映射的 REQ 中出现（UC-001..025 逐条可见）；主文档 39 条功能需求 + 11 份员工分册 153 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 

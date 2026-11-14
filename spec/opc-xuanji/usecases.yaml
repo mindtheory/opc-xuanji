@@ -575,3 +575,63 @@ usecases:
       - 中枢按 is_default + active 选出默认资源并写入 ref.project_shared_resource（applied_by_default=true）
       - 传入 resourceIds 时按显式集合绑定（applied_by_default=false）；bindDefaults=false 时不绑定
       - 项目详情可查已绑定资源与来源标记；解绑与绑定均写审计
+
+  - id: UC-024
+    title: 建项目填写版本库并自动检出入档
+    requirement: REQ-PRJ-027
+    actors:
+      - 老板
+      - 项目监理
+    goal: 新建项目时填写版本库，系统浅克隆后静态扫描，回填项目档案
+    entities:
+      - Project
+      - CodeRepository
+      - ProjectCheckout
+      - ProjectScan
+      - AuditLog
+    api:
+      - createAdminProject
+      - bootstrapProjectAutopilot
+      - getProjectAutopilot
+    tests:
+      - TC-AUTO-001
+    preconditions: 版本库地址可达（https/ssh/file/本地路径），Node 环境可用 git
+    steps:
+      - 老板新建项目并填写版本库地址（可选分支与 env: 凭据引用）
+      - 中枢登记 ref.code_repository，浅克隆到工作区并记录 commit/文件数/字节数
+      - 静态扫描语言、清单、测试、CI 与目录结构（不执行仓库代码）
+      - 回填 biz.project 的 project_type/tech_stack/software_profile
+      - 检出失败记录 status=failed 并返回 ERR-AUTO-002，不伪造档案
+
+  - id: UC-025
+    title: 自动生成开发/测试/部署计划并推送裁决
+    requirement: REQ-PRJ-029
+    actors:
+      - 老板
+      - 项目监理
+    goal: 依据扫描结果生成三份计划与测试基线，仅把需老板拍板的事项推入裁决队列
+    entities:
+      - Project
+      - ProjectPlan
+      - ProjectDecision
+      - ProjectMilestone
+      - TestPlan
+      - TestCase
+      - DeployEnvironment
+      - AuditLog
+    api:
+      - getProjectAutopilot
+      - listProjectPlans
+      - listProjectDecisions
+      - decideProjectDecision
+    tests:
+      - TC-AUTO-002
+      - TC-AUTO-003
+      - TC-AUTO-004
+    preconditions: 项目已完成自动驾驶检出与扫描
+    steps:
+      - 按代码规模估算工期并写入 5 个里程碑（开发计划）
+      - 生成测试计划 draft 与 3 条基线用例（构建/测试/部署验证）
+      - 部署计划复用公司默认测试服务器登记测试环境，生产目标标 waiting-for-decision
+      - 无 LICENSE / 无 CI / 无公网服务器 / 技术栈歧义 → 写入裁决队列 pending
+      - 老板裁决后置 decided 并写审计，其余事项不打扰老板

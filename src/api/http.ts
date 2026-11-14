@@ -1065,6 +1065,52 @@ export const ROUTES: Route[] = [
       return { status: 200, data: await requireAdmin(ctx).removeSharedResource(requireId(params, "resourceId")) };
     },
   },
+  // ---------------- 项目自动驾驶（检出 → 扫描 → 计划 → 裁决） ----------------
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/autopilot$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      const projectId = requireId(params, "projectId");
+      const repository = body.repository ?? body;
+      return { status: 201, data: await requireAdmin(ctx).bootstrapProject(projectId, repository as Record<string, unknown>) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/autopilot$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await requireAdmin(ctx).autopilotSummary(requireId(params, "projectId")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/plans$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listProjectPlans(requireId(params, "projectId")) } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/decisions$/,
+    keys: ["projectId"],
+    async handler(ctx, params, _body, query) {
+      return { status: 200, data: { items: await requireAdmin(ctx).listProjectDecisions(requireId(params, "projectId"), query.get("status")) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/decisions\/([^/]+)\/decide$/,
+    keys: ["projectId", "decisionId"],
+    async handler(ctx, params, body) {
+      return {
+        status: 200,
+        data: await requireAdmin(ctx).decideProjectDecision(requireId(params, "projectId"), requireId(params, "decisionId"), body),
+      };
+    },
+  },
   {
     method: "GET",
     pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/shared-resources$/,

@@ -197,6 +197,15 @@ const ENTITIES = [
     [S("range_key", "varchar(16)", false), S("as_of", "timestamptz", false), S("stale", "boolean", false), S("payload", "jsonb", false), S("warnings", "jsonb", false), S("generated_at", "timestamptz")], []],
   ["BriefItem", "stat.brief_item", "web", "entity",
     [S("brief_date", "date", false), S("brief_type", "varchar(16)", false), S("title", "varchar(128)", false), S("summary", "text", false), S("source_refs", "jsonb", false), S("priority", "varchar(8)", false), S("status", "varchar(16)", false), S("created_at", "timestamptz")], []],
+  // ---------------- 项目自动驾驶（v2.16） ----------------
+  ["ProjectCheckout", "ref.project_checkout", "project", "entity",
+    [S("project_id", "bigint", false), S("repository_id", "bigint"), S("url", "text", false), S("branch", "varchar(128)"), S("commit_sha", "varchar(64)"), S("workspace_path", "text"), S("file_count", "integer"), S("size_bytes", "bigint"), S("status", "varchar(16)", false), S("error", "text"), S("checked_out_at", "timestamptz"), S("created_at", "timestamptz")], []],
+  ["ProjectScan", "stat.project_scan", "project", "entity",
+    [S("project_id", "bigint", false), S("checkout_id", "bigint"), S("scanner_version", "varchar(16)", false), S("languages", "jsonb"), S("manifests", "jsonb"), S("structure", "jsonb"), S("tests", "jsonb"), S("ci", "jsonb"), S("findings", "jsonb"), S("status", "varchar(16)", false), S("created_at", "timestamptz")], []],
+  ["ProjectPlan", "stat.project_plan", "project", "entity",
+    [S("project_id", "bigint", false), S("plan_kind", "varchar(8)", false), S("version", "integer", false), S("title", "varchar(128)", false), S("content", "jsonb", false), S("status", "varchar(16)", false), S("generated_at", "timestamptz")], []],
+  ["ProjectDecision", "stat.project_decision", "project", "entity",
+    [S("project_id", "bigint", false), S("topic", "varchar(32)", false), S("question", "text", false), S("options", "jsonb"), S("risk_level", "varchar(8)", false), S("status", "varchar(16)", false), S("decision", "text"), S("decided_by", "varchar(64)"), S("decided_at", "timestamptz"), S("payload", "jsonb"), S("created_at", "timestamptz")], []],
   // ---------------- 基础资源配置（v2.14 公司共享资产） ----------------
   ["SharedResource", "ref.shared_resource", "platform", "entity",
     [S("kind", "varchar(24)", false), S("code", "varchar(64)"), S("name", "varchar(128)", false), S("endpoint", "text"), S("access_method", "varchar(24)", false), S("default_account", "varchar(64)"), S("credential_ref", "varchar(128)"), S("os", "varchar(64)"), S("location", "varchar(128)"), S("capacity", "varchar(128)"), S("specs", "jsonb"), S("tags", "jsonb"), S("is_default", "boolean", false), S("status", "varchar(16)", false), S("notes", "text"), S("created_at", "timestamptz"), S("updated_at", "timestamptz")], []],

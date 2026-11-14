@@ -132,7 +132,7 @@ flowchart LR
 
 跨 schema 的引用只存 id、不建 FK 的三处代表：`audit.audit_log.workflow_instance_id`（审计在实例删除后仍需可读）、`biz.conflict_queue.frozen_unit_id`（多态冻结单元：ledger/contract/stock_txn/vehicle_log 四选一）、`biz.ledger.project_id`（业务弱引用，避免跨域锁）。
 
-### 2.3 79 张表清单总览
+### 2.3 83 张表清单总览
 
 基线列数合计 272（37 表）；v2.10 Web 层新增 8 表另计。下表是第 3 章的索引页：先看清单定位，再进 3.x 看列级定义。
 
@@ -217,11 +217,15 @@ flowchart LR
 | 77 | `ref.shared_resource` | 公司基础资源 | 18 | `kind/access_method/status` CHECK；`credential_ref` 仅引用；`UNIQUE(kind,name)`、`code` 唯一 |
 | 78 | `ref.shared_setting` | 公司默认口径 | 4 | 主键 `id`；`key` 唯一；`value` jsonb |
 | 79 | `ref.project_shared_resource` | 项目资源绑定 | 6 | 主键 `id`、`UNIQUE(project_id,resource_id)`；`resource_id` FK RESTRICT；`role` CHECK |
+| 80 | `ref.project_checkout` | 版本库检出记录 | 13 | `status` CHECK；`index(project_id,status)` |
+| 81 | `stat.project_scan` | 仓库静态扫描 | 11 | `status` CHECK；`index(project_id,created_at DESC)` |
+| 82 | `stat.project_plan` | 自动生成计划 | 8 | `plan_kind/status` CHECK；`UNIQUE(project_id,plan_kind,version)` |
+| 83 | `stat.project_decision` | 项目裁决队列 | 12 | `status/risk_level` CHECK；`index(project_id,status)` |
 
-清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，明细见 3.6–3.10）：
+清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，明细见 3.6–3.11）：
 
 ```sql
--- 按 schema 统计表与列（v2.15 后：biz 44、ref 14、audit 6、stat 14、vec 1；列数随增量表变化）
+-- 按 schema 统计表与列（v2.16 后：biz 44、ref 15、audit 6、stat 17、vec 1；列数随增量表变化）
 SELECT table_schema AS schema,
        count(DISTINCT table_name) AS tables,
        count(*)                   AS columns
@@ -230,7 +234,7 @@ WHERE table_schema IN ('biz','ref','audit','stat','vec')
 GROUP BY table_schema ORDER BY table_schema;
 ```
 
-## 3. 表结构（79 张）
+## 3. 表结构（83 张）
 
 本章按 schema 分节。每张表给出列级定义（列名 / 类型 / 可空 / 默认 / 说明）与索引约束，字段口径见 1.2。所有表主键均为 `id bigint GENERATED ALWAYS AS IDENTITY`，为避免重复，下文不再逐行标注主键列，只在“索引与约束”里写明主键名。
 
@@ -866,9 +870,22 @@ GROUP BY table_schema ORDER BY table_schema;
 
 **安全口径**：`credential_ref` 只存引用，实际口令由部署环境注入（`OPC_DEFAULT_SSH_PASSWORD`），库、仓、日志均不出现明文。
 
+### 3.11 项目自动驾驶（v2.16 新增 4 张）
+
+> 迁移：`migrations/0009_project_autopilot.sql`；实体：`ProjectCheckout`、`ProjectScan`、`ProjectPlan`、`ProjectDecision`。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `ref.project_checkout` | `project_id, repository_id, url, branch, commit_sha, workspace_path, file_count, size_bytes, status, error, checked_out_at, created_at` | `status` CHECK（pending/ok/failed）；`index(project_id,status)` | 每次浅克隆的检出事实；失败也留痕，不伪造档案 |
+| `stat.project_scan` | `project_id, checkout_id, scanner_version, languages, manifests, structure, tests, ci, findings, status, created_at` | `status` CHECK（ok/degraded/failed）；`index(project_id,created_at DESC)` | 静态扫描结果（只读文件，不执行仓库代码） |
+| `stat.project_plan` | `project_id, plan_kind, version, title, content, status, generated_at` | `plan_kind` CHECK（dev/test/deploy）；`status` CHECK（draft/active/archived）；`UNIQUE(project_id,plan_kind,version)` | 自动生成的开发/测试/部署计划；默认 draft |
+| `stat.project_decision` | `project_id, topic, question, options, risk_level, status, decision, decided_by, decided_at, payload, created_at` | `status` CHECK（pending/decided/dismissed）；`risk_level` CHECK；`index(project_id,status)` | 仅供老板裁决的事项；未裁决不放行生产 |
+
+**自动驾驶口径**：建项目填写 `repository` 即触发「浅克隆 → 静态扫描 → 回填 `biz.project.tech_stack/software_profile` → 生成三份计划 → 裁决项入队」；检出上限 2000 文件，跳过 `.git/node_modules/dist` 等目录；生产发布仍需人工审批。
+
 ## 4. 关键索引设计
 
-基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）。
+基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）。
 
 ### 4.1 audit_log 复合主键与分区预留
 
