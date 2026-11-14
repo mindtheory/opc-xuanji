@@ -46,7 +46,7 @@ modules:
 
   - name: project
     package: opc.domains.project
-    responsibility: 项目监理——阶段跟踪、阻塞、验收—开票—回款联动
+    responsibility: 项目监理——阶段跟踪、阻塞、验收—开票—回款联动；软件研发要素（Git/SVN 版本库、Maven/Docker 制品库、SSH 环境与发布、测试管理与测试 Agent 协同、项目起点/里程碑/时间管理）
     dependsOn: [platform]
     writeDomains:
       - src/domains/project
@@ -74,8 +74,8 @@ modules:
 
   - name: intel
     package: opc.domains.intel
-    responsibility: 情报官——线索、尽调报告与覆盖度声明
-    dependsOn: [platform]
+    responsibility: 情报官——项目情报空间、采集数据源与关键词/标签、情报条目分析去重、日报生成与推送、线索与尽调报告
+    dependsOn: [platform, scheduler]
     writeDomains:
       - src/domains/intel
 

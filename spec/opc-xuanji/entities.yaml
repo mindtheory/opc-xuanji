@@ -469,6 +469,484 @@ entities:
       - name: cost_actual
         type: "numeric(18,2)"
         nullable: true
+      - name: start_date
+        type: date
+        nullable: true
+      - name: target_end_date
+        type: date
+        nullable: true
+      - name: actual_start_date
+        type: date
+        nullable: true
+      - name: actual_end_date
+        type: date
+        nullable: true
+      - name: timezone
+        type: varchar(64)
+        nullable: true
+      - name: work_calendar
+        type: jsonb
+        nullable: true
+      - name: tech_stack
+        type: jsonb
+        nullable: true
+      - name: software_profile
+        type: jsonb
+        nullable: true
+    relations:
+      - name: milestones
+        target: ProjectMilestone
+        cardinality: "1:N"
+      - name: repositories
+        target: CodeRepository
+        cardinality: "1:N"
+      - name: artifactRepositories
+        target: ArtifactRepository
+        cardinality: "1:N"
+      - name: environments
+        target: DeployEnvironment
+        cardinality: "1:N"
+      - name: testPlans
+        target: TestPlan
+        cardinality: "1:N"
+  - name: ProjectMilestone
+    table: biz.project_milestone
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: stage
+        type: varchar(32)
+        nullable: true
+      - name: target_date
+        type: date
+        nullable: false
+      - name: actual_date
+        type: date
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: owner
+        type: varchar(64)
+        nullable: true
+      - name: dependencies
+        type: jsonb
+        nullable: true
+      - name: evidence
+        type: text
+        nullable: true
+  - name: WorkLog
+    table: biz.work_log
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: task_id
+        type: bigint
+        nullable: true
+      - name: worker
+        type: varchar(64)
+        nullable: false
+      - name: work_date
+        type: date
+        nullable: false
+      - name: hours
+        type: "numeric(6,2)"
+        nullable: false
+      - name: source
+        type: varchar(16)
+        nullable: false
+      - name: note
+        type: text
+        nullable: true
+  - name: CodeRepository
+    table: ref.code_repository
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: kind
+        type: varchar(8)
+        nullable: false
+      - name: url
+        type: text
+        nullable: false
+      - name: default_ref
+        type: varchar(128)
+        nullable: true
+      - name: auth_ref
+        type: varchar(128)
+        nullable: true
+      - name: sync_mode
+        type: varchar(16)
+        nullable: false
+      - name: sync_status
+        type: varchar(16)
+        nullable: false
+      - name: last_synced_at
+        type: timestamptz
+        nullable: true
+  - name: ArtifactRepository
+    table: ref.artifact_repository
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: kind
+        type: varchar(16)
+        nullable: false
+      - name: url
+        type: text
+        nullable: false
+      - name: namespace
+        type: varchar(128)
+        nullable: true
+      - name: auth_ref
+        type: varchar(128)
+        nullable: true
+      - name: retention_policy
+        type: jsonb
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+  - name: DeployEnvironment
+    table: ref.deploy_environment
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: env_type
+        type: varchar(16)
+        nullable: false
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: host
+        type: varchar(255)
+        nullable: false
+      - name: port
+        type: integer
+        nullable: false
+      - name: ssh_user
+        type: varchar(64)
+        nullable: false
+      - name: auth_ref
+        type: varchar(128)
+        nullable: true
+      - name: jump_host_ref
+        type: varchar(128)
+        nullable: true
+      - name: isolation_level
+        type: varchar(16)
+        nullable: false
+      - name: approval_policy
+        type: varchar(16)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+  - name: ReleaseOrder
+    table: biz.release_order
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: environment_id
+        type: bigint
+        nullable: false
+      - name: version
+        type: varchar(64)
+        nullable: false
+      - name: artifact_refs
+        type: jsonb
+        nullable: true
+      - name: repo_refs
+        type: jsonb
+        nullable: true
+      - name: change_note
+        type: text
+        nullable: true
+      - name: rollback_version
+        type: varchar(64)
+        nullable: true
+      - name: requested_by
+        type: varchar(64)
+        nullable: false
+      - name: approved_by
+        type: varchar(64)
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: executed_at
+        type: timestamptz
+        nullable: true
+      - name: health_check
+        type: jsonb
+        nullable: true
+  - name: TestPlan
+    table: biz.test_plan
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: version
+        type: varchar(64)
+        nullable: false
+      - name: scope
+        type: text
+        nullable: true
+      - name: test_types
+        type: jsonb
+        nullable: true
+      - name: entry_criteria
+        type: text
+        nullable: true
+      - name: exit_criteria
+        type: text
+        nullable: true
+      - name: environment_id
+        type: bigint
+        nullable: true
+      - name: owner
+        type: varchar(64)
+        nullable: true
+      - name: start_date
+        type: date
+        nullable: true
+      - name: end_date
+        type: date
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+  - name: TestCase
+    table: biz.test_case
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: plan_id
+        type: bigint
+        nullable: true
+      - name: case_code
+        type: varchar(64)
+        nullable: false
+      - name: title
+        type: varchar(256)
+        nullable: false
+      - name: preconditions
+        type: text
+        nullable: true
+      - name: steps
+        type: jsonb
+        nullable: true
+      - name: expected
+        type: text
+        nullable: true
+      - name: priority
+        type: varchar(8)
+        nullable: false
+      - name: kind
+        type: varchar(8)
+        nullable: false
+      - name: requirement_ref
+        type: varchar(64)
+        nullable: true
+      - name: version
+        type: varchar(16)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+  - name: TestSuite
+    table: biz.test_suite
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: case_ids
+        type: jsonb
+        nullable: true
+      - name: environment_id
+        type: bigint
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+  - name: TestRun
+    table: biz.test_run
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: plan_id
+        type: bigint
+        nullable: true
+      - name: suite_id
+        type: bigint
+        nullable: true
+      - name: environment_id
+        type: bigint
+        nullable: true
+      - name: version
+        type: varchar(64)
+        nullable: false
+      - name: executor
+        type: varchar(64)
+        nullable: false
+      - name: executor_type
+        type: varchar(16)
+        nullable: false
+      - name: started_at
+        type: timestamptz
+        nullable: true
+      - name: ended_at
+        type: timestamptz
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+  - name: TestResult
+    table: biz.test_result
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: run_id
+        type: bigint
+        nullable: false
+      - name: case_id
+        type: bigint
+        nullable: false
+      - name: result
+        type: varchar(16)
+        nullable: false
+      - name: evidence
+        type: text
+        nullable: true
+      - name: failure_reason
+        type: text
+        nullable: true
+      - name: executed_at
+        type: timestamptz
+        nullable: true
+  - name: Defect
+    table: biz.defect
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: severity
+        type: varchar(8)
+        nullable: false
+      - name: title
+        type: varchar(256)
+        nullable: false
+      - name: repro_steps
+        type: text
+        nullable: true
+      - name: affected_version
+        type: varchar(64)
+        nullable: true
+      - name: test_case_id
+        type: bigint
+        nullable: true
+      - name: requirement_ref
+        type: varchar(64)
+        nullable: true
+      - name: owner
+        type: varchar(64)
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: regression_result
+        type: varchar(16)
+        nullable: true
   - name: Customer
     table: biz.customer
     module: crm
@@ -753,6 +1231,470 @@ entities:
       - name: coverage_disclaimer
         type: text
         nullable: true
+  - name: IntelProjectScope
+    table: biz.intel_project_scope
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: timezone
+        type: varchar(64)
+        nullable: false
+      - name: brief_time
+        type: varchar(5)
+        nullable: false
+      - name: lookback_hours
+        type: integer
+        nullable: false
+      - name: max_items
+        type: integer
+        nullable: false
+      - name: push_channels
+        type: jsonb
+        nullable: true
+      - name: recipients
+        type: jsonb
+        nullable: true
+      - name: quiet_hours
+        type: jsonb
+        nullable: true
+      - name: template
+        type: varchar(64)
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: config_version
+        type: varchar(16)
+        nullable: false
+      - name: last_brief_at
+        type: timestamptz
+        nullable: true
+    relations:
+      - name: items
+        target: IntelItem
+        cardinality: "1:N"
+      - name: briefs
+        target: IntelBrief
+        cardinality: "1:N"
+  - name: Source
+    table: biz.source
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: name
+        type: varchar(128)
+        nullable: false
+      - name: source_type
+        type: varchar(16)
+        nullable: false
+      - name: url
+        type: text
+        nullable: true
+      - name: auth_ref
+        type: varchar(128)
+        nullable: true
+      - name: credibility
+        type: "numeric(3,2)"
+        nullable: false
+      - name: copyright_status
+        type: varchar(16)
+        nullable: false
+      - name: license_note
+        type: text
+        nullable: true
+      - name: collect_interval_minutes
+        type: integer
+        nullable: false
+      - name: rate_limit_per_hour
+        type: integer
+        nullable: false
+      - name: timeout_ms
+        type: integer
+        nullable: false
+      - name: enabled
+        type: boolean
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: last_success_at
+        type: timestamptz
+        nullable: true
+      - name: last_failure_at
+        type: timestamptz
+        nullable: true
+      - name: consecutive_failures
+        type: integer
+        nullable: false
+      - name: last_error
+        type: text
+        nullable: true
+      - name: checkpoint
+        type: jsonb
+        nullable: true
+      - name: created_by
+        type: varchar(64)
+        nullable: true
+    relations:
+      - name: bindings
+        target: SourceBinding
+        cardinality: "1:N"
+      - name: items
+        target: IntelItem
+        cardinality: "1:N"
+  - name: SourceBinding
+    table: biz.source_binding
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: source_id
+        type: bigint
+        nullable: false
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: enabled
+        type: boolean
+        nullable: false
+      - name: priority
+        type: integer
+        nullable: false
+      - name: tags
+        type: jsonb
+        nullable: true
+  - name: WatchTopic
+    table: biz.watch_topic
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: keyword
+        type: varchar(128)
+        nullable: false
+      - name: match_type
+        type: varchar(16)
+        nullable: false
+      - name: synonyms
+        type: jsonb
+        nullable: true
+      - name: exclude_terms
+        type: jsonb
+        nullable: true
+      - name: tags
+        type: jsonb
+        nullable: true
+      - name: priority
+        type: integer
+        nullable: false
+      - name: enabled
+        type: boolean
+        nullable: false
+      - name: version
+        type: integer
+        nullable: false
+      - name: created_by
+        type: varchar(64)
+        nullable: true
+  - name: IntelTag
+    table: biz.intel_tag
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: name
+        type: varchar(64)
+        nullable: false
+      - name: category
+        type: varchar(32)
+        nullable: true
+      - name: parent_id
+        type: bigint
+        nullable: true
+      - name: color
+        type: varchar(16)
+        nullable: true
+      - name: description
+        type: text
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+  - name: IntelItem
+    table: biz.intel_item
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: source_id
+        type: bigint
+        nullable: true
+      - name: external_id
+        type: varchar(256)
+        nullable: true
+      - name: url
+        type: text
+        nullable: true
+      - name: title
+        type: varchar(512)
+        nullable: false
+      - name: summary
+        type: text
+        nullable: true
+      - name: content_hash
+        type: varchar(64)
+        nullable: true
+      - name: language
+        type: varchar(16)
+        nullable: true
+      - name: author
+        type: varchar(128)
+        nullable: true
+      - name: published_at
+        type: timestamptz
+        nullable: true
+      - name: collected_at
+        type: timestamptz
+        nullable: false
+      - name: entities
+        type: jsonb
+        nullable: true
+      - name: tags
+        type: jsonb
+        nullable: true
+      - name: relevance_score
+        type: "numeric(5,2)"
+        nullable: true
+      - name: sentiment
+        type: varchar(16)
+        nullable: true
+      - name: info_type
+        type: varchar(16)
+        nullable: true
+      - name: risk_level
+        type: varchar(16)
+        nullable: true
+      - name: confidence
+        type: "numeric(3,2)"
+        nullable: true
+      - name: dedupe_group
+        type: varchar(64)
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: analysis
+        type: jsonb
+        nullable: true
+      - name: idempotency_key
+        type: varchar(256)
+        nullable: false
+  - name: IntelCollectRun
+    table: stat.intel_collect_run
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: source_id
+        type: bigint
+        nullable: true
+      - name: project_id
+        type: bigint
+        nullable: true
+      - name: idempotency_key
+        type: varchar(160)
+        nullable: false
+      - name: started_at
+        type: timestamptz
+        nullable: false
+      - name: ended_at
+        type: timestamptz
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: fetched
+        type: integer
+        nullable: false
+      - name: inserted
+        type: integer
+        nullable: false
+      - name: duplicates
+        type: integer
+        nullable: false
+      - name: http_status
+        type: integer
+        nullable: true
+      - name: latency_ms
+        type: integer
+        nullable: true
+      - name: error
+        type: text
+        nullable: true
+      - name: checkpoint_before
+        type: jsonb
+        nullable: true
+      - name: checkpoint_after
+        type: jsonb
+        nullable: true
+  - name: IntelBrief
+    table: biz.intel_brief
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: brief_date
+        type: date
+        nullable: false
+      - name: brief_type
+        type: varchar(16)
+        nullable: false
+      - name: title
+        type: varchar(256)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: coverage
+        type: jsonb
+        nullable: true
+      - name: sections
+        type: jsonb
+        nullable: true
+      - name: item_ids
+        type: jsonb
+        nullable: true
+      - name: source_count
+        type: integer
+        nullable: false
+      - name: item_count
+        type: integer
+        nullable: false
+      - name: generated_at
+        type: timestamptz
+        nullable: false
+      - name: pushed_at
+        type: timestamptz
+        nullable: true
+      - name: version
+        type: integer
+        nullable: false
+  - name: IntelPushLog
+    table: stat.intel_push_log
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: brief_id
+        type: bigint
+        nullable: false
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: channel
+        type: varchar(16)
+        nullable: false
+      - name: target
+        type: varchar(256)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: attempts
+        type: integer
+        nullable: false
+      - name: sent_at
+        type: timestamptz
+        nullable: true
+      - name: acked_at
+        type: timestamptz
+        nullable: true
+      - name: error
+        type: text
+        nullable: true
+  - name: IntelPipelineRun
+    table: stat.intel_pipeline_run
+    module: intel
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: pipeline_date
+        type: date
+        nullable: false
+      - name: stage
+        type: varchar(16)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: started_at
+        type: timestamptz
+        nullable: false
+      - name: ended_at
+        type: timestamptz
+        nullable: true
+      - name: counters
+        type: jsonb
+        nullable: true
+      - name: error
+        type: text
+        nullable: true
+      - name: idempotency_key
+        type: varchar(160)
+        nullable: false
   - name: WorkflowRegistry
     table: ref.workflow_registry
     module: workflow

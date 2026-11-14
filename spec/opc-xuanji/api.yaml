@@ -21,6 +21,8 @@ tags:
     description: 员工插件目录与员工包导入导出
   - name: agents
     description: Super Agent 应用层（依赖 dsh-super-agents）——员工部署、认知派活、回流与健康
+  - name: project
+    description: 项目监理——软件研发要素（里程碑、版本库、制品库、SSH 环境、发布单、测试）
 
 errorCodes:
   - ERR-AUTHZ-001
@@ -38,6 +40,9 @@ errorCodes:
   - ERR-EMP-001
   - ERR-AGENT-001
   - ERR-HINDSIGHT-001
+  - ERR-PRJ-001
+  - ERR-PRJ-002
+  - ERR-PRJ-003
   - ERR-SYS-001
 
 paths:
@@ -1051,8 +1056,296 @@ paths:
         '200':
           description: 暂停状态
 
+  /api/v1/projects/{projectId}/milestones:
+    get:
+      operationId: listProjectMilestones
+      tags: [project]
+      summary: 列出项目里程碑/关键节点
+      x-entity: ProjectMilestone
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 里程碑列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+    post:
+      operationId: createProjectMilestone
+      tags: [project]
+      summary: 新建里程碑/关键节点（写审计）
+      x-entity: ProjectMilestone
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/projects/{projectId}/repositories:
+    get:
+      operationId: listCodeRepositories
+      tags: [project]
+      summary: 列出 Git/SVN 版本库登记
+      x-entity: CodeRepository
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 版本库列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+    post:
+      operationId: registerCodeRepository
+      tags: [project]
+      summary: 登记 Git/SVN 版本库（凭据只存 auth_ref，写审计）
+      x-entity: CodeRepository
+      x-error-codes: [ERR-PRJ-001, ERR-PRJ-003]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已登记
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/projects/{projectId}/artifacts:
+    get:
+      operationId: listArtifactRepositories
+      tags: [project]
+      summary: 列出 Maven/Docker 制品库登记
+      x-entity: ArtifactRepository
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 制品库列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+    post:
+      operationId: registerArtifactRepository
+      tags: [project]
+      summary: 登记 Maven/Docker 制品库（凭据只存 auth_ref，写审计）
+      x-entity: ArtifactRepository
+      x-error-codes: [ERR-PRJ-001, ERR-PRJ-003]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已登记
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/projects/{projectId}/environments:
+    get:
+      operationId: listDeployEnvironments
+      tags: [project]
+      summary: 列出开发/测试/预发/生产环境
+      x-entity: DeployEnvironment
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 环境列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+    post:
+      operationId: registerDeployEnvironment
+      tags: [project]
+      summary: 登记 SSH 部署环境（生产强制 manual 审批，凭据只存 auth_ref）
+      x-entity: DeployEnvironment
+      x-error-codes: [ERR-PRJ-001, ERR-PRJ-003]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已登记
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/projects/{projectId}/releases:
+    get:
+      operationId: listReleaseOrders
+      tags: [project]
+      summary: 列出发布单
+      x-entity: ReleaseOrder
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 发布单列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+    post:
+      operationId: createReleaseOrder
+      tags: [project]
+      summary: 创建发布单（生产必须填回滚版本；自动策略仅限非生产）
+      x-entity: ReleaseOrder
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/releases/{releaseId}/approve:
+    post:
+      operationId: approveReleaseOrder
+      tags: [project]
+      summary: 审批发布单（仅 pending 可审批，写审计）
+      x-entity: ReleaseOrder
+      x-error-codes: [ERR-PRJ-001, ERR-PRJ-002]
+      parameters:
+        - { name: releaseId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '200':
+          description: 已审批
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+        '409':
+          description: 状态不可审批
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultVoid' }
+
+  /api/v1/projects/{projectId}/test-plans:
+    post:
+      operationId: createTestPlan
+      tags: [project]
+      summary: 创建测试计划（进入/退出标准显式登记，写审计）
+      x-entity: TestPlan
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/test-runs:
+    post:
+      operationId: createTestRun
+      tags: [project]
+      summary: 创建测试执行批次（human/agent/ci，写审计）
+      x-entity: TestRun
+      x-error-codes: [ERR-PRJ-001]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/test-runs/{runId}/results:
+    post:
+      operationId: recordTestResult
+      tags: [project]
+      summary: 记录逐用例结果（未执行/阻塞不得计为通过，写审计）
+      x-entity: TestResult
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: runId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectResourceRequest' }
+      responses:
+        '201':
+          description: 已记录
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
+  /api/v1/projects/{projectId}/defects:
+    get:
+      operationId: listDefects
+      tags: [project]
+      summary: 列出项目缺陷
+      x-entity: Defect
+      x-error-codes: [ERR-PRJ-001]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 缺陷列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectResourceResult' }
+
 components:
   schemas:
+    ProjectResourceRequest:
+      type: object
+      additionalProperties: true
+      description: 项目研发资源请求体；字段随资源类型（里程碑/版本库/制品库/环境/发布/测试）而异，必填项由服务层校验。
+    ProjectResourceResult:
+      type: object
+      required: [code, data]
+      properties:
+        code: { type: integer }
+        data: {}
     ResultVoid:
       type: object
       required: [code, message]

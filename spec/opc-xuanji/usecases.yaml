@@ -342,3 +342,181 @@ usecases:
       - 插件注册左栏入口与角标
       - 右栏按 manifest 渲染五个页签
       - 宿主不支持插槽时明确提示降级，不伪造已嵌入
+
+  - id: UC-015
+    title: 软件项目起点与里程碑登记
+    requirement: REQ-PRJ-016
+    actors:
+      - 项目监理
+      - 老板
+    goal: 为软件项目登记起点、关键节点与研发要素，里程碑延期留因不自动改期
+    entities:
+      - Project
+      - ProjectMilestone
+      - WorkLog
+      - AuditLog
+    api:
+      - listProjectMilestones
+      - createProjectMilestone
+    tests:
+      - TC-PRJ-001
+    preconditions: 项目已存在且 project_type=software
+    steps:
+      - 项目监理登记项目起点（章程批准/基线冻结/启动会）与研发要素
+      - 新建里程碑，填写目标日期、责任人与准入/退出条件
+      - 里程碑延期时记录原因与影响，不自动改写目标日期
+      - 写入 project_milestone 并写审计
+
+  - id: UC-016
+    title: Git/SVN 版本库登记
+    requirement: REQ-PRJ-017
+    actors:
+      - 项目监理
+      - 老板
+    goal: 登记版本库地址与认证引用，只读同步元数据，凭据不落明文
+    entities:
+      - CodeRepository
+      - Project
+      - AuditLog
+    api:
+      - listCodeRepositories
+      - registerCodeRepository
+    tests:
+      - TC-PRJ-002
+    preconditions: 项目已存在
+    steps:
+      - 提交仓库名称、类型（git/svn）、地址与默认分支/主干
+      - auth_ref 只接受 env:/secret:/vault:/ssh-agent: 引用，明文拒绝
+      - 登记成功写审计；同步状态初始为 pending
+      - 同步失败标注 failed，不编造提交记录
+
+  - id: UC-017
+    title: Maven/Docker 制品库登记
+    requirement: REQ-PRJ-018
+    actors:
+      - 项目监理
+      - 老板
+    goal: 登记制品库与命名空间，制品以 digest/校验和为不可变标识
+    entities:
+      - ArtifactRepository
+      - ReleaseOrder
+      - AuditLog
+    api:
+      - listArtifactRepositories
+      - registerArtifactRepository
+    tests:
+      - TC-PRJ-003
+    preconditions: 项目已存在
+    steps:
+      - 提交仓库类型（maven/docker）、地址与命名空间
+      - auth_ref 校验同版本库，明文凭据拒绝
+      - 登记成功写审计；保留策略仅作建议，不自动删除
+      - 发布单引用制品时要求 digest 或校验和，缺失标记证据不完整
+
+  - id: UC-018
+    title: SSH 环境登记与发布审批
+    requirement: REQ-PRJ-019
+    actors:
+      - 项目监理
+      - 老板
+    goal: 登记开发/测试/预发/生产环境，生产发布必须人工审批且带回滚版本
+    entities:
+      - DeployEnvironment
+      - ReleaseOrder
+      - AuditLog
+    api:
+      - listDeployEnvironments
+      - registerDeployEnvironment
+      - listReleaseOrders
+      - createReleaseOrder
+      - approveReleaseOrder
+    tests:
+      - TC-PRJ-004
+    preconditions: 项目已存在；SSH 主机指纹已人工确认
+    steps:
+      - 登记环境，生产环境强制 approval_policy=manual
+      - 创建发布单；生产环境缺少 rollback_version 直接拒绝
+      - 自动策略仅用于 dev/test，审批人记为 policy:auto
+      - pending 发布单经老板审批后转 approved；非 pending 返回 409
+      - 环境、发布、审批与失败原因全部写审计
+
+  - id: UC-019
+    title: 测试计划与执行记录
+    requirement: REQ-PRJ-020
+    actors:
+      - 项目监理
+      - 测试 Agent
+      - 老板
+    goal: 按项目/版本统一记录测试计划、执行批次与逐用例结果，未执行不计通过
+    entities:
+      - TestPlan
+      - TestCase
+      - TestSuite
+      - TestRun
+      - TestResult
+      - Defect
+      - AuditLog
+    api:
+      - createTestPlan
+      - createTestRun
+      - recordTestResult
+      - listDefects
+    tests:
+      - TC-PRJ-005
+    preconditions: 项目已存在；测试环境可用
+    steps:
+      - 创建测试计划，登记范围、测试类型与进入/退出标准
+      - 创建执行批次（human/agent/ci），记录版本与环境
+      - 逐用例写入结果；blocked/skipped 不计为通过
+      - 失败结果把批次置为 failed，并写审计
+
+  - id: UC-020
+    title: 测试 Agent 回归与报告
+    requirement: REQ-PRJ-021
+    actors:
+      - 测试 Agent
+      - 老板
+      - 项目监理
+    goal: 测试 Agent 在 dev/test 生成并执行测试，归类失败并出报告，不自动放行
+    entities:
+      - TestPlan
+      - TestRun
+      - TestResult
+      - Defect
+      - AuditLog
+    api:
+      - createTestRun
+      - recordTestResult
+      - listDefects
+    tests:
+      - TC-PRJ-006
+    preconditions: 测试 Agent 已部署为角色卡；目标环境为 dev/test
+    steps:
+      - 测试 Agent 按需求/验收标准生成用例，无来源的标建议用例
+      - 在 dev/test 执行自动化测试并写入批次与结果
+      - 失败归类为产品缺陷/用例/环境/数据问题，低置信升级人工
+      - 输出含 as_of 的报告；发布/验收结论由老板确认
+
+  - id: UC-021
+    title: 时间管理与关键节点提醒
+    requirement: REQ-PRJ-022
+    actors:
+      - 项目监理
+      - 老板
+    goal: 以项目起点为锚计算工期与关键路径，到期分级提醒且不改期
+    entities:
+      - Project
+      - ProjectMilestone
+      - WorkLog
+      - AuditLog
+    api:
+      - listProjectMilestones
+      - createProjectMilestone
+    tests:
+      - TC-PRJ-007
+    preconditions: 项目起点与工作日历已登记
+    steps:
+      - 按项目时区与工作日历计算任务日期与浮动时间
+      - 关键节点到期前 7/3/1 天分级提醒
+      - 日期变更写审计并列出受影响任务、里程碑与发布单
+      - 工时写入 work_log，仅作事实记录
