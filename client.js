@@ -2048,6 +2048,12 @@ window.__ModuleLoader__.load({
     function repoKindLabel(value) { return repoKind(value) === "svn" ? "SVN" : "Git"; }
     function repoBranchLabel(value) { return repoKind(value) === "svn" ? "主干/分支路径（如 trunk、branches/x）" : "分支"; }
     function repoDefaultRef(repo) { return (repo && (repo.default_ref || repo.defaultRef)) || ""; }
+    // SVN 的 branch 是主干/分支「目录」，main/master 是 Git 习惯值：拿去拼 SVN 地址必然 E170000，按未填处理
+    function repoDefaultRefFor(kind, repo) {
+      var ref = repoDefaultRef(repo);
+      if (repoKind(kind) === "svn" && /^(main|master)$/i.test(String(ref).trim())) return "";
+      return ref;
+    }
     function repoRevision(checkout) {
       if (!checkout) return "";
       var rev = checkout.revision;
@@ -2570,8 +2576,11 @@ window.__ModuleLoader__.load({
       function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
       function upRepoKind(value) {
         var next = Object.assign({}, form);
+        var wasSvn = repoKind(next.kind) === "svn";
         next.kind = repoKind(value);
         if (next.kind !== "svn") next.revision = "";
+        // 从 Git 切到 SVN：Git 默认的 main/master 不是 SVN 路径，清空（留空=仓库根目录），避免拼出 .../main
+        if (next.kind === "svn" && !wasSvn && /^(main|master)$/i.test(String(next.branch || "").trim())) next.branch = "";
         setForm(next);
       }
       function knownRepoUrl() {
@@ -2594,7 +2603,7 @@ window.__ModuleLoader__.load({
         var next = Object.assign({}, form);
         if (url) next.repositoryUrl = url;
         next.kind = nextKind;
-        if (nextKind === "svn") next.branch = repoDefaultRef(repo);
+        if (nextKind === "svn") next.branch = repoDefaultRefFor("svn", repo);
         else if (repoDefaultRef(repo)) next.branch = repoDefaultRef(repo);
         if (nextKind !== "svn") next.revision = "";
         setForm(next);
@@ -2681,8 +2690,10 @@ window.__ModuleLoader__.load({
       function upIdea(key, value) { var next = Object.assign({}, ideaForm); next[key] = value; setIdeaForm(next); }
       function upIdeaRepoKind(value) {
         var next = Object.assign({}, ideaForm);
+        var wasSvn = repoKind(next.kind) === "svn";
         next.kind = repoKind(value);
         if (next.kind !== "svn") next.revision = "";
+        if (next.kind === "svn" && !wasSvn && /^(main|master)$/i.test(String(next.branch || "").trim())) next.branch = "";
         setIdeaForm(next);
       }
       function pickIdeaFiles(event) {
