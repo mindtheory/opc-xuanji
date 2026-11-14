@@ -16,6 +16,7 @@ const TABLES = [
   "stat.issue_filing",
   "stat.runtime_error",
   "stat.usage_event",
+  "stat.project_autopilot_run",
   "stat.project_deploy_run",
   "stat.project_pipeline_run",
   "stat.project_scaffold",

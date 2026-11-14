@@ -61,7 +61,7 @@ const ENTITIES = [
     [S("decided_on", "date", false), S("context", "text"), S("choices", "jsonb"), S("chosen", "text"), S("rationale", "text")], []],
   // ---------------- project ----------------
   ["Project", "biz.project", "project", "entity",
-    [S("name", "varchar(128)", false), S("project_type", "varchar(32)"), S("stage", "varchar(32)", false), S("progress", "integer", false), S("blockers", "jsonb"), S("milestones", "jsonb"), S("cost_actual", "numeric(18,2)"), S("start_date", "date"), S("target_end_date", "date"), S("actual_start_date", "date"), S("actual_end_date", "date"), S("timezone", "varchar(64)"), S("work_calendar", "jsonb"), S("tech_stack", "jsonb"), S("software_profile", "jsonb")],
+    [S("name", "varchar(128)", false), S("project_type", "varchar(32)"), S("stage", "varchar(32)", false), S("progress", "integer", false), S("blockers", "jsonb"), S("milestones", "jsonb"), S("cost_actual", "numeric(18,2)"), S("start_date", "date"), S("target_end_date", "date"), S("actual_start_date", "date"), S("actual_end_date", "date"), S("timezone", "varchar(64)"), S("work_calendar", "jsonb"), S("tech_stack", "jsonb"), S("software_profile", "jsonb"), S("description", "text"), S("archived_at", "timestamptz"), S("archive_reason", "varchar(200)")],
     [["milestones", "ProjectMilestone", "1:N"], ["repositories", "CodeRepository", "1:N"], ["artifactRepositories", "ArtifactRepository", "1:N"], ["environments", "DeployEnvironment", "1:N"], ["testPlans", "TestPlan", "1:N"]]],
   // ---------------- project：软件研发要素（v2.12） ----------------
   ["ProjectMilestone", "biz.project_milestone", "project", "entity",
@@ -212,6 +212,8 @@ const ENTITIES = [
     [S("project_id", "bigint", false), S("checkout_id", "bigint"), S("stage", "varchar(16)", false), S("command", "text", false), S("exit_code", "integer"), S("status", "varchar(16)", false), S("log_tail", "text"), S("duration_ms", "integer"), S("created_at", "timestamptz")], []],
   ["ProjectDeployRun", "stat.project_deploy_run", "project", "entity",
     [S("project_id", "bigint", false), S("release_id", "bigint"), S("environment_id", "bigint"), S("command", "text"), S("health_url", "text"), S("exit_code", "integer"), S("status", "varchar(16)", false), S("log_tail", "text"), S("started_at", "timestamptz"), S("ended_at", "timestamptz"), S("created_at", "timestamptz")], []],
+  ["ProjectAutopilotRun", "stat.project_autopilot_run", "project", "entity",
+    [S("project_id", "bigint", false), S("checkout_id", "bigint"), S("trigger", "varchar(16)", false), S("status", "varchar(16)", false), S("stage", "varchar(32)", false), S("stage_label", "varchar(64)", false), S("steps", "jsonb", false), S("result", "jsonb"), S("error", "text"), S("started_at", "timestamptz", false), S("ended_at", "timestamptz"), S("created_at", "timestamptz", false)], []],
   // ---------------- 运维闭环（v2.18） ----------------
   ["UsageEvent", "stat.usage_event", "platform", "event",
     [S("channel", "varchar(16)", false), S("action", "varchar(160)", false), S("status_code", "integer"), S("duration_ms", "integer"), S("error_code", "varchar(32)"), S("session_ref", "varchar(64)"), S("meta", "jsonb"), S("occurred_at", "timestamptz")], []],

@@ -1,13 +1,13 @@
 ---
 doc_id: OPC-SRS-001
 title: OPC-玄机 · 一人公司中枢 软件需求规格说明
-version: 0.4
+version: 0.5
 status: 评审稿
 stage: D1
 owner: 玄机文档组
 upstream: ["OPC-玄机 · 一人公司中枢-产品设计.md（v2.12）", "OPC-玄机 · 技术选型与系统架构.md（v2.12）", "spec/opc-xuanji/usecases.yaml（v2.11 基线）"]
 gate: G1
-updated: 2026-11-11
+updated: 2026-11-14
 ---
 
 # OPC-玄机 · 一人公司中枢 软件需求规格说明
@@ -976,7 +976,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 调度 | TaskSchedule、TaskRun、Notification、DailyReport | `stat.task_schedule`、`stat.task_run`、`stat.notification`、`stat.daily_report` |
 | 记忆 | Embedding | `vec.embedding`（`VECTOR(1024)` + HNSW） |
 
-（76 个实体、五层 schema `biz/ref/audit/stat/vec` 以 `entities.yaml` 为准；本文只登记需求涉及的落点。）
+（92 个实体、五层 schema `biz/ref/audit/stat/vec` 以 `entities.yaml` 为准；本文只登记需求涉及的落点。）
 
 ### 11.2 补贴来源白名单
 
@@ -1083,6 +1083,9 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-PRJ-034 | 已建项目接入自动驾驶与重复执行幂等 | UC-029 | TC-AUTO-008、009 | bootstrapProjectAutopilot / getProjectAutopilot |
 | REQ-PRJ-035 | 创意（文本/文档）转项目并进入自动驾驶 | UC-030 | TC-IDEA-001..005 | analyzeIdea / createProjectFromIdea |
 | REQ-PRJ-036 | SVN 版本库检出（公司主用版本库） | UC-024 | TC-AUTO-010、011 | bootstrapProjectAutopilot |
+| REQ-PRJ-037 | 自动驾驶控制台（项目状态/当前执行/执行记录/计划路线图/归档） | UC-024、UC-025 | TC-AUTO-013、014、015、016 | listAutopilotProjects / archiveProject / unarchiveProject |
+| REQ-PRJ-038 | 项目描述从版本库抽取（人工优先） | UC-025 | TC-AUTO-012 | getProjectAutopilot |
+| REQ-PRJ-039 | 基于项目内容的计划生成 | UC-025 | TC-AUTO-012、014 | getProjectAutopilot / listProjectPlans |
 | REQ-OPS-001 | 运行错误自动登记并开 Issue | UC-028 | TC-OPS-002、003、005 | syncIssues / listIssues |
 | REQ-OPS-002 | 用量遥测与使用习惯审视 | UC-027 | TC-OPS-001、004 | getUsageSummary / generateUsageInsight |
 | REQ-OPS-003 | 反馈投递治理（去重/限额/脱敏） | UC-027、028 | TC-OPS-003 | syncIssues |
@@ -1097,7 +1100,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：31 个 UC 全部在被映射的 REQ 中出现（UC-001..031 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 159 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：31 个 UC 全部在被映射的 REQ 中出现（UC-001..031 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 162 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 
@@ -1145,7 +1148,7 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 | 上游 | `OPC-玄机 · 技术选型与系统架构.md`（v2.12，567 行） | 唯一技术事实来源；本文 NFR 与超时绑定、向量参数、RPO/RTO、审计分区等口径取自该文档 |
 | 上游 | `spec/opc-xuanji/usecases.yaml`（baselineTag `v2.11-20261106`） | 需求的域划分与 UC/TC 映射依据；REQ-VIEW/TOKEN/CONFLICT/WF/AUDIT/TASK 的编号归属直接对齐其 `requirement` 字段 |
 | 上游 | `spec/opc-xuanji/api.yaml` | 需求到接口的落点依据；62 个 `/api/v1` operation 与 17 个错误码为本文 §12 追溯表的接口列来源 |
-| 上游 | `spec/opc-xuanji/entities.yaml`（76 个实体） | 本文 §11 视图—实体—表落点依据；schema 分层 `biz/ref/audit/stat/vec` 以其为准 |
+| 上游 | `spec/opc-xuanji/entities.yaml`（92 个实体） | 本文 §11 视图—实体—表落点依据；schema 分层 `biz/ref/audit/stat/vec` 以其为准 |
 | 上游 | `spec/opc-xuanji/modules.yaml`（17 个模块） | 需求实现边界的模块归属依据；`src/platform`、`src/workflow`、`src/scheduler`、`src/api` 为落地目录 |
 | 下游 | `OPC-IRS-001-接口需求规格说明.md` | 本文的功能需求在接口层的展开；本文每条带接口落点的 REQ 在 IRS 中均有对应接口章节或工具契约条目 |
 | 下游 | `docs/过程资产/pa-index.md` | 本文的验收证据（G1 门禁输出、TC 执行记录）按门禁登记于此 |

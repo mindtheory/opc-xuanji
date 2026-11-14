@@ -1,7 +1,7 @@
 ---
 doc_id: OPC-SRS-105
 title: 项目监理 员工需求规格说明
-version: 0.8
+version: 0.9
 status: 评审稿
 stage: D1
 owner: 玄机文档组
@@ -438,16 +438,17 @@ updated: 2026-11-14
 
 ### 3.29 REQ-PRJ-029 自动生成开发/测试/部署计划
 
-**需求陈述**：按扫描结果自动制定开发计划、测试计划与部署计划，形成可执行的计划基线，减少人工填表。
+**需求陈述**：按检出与扫描结果自动制定开发计划、测试计划与部署计划，形成可执行的计划基线，减少人工填表。
 
 **验收标准**：
 
-- **AC-1** 开发计划：按代码规模估算工期（2–12 周）并写入 5 个里程碑（需求冻结/架构设计/开发实现/联调测试/发布上线），计划文档落 `stat.project_plan(kind=dev)`。
-- **AC-2** 测试计划：生成 `biz.test_plan`（draft）+ 3 条基线用例（构建冒烟、自动化测试、部署验证），测试类型按仓库是否已有测试选择。
-- **AC-3** 部署计划：复用公司默认测试服务器登记测试环境（SSH、`canetwork`、凭据引用），生产目标标 `waiting-for-decision`；计划文档落 `stat.project_plan(kind=deploy)`。
+- **AC-1** 开发计划：按代码规模估算工期（2–12 周）并写入 5 个里程碑（需求冻结/架构设计/开发实现/联调测试/发布上线），阶段按顶层模块与清单排期，计划文档落 `stat.project_plan(kind=dev)`。
+- **AC-2** 测试计划：生成 `biz.test_plan`（draft）+ 3 条基线用例（构建冒烟、自动化测试、部署验证），测试类型按仓库是否已有测试选择，测试文件与 CI 作为计划内容。
+- **AC-3** 部署计划：复用公司默认测试服务器登记测试环境（SSH、`canetwork`、凭据引用），运行时按仓库是否有 Docker 选 docker/ssh，生产目标标 `waiting-for-decision`；计划文档落 `stat.project_plan(kind=deploy)`。
 - **AC-4** 三份计划均以 `draft` 生成，需人工确认后转 `active`；生产发布仍走人工审批，不自动执行。
+- **AC-5** 计划 `content` 按检出内容生成（模块/测试/CI/Docker/构建脚本），内容缺失时降级并写入 `assumptions`/`risks`；字段口径见 §3.39 REQ-PRJ-039。
 
-追溯：AC 直验 / `UC-025`
+追溯：AC 直验 / `UC-025` / `TC-AUTO-002`、`TC-AUTO-014`
 
 ### 3.30 REQ-PRJ-030 裁决队列与人工放行
 
@@ -534,17 +535,59 @@ updated: 2026-11-14
 **验收标准**：
 
 - **AC-1** 入参支持 `repository:{url,kind?,branch?,revision?,authRef?,name?}` 与工具平铺参数 `repositoryKind`、`revision`；`kind` 显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git；SVN 地址允许空格与中文（公司路径如 `产品设计/天元数智/…`）。
-- **AC-2** SVN 语义：`branch`=主干/分支路径（相对 URI，如 `trunk`、`branches/release-1.0`；也接受绝对 URL），`revision`=`HEAD`|数字|`r数字`，默认 `HEAD`；检出事实写 `ref.project_checkout`（迁移 `0014_autopilot_svn.sql` 新增 `vcs_kind varchar(8) NOT NULL DEFAULT 'git'` CHECK（git/svn）与 `revision varchar(32)`，表数仍 91、该表列数 13→15）；Git 仍 `branch`=分支、`commit_sha` 落库。
+- **AC-2** SVN 语义：`branch`=主干/分支路径（相对 URI，如 `trunk`、`branches/release-1.0`；也接受绝对 URL），`revision`=`HEAD`|数字|`r数字`，默认 `HEAD`；检出事实写 `ref.project_checkout`（迁移 `0014_autopilot_svn.sql` 新增 `vcs_kind varchar(8) NOT NULL DEFAULT 'git'` CHECK（git/svn）与 `revision varchar(32)`，表数仍 91（v2.23 迁移 `0015` 后为 92）、该表列数 13→15）；Git 仍 `branch`=分支、`commit_sha` 落库。
 - **AC-3** 检出走 CLI（subversion ≥1.10）；svn 客户端缺失时返回 502（`ERR-AUTO-002`）并登记裁决 `topic=svn_client`，不伪造检出与档案；密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库不落日志；未填 `authRef` 时，若服务环境已配置 `OPC_SVN_PASSWORD` 且目标主机在 `OPC_SVN_TRUSTED_HOSTS` 白名单内，自动按 `env:OPC_SVN_PASSWORD` 使用服务环境凭据（白名单外主机不送口令）。
 - **AC-4** 扫描跳过目录新增 `.svn`/`.hg`；`software_profile` 增加 `vcs`（git/svn）与 `revision`（git 为 null）；SVN 骨架只落工作副本、`status=generated`、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号=`coalesce(commit_sha, revision)`；响应 `bootstrap.repository` 增加 `kind`、`bootstrap.checkout` 增加 `vcs`/`revision`（git revision=null、svn commit=null）。
 
 追溯：AC 直验 / `UC-024` / `TC-AUTO-010`、`TC-AUTO-011`
 
+### 3.37 REQ-PRJ-037 自动驾驶控制台（项目状态/当前执行/执行记录/计划路线图/归档）
+
+**需求陈述**：自动驾驶页面把项目的状态、当前执行、执行记录、计划路线图与归档集中呈现，老板打开页面就能看清「做到哪一步、上次为什么失败、接下来怎么走」，不需要翻库表或问人。
+
+**验收标准**：
+
+- **AC-1** 列表状态口径 6 态：`not_started` 未接入、`running` 运行中、`waiting_decision` 待裁决、`failed` 执行失败、`ready` 计划就绪、`archived` 已归档；优先级 `archived > running > 最近一次失败(failed) > waiting_decision > ready(planCount>0) > not_started`；`GET /admin/autopilot/projects` 返回 `items` 与 `counts{total,active,archived,running,waitingDecision,ready,failed,notStarted}`，`archived=active|archived|all`，默认 `active`（已归档项目不出现在默认列表）。
+- **AC-2** 当前执行：仅当存在 `status=running` 的执行记录时返回 `currentRun{id,status,stage,stageLabel,startedAt}`，无执行时 `currentRun=null`（**不得伪造**一个 running）；阶段为 10 步固定序列 `register/checkout/scan/profile/scaffold/pipeline/plans/deploy/decisions/done`，`steps` 每项含 `{stage,label,status(pending|running|ok|failed|skipped),startedAt,endedAt,durationMs,detail}`。
+- **AC-3** 执行记录：每次 `bootstrap` 追加 `stat.project_autopilot_run` 一行（`trigger=manual|idea|api`）；成功 `status=ok`、`stage=done`；失败 `status=failed` 并保留失败阶段与 `error` 摘要；未执行阶段记 `skipped`（如按参数跳过骨架/流水线/发布）；summary 的 `runs` 最多 10 条、最新在前；同项目已有 `running` 行时再次执行返回 409（`ERR-AUTO-001`，提示「已有自动驾驶正在执行」），不并跑、不覆盖历史。
+- **AC-4** 计划路线图：`roadmap` 含 `weeks/startDate/endDate/phases/milestones/plans`；`phases` 取自 dev 计划 `content`，计划内容缺失时以里程碑兜底（阶段优先、里程碑兜底）；`plans[]` 携带 dev/test/deploy 三份计划全文 `content`，页面可展开阶段、工作分解、用例与部署步骤。
+- **AC-5** 归档/恢复：`POST /admin/projects/{id}/archive`（body `{reason?}`，≤200 字）只写 `archived_at`/`archive_reason`，`POST /admin/projects/{id}/unarchive` 清空两列；**不删**检出、计划、执行记录与裁决；分别写审计 `project.autopilot.archive` / `project.autopilot.unarchive`。
+
+追溯：AC 直验 / `UC-024`、`UC-025` / `TC-AUTO-013`、`TC-AUTO-014`、`TC-AUTO-015`、`TC-AUTO-016`
+
+### 3.38 REQ-PRJ-038 项目描述从版本库抽取（人工优先）
+
+**需求陈述**：项目描述不靠人工再抄一遍：从只读检出的 README 或构建清单抽取一句可读描述并回填项目档案；人工写过的描述永不被机器覆盖。
+
+**验收标准**：
+
+- **AC-1** 来源与优先级：先按 `README.md`/`README`/`readme.md`/`README.markdown`/`README.txt`/`readme.txt` 取首个标题与首段正文；README 无描述时依次回退 `package.json.description`、`pom.xml` 的 `<description>`、`pyproject.toml`/`Cargo.toml` 的 `description`、`setup.py` 的 `description`。
+- **AC-2** 文本口径：去徽章/图片/代码块/链接语法与 HTML 标签，首段正文 ≤200 字；`readmeExcerpt` 保留前两段 ≤600 字；只读文件、**不执行仓库代码**。
+- **AC-3** 只填空描述：仅当 `biz.project.description` 为空时写入；人工经 `PUT /admin/projects/{id}` 编辑过的描述不被后续检出覆盖（再次检出只更新 `software_profile` 里的抽取结果）。
+- **AC-4** 证据链：`software_profile` 写入 `description`/`descriptionSource`/`readmeTitle`/`readmeExcerpt`/`modules[{name,files,loc}]`/`scripts`/`docs`/`docker`/`license`/`envExample`；summary 返回 `description`/`descriptionSource` 供页面展示。
+- **AC-5** 失败不伪造：README 与清单都没有描述时 `description` 保持 `null` 并标注未抽取，不猜造描述、不把仓库名当描述。
+
+追溯：AC 直验 / `UC-025` / `TC-AUTO-012`
+
+### 3.39 REQ-PRJ-039 基于项目内容的计划生成
+
+**需求陈述**：三份计划不是通用模板：dev/test/deploy 计划按检出的模块、测试、CI、Docker 与构建脚本生成带内容的计划，页面能看到「为什么这样排期、测什么、怎么部署、怎么回滚」。
+
+**验收标准**：
+
+- **AC-1** 开发计划 `content`：含 `weeks`/`description`/`phases`（5 阶段，每阶段 `startDate`/`endDate`/`owner`/`status`/`deliverables`）/`milestones`/`workBreakdown`（按顶层模块，≤10 条，另加接口契约与联调、测试回归、发布与回滚演练）/`modules`/`scripts`/`docs`/`assumptions`/`risks`/`generatedFrom`。
+- **AC-2** 测试计划 `content`：含 `planId`/`cases`（`TC-AUTO-001`..`003` 基线）/`caseDetails`（含 `focus`）/`suggestedCases`（`TC-MOD-001..`，按模块 ≤5 条）/`testTypes`/`testFiles`/`ci`/`focusAreas`/`entryCriteria`/`exitCriteria`/`docs`/`risks`；测试类型按仓库是否已有测试选择。
+- **AC-3** 部署计划 `content`：含 `environmentId`/`environmentSource`/`runtime{docker,ci,scripts}`/`targets`/`steps`/`rollback`/`artifacts`/`secrets`/`assumptions`/`description`；仓库有 `Dockerfile` 时首步为构建镜像、`targets.strategy=docker`，否则按 SSH（`targets.strategy=ssh`）。
+- **AC-4** 内容缺失降级：无 README 描述、无测试、无 CI、无 Docker、无环境样例时按缺省口径降级，并把缺口写进 `assumptions`/`risks`（如「仓库未发现自动化测试」）；不虚构模块、用例或部署步骤。
+- **AC-5** 三份计划仍以 `draft` 生成，需人工确认后转 `active`；生产目标仍 `waiting-for-decision`，不自动发布生产。
+
+追溯：AC 直验 / `UC-025` / `TC-AUTO-012`、`TC-AUTO-014`
+
 ## 4. 数据对象与视图（需求层）
 
 | 数据对象 | 用途 |
 | :--- | :--- |
-| `project` | 项目主档：类型、生命周期阶段、状态、负责人、日期 |
+| `project` | 项目主档：类型、生命周期阶段、状态、负责人、日期；`description` 为项目描述（人工优先，空时由自动驾驶抽取），`archived_at`/`archive_reason` 为归档标记与原因 |
 | `project_charter` | 项目章程：目标、范围、交付物、干系人、预算、风险、验收标准 |
 | `project_plan` | 项目计划：阶段、计划版本、审批状态 |
 | `milestone` | 里程碑：目标/实际日期、状态、依赖、验收证据 |
@@ -566,6 +609,7 @@ updated: 2026-11-14
 | `shared_resource` | 公司基础资源目录：六类公用资源的地址、远程管理方式、默认账号与凭据引用 |
 | `shared_setting` | 公司默认口径：默认系统（debian）、远程方式（ssh）、默认账号、凭据引用、SSH 端口 |
 | `project_shared_resource` | 项目与基础资源的绑定：角色、是否由默认选型带来 |
+| `project_autopilot_run` | 项目自动驾驶执行记录：每次 `bootstrap` 一行（`trigger=manual|idea|api`）、状态、当前阶段与 10 步进度、结果与失败原因、起止时间 |
 
 **视图**：公司档案、项目状态、应收应付、合同索引、OKR、客户基础信息只读；客户敏感字段不进入项目视图；跨域明细经 `need_detail` 或一次性令牌。
 
@@ -577,9 +621,9 @@ updated: 2026-11-14
 
 ## 6. 验收与追溯
 
-- 本文 36 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
+- 本文 39 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
 - 单员工流程：`project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`、`project_release_flow`、`project_test_review`；跨员工 `project_acceptance_flow` 含验收终审 human gate。
-- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.36（含基础资源配置 §3.23–§3.26、项目自动驾驶与自动化生产 §3.27–§3.34、创意转项目 §3.35、SVN 版本库检出 §3.36）。
+- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.36（含基础资源配置 §3.23–§3.26、项目自动驾驶与自动化生产 §3.27–§3.34、创意转项目 §3.35、SVN 版本库检出 §3.36、自动驾驶控制台/描述抽取/内容化计划 §3.37–§3.39）。
 - 版本库/制品库/SSH 环境/测试管理为软件研发项目增量，契约与 DDL 在 Phase 2 落地；落地前 manifest 只声明工具族与写目标，不宣称已实现。
 - 插件可插拔验收：manifest 完整、启用/停用可逆、停用后不派工、卸载不误删项目数据。
 
@@ -600,6 +644,8 @@ updated: 2026-11-14
 - [x] 已建项目可一键接入自动驾驶；重复执行版本递增、资源复用、裁决不重复追问。
 - [x] 创意文本或文档（多格式、多文件）可 AI 解析后自动建项目并进自动驾驶；AI 不可用降级规则，缺仓库转裁决。
 - [x] SVN 版本库可检出（主干/分支路径 + 修订号）；svn 客户端缺失显式 502 + 裁决，扫描跳过 `.svn`/`.hg`，骨架不提交、发布版本号取 revision。
+- [x] 控制台按 6 态展示项目状态、当前执行阶段、10 步执行记录与计划路线图；归档/恢复只改标记不删数据。
+- [x] 项目描述从 README/构建清单抽取且人工优先；三份计划 content 基于检出内容生成，内容缺失降级记风险。
 
 ## 与其他文档的关系
 

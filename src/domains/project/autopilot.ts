@@ -1,8 +1,11 @@
 /**
- * 项目自动驾驶（SRS-105 REQ-PRJ-027..030、REQ-PRJ-036）：
+ * 项目自动驾驶（SRS-105 REQ-PRJ-027..030、REQ-PRJ-036..039）：
  * 新建项目时填写版本库 → 自动检出（Git 浅克隆 / SVN checkout）→ 静态扫描（不执行仓库代码）→
- * 回填项目档案（语言/框架/结构/测试/CI/许可）→ 生成开发/测试/部署计划 →
+ * 回填项目档案（语言/框架/结构/测试/CI/许可/项目描述）→ 生成开发/测试/部署计划 →
  * 仅把需要老板裁决的事项（许可、测试基线、CI、生产目标、技术栈歧义）推入裁决队列。
+ *
+ * 控制台（REQ-PRJ-037..039）：每次 bootstrap 写 stat.project_autopilot_run 执行记录与阶段进度，
+ * 供页面展示「当前执行 / 执行记录 / 状态」；项目可归档；描述与计划基于检出内容（README/清单/目录/脚本）生成。
  *
  * 边界：只读仓库文件，不安装依赖、不构建、不运行任何仓库脚本；凭据只接受 env: 引用且不落日志；
  * SVN 检出依赖 subversion ≥1.10（svn checkout / svn info），svn 缺失时降级为裁决；
@@ -47,6 +50,8 @@ const FRAMEWORKS: Array<[RegExp, string]> = [
   [/^spring-boot-starter/, "spring-boot"], [/^django$/, "django"], [/^fastapi$/, "fastapi"], [/^flask$/, "flask"],
   [/^gin$|^github\.com\/gin-gonic\/gin$/, "gin"], [/^actix-web$/, "actix"],
 ];
+
+const CODE_LANGUAGES = new Set(["typescript", "javascript", "python", "go", "java", "kotlin", "rust", "php", "ruby", "csharp", "c", "cpp", "vue", "svelte", "sql", "shell"]);
 
 export interface RepositoryInput {
   url: string;
@@ -127,6 +132,158 @@ function ciDate(daysFromNow: number): string {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+
+/** 自动驾驶阶段（顺序即页面步骤条顺序）；done 为收尾标记。 */
+const AUTOPILOT_STAGES: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "register", label: "登记版本库" },
+  { key: "checkout", label: "检出" },
+  { key: "scan", label: "静态扫描" },
+  { key: "profile", label: "回填档案" },
+  { key: "scaffold", label: "代码骨架" },
+  { key: "pipeline", label: "测试流水线" },
+  { key: "plans", label: "生成计划" },
+  { key: "deploy", label: "测试环境发布" },
+  { key: "decisions", label: "裁决入队" },
+  { key: "done", label: "完成" },
+];
+
+const STATUS_LABELS: Record<string, string> = {
+  not_started: "未接入",
+  running: "运行中",
+  waiting_decision: "待裁决",
+  failed: "执行失败",
+  ready: "计划就绪",
+  archived: "已归档",
+};
+
+const README_CANDIDATES = ["README.md", "README", "readme.md", "README.markdown", "README.txt", "readme.txt"];
+
+interface AutopilotStep {
+  stage: string;
+  label: string;
+  status: "pending" | "running" | "ok" | "failed" | "skipped";
+  startedAt: string | null;
+  endedAt: string | null;
+  durationMs: number | null;
+  detail: string | null;
+}
+
+function stageLabelOf(stage: string): string {
+  const found = AUTOPILOT_STAGES.find((item) => item.key === stage);
+  return found === undefined ? stage : found.label;
+}
+
+function durationBetween(start: unknown, end: unknown): number | null {
+  if (start === null || start === undefined || end === null || end === undefined) return null;
+  const from = start instanceof Date ? start.getTime() : Date.parse(String(start));
+  const to = end instanceof Date ? end.getTime() : Date.parse(String(end));
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return null;
+  return to - from;
+}
+
+/** 状态口径：已归档 > 运行中 > 待裁决 > 最近一次失败 > 计划就绪 > 未接入。 */
+function deriveAutopilotStatus(input: {
+  archived: boolean;
+  currentRun: Row | null;
+  latestRun: Row | null;
+  pendingDecisions: number;
+  planCount: number;
+}): string {
+  if (input.archived) return "archived";
+  if (input.currentRun !== null) return "running";
+  if (input.latestRun !== null && input.latestRun.status === "failed") return "failed";
+  if (input.pendingDecisions > 0) return "waiting_decision";
+  if (input.planCount > 0) return "ready";
+  return "not_started";
+}
+
+function mapRunRow(row: Row): Row {
+  const startedAt = row.started_at ?? null;
+  const endedAt = row.ended_at ?? null;
+  return {
+    id: Number(row.id),
+    trigger: row.trigger ?? "manual",
+    status: row.status ?? "ok",
+    stage: row.stage ?? "done",
+    stageLabel: row.stage_label ?? stageLabelOf(String(row.stage ?? "done")),
+    steps: Array.isArray(row.steps) ? row.steps : [],
+    result: row.result ?? null,
+    error: row.error ?? null,
+    checkoutId: row.checkout_id === null || row.checkout_id === undefined ? null : Number(row.checkout_id),
+    startedAt,
+    endedAt,
+    durationMs: durationBetween(startedAt, endedAt),
+  };
+}
+
+/** README 解析：取标题与首段正文，去掉徽章/图片/代码块/链接语法，供项目描述与档案使用。 */
+function parseReadme(raw: string): { title: string | null; excerpt: string | null; description: string | null } {
+  const text = raw.slice(0, 20_000);
+  const titleMatch = /^#{1,2}[ \t]+(.+)$/m.exec(text);
+  const title = titleMatch === null ? null : sanitizeInline(titleMatch[1]).slice(0, 120);
+  const cleaned = text
+    .replace(/```[\s\S]*?```/g, "\n\n")
+    .replace(/^[ \t]*\[!\[[^\]]*\]\([^)]*\)[ \t]*$/gm, "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/```[a-zA-Z0-9_-]*/g, "")
+    .replace(/^#{1,6}[ \t]+.*$/gm, "");
+  const paragraphs = cleaned
+    .split(/\n{2,}/)
+    .map((part) => part.split("\n").map((line) => line.replace(/^[ \t#>*+-]+/, "").trim()).filter((line) => line !== "").join(" "))
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 6 && !/^[=~_[\]()\-|:.,;!?'"`\s]+$/.test(part) && !/^\[?!\[/.test(part));
+  const first = paragraphs.length > 0 ? paragraphs[0] : null;
+  const merged = paragraphs.slice(0, 2).join(" ");
+  return {
+    title: title === null || title === "" ? null : title,
+    excerpt: merged === "" ? null : merged.slice(0, 600),
+    description: first === null ? null : first.slice(0, 200),
+  };
+}
+
+function sanitizeInline(value: string): string {
+  return value.replace(/[`*_#[\]()<>]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** 从构建清单里取项目描述（README 缺失时的兜底口径）。 */
+async function manifestDescription(dir: string, manifests: string[]): Promise<{ description: string; source: string } | null> {
+  if (manifests.includes("package.json")) {
+    const raw = await readFile(join(dir, "package.json"), "utf8").catch(() => "");
+    try {
+      const pkg = JSON.parse(raw) as { description?: unknown };
+      if (typeof pkg.description === "string" && pkg.description.trim() !== "") {
+        return { description: pkg.description.trim().slice(0, 200), source: "package.json" };
+      }
+    } catch { /* 清单损坏时继续尝试其他清单 */ }
+  }
+  if (manifests.includes("pom.xml")) {
+    const raw = await readFile(join(dir, "pom.xml"), "utf8").catch(() => "");
+    const matched = /<description>([\s\S]{1,2000}?)<\/description>/i.exec(raw);
+    if (matched !== null) {
+      const value = sanitizeInline(matched[1]);
+      if (value !== "") return { description: value.slice(0, 200), source: "pom.xml" };
+    }
+  }
+  if (manifests.includes("pyproject.toml")) {
+    const raw = await readFile(join(dir, "pyproject.toml"), "utf8").catch(() => "");
+    const matched = /^description\s*=\s*["']([^"']+)["']/m.exec(raw);
+    if (matched !== null && matched[1].trim() !== "") return { description: matched[1].trim().slice(0, 200), source: "pyproject.toml" };
+  }
+  if (manifests.includes("Cargo.toml")) {
+    const raw = await readFile(join(dir, "Cargo.toml"), "utf8").catch(() => "");
+    const matched = /^description\s*=\s*["']([^"']+)["']/m.exec(raw);
+    if (matched !== null && matched[1].trim() !== "") return { description: matched[1].trim().slice(0, 200), source: "Cargo.toml" };
+  }
+  if (manifests.includes("setup.py")) {
+    const raw = await readFile(join(dir, "setup.py"), "utf8").catch(() => "");
+    const matched = /description\s*=\s*["']([^"']+)["']/i.exec(raw);
+    if (matched !== null && matched[1].trim() !== "") return { description: matched[1].trim().slice(0, 200), source: "setup.py" };
+  }
+  return null;
+}
+
 
 export class ProjectAutopilotService {
   private readonly pool: Pool;
@@ -374,10 +531,14 @@ export class ProjectAutopilotService {
     const tests: string[] = [];
     const ci: string[] = [];
     const structure: string[] = [];
+    const topFiles: Record<string, number> = {};
+    const topLoc: Record<string, number> = {};
+    const docs: string[] = [];
+    const rootFiles: string[] = [];
     let loc = 0;
     let fileCount = 0;
 
-    const walk = async (current: string): Promise<void> => {
+    const walk = async (current: string, depth: number): Promise<void> => {
       if (fileCount >= MAX_FILES) return;
       const entries = await readdir(current, { withFileTypes: true }).catch(() => []);
       for (const entry of entries) {
@@ -388,30 +549,100 @@ export class ProjectAutopilotService {
           if (SKIP_DIRS.has(entry.name)) continue;
           if (["test", "tests", "spec", "__tests__", "integration"].includes(entry.name)) tests.push(rel);
           if (rel.split("/").length <= 2) structure.push(rel);
-          await walk(full);
+          if (rel.startsWith("docs/") || rel === "docs") { /* docs 目录在文件分支收集 */ }
+          await walk(full, depth + 1);
           continue;
         }
         if (!entry.isFile()) continue;
         fileCount += 1;
+        if (depth === 0) rootFiles.push(entry.name);
+        const top = rel.includes("/") ? rel.split("/")[0] : "(root)";
+        topFiles[top] = (topFiles[top] ?? 0) + 1;
+        if (rel.endsWith(".md") && (rel.startsWith("docs/") || rel.includes("/docs/"))) docs.push(rel);
         const ext = extname(entry.name).toLowerCase();
         if (LANG_BY_EXT[ext] !== undefined) languages[LANG_BY_EXT[ext]] = (languages[LANG_BY_EXT[ext]] ?? 0) + 1;
         if (MANIFEST_NAMES.has(entry.name)) manifests.push(rel);
         if (/\.(test|spec)\.(js|ts|jsx|tsx|mjs|py|go|java|rs)$/.test(entry.name)) tests.push(rel);
         if (rel.startsWith(".github/workflows/") || /^(.gitlab-ci.yml|Jenkinsfile)$/.test(entry.name)) ci.push(rel);
-        if (["js", "ts", "py", "go", "java", "rs", "php", "rb", "c", "cpp", "vue", "svelte"].some((lang) => LANG_BY_EXT[ext] === lang)) {
+        if (CODE_LANGUAGES.has(LANG_BY_EXT[ext] ?? "")) {
           const text = await readFile(full, "utf8").catch(() => "");
-          loc += text.split("\n").length;
+          const lines = text.split("\n").length;
+          loc += lines;
+          topLoc[top] = (topLoc[top] ?? 0) + lines;
         }
       }
     };
-    await walk(dir);
+    await walk(dir, 0);
 
     const stack = await this.detectStack(dir, manifests, languages);
-    return { languages, manifests, structure: structure.slice(0, MAX_STRUCTURE), tests: [...new Set(tests)].slice(0, 200), ci, stack, loc, fileCount };
+    const content = await this.extractContent(dir, manifests, structure, topFiles, topLoc, docs, rootFiles);
+    return { languages, manifests, structure: structure.slice(0, MAX_STRUCTURE), tests: [...new Set(tests)].slice(0, 200), ci, stack, loc, fileCount, content };
+  }
+
+  /** 项目内容抽取（只读）：README/清单描述、模块规模、脚本、文档、Docker/许可/环境样例。 */
+  private async extractContent(dir: string, manifests: string[], structure: string[], topFiles: Record<string, number>, topLoc: Record<string, number>, docs: string[], rootFiles: string[]): Promise<Row> {
+    let description: string | null = null;
+    let descriptionSource: string | null = null;
+    let readmeTitle: string | null = null;
+    let readmeExcerpt: string | null = null;
+    for (const name of README_CANDIDATES) {
+      const exists = await fsStat(join(dir, name)).then((info) => info.isFile()).catch(() => false);
+      if (!exists) continue;
+      const raw = await readFile(join(dir, name), "utf8").catch(() => "");
+      const parsed = parseReadme(raw);
+      readmeTitle = parsed.title;
+      readmeExcerpt = parsed.excerpt;
+      if (parsed.description !== null) {
+        description = parsed.description;
+        descriptionSource = name;
+      }
+      break;
+    }
+    if (description === null) {
+      const fromManifest = await manifestDescription(dir, manifests);
+      if (fromManifest !== null) {
+        description = fromManifest.description;
+        descriptionSource = fromManifest.source;
+      }
+    }
+    const modules = Object.entries(topFiles)
+      .filter(([name]) => name !== "(root)")
+      .map(([name, files]) => ({ name, files, loc: topLoc[name] ?? 0 }))
+      .sort((a, b) => b.loc - a.loc || b.files - a.files)
+      .slice(0, 30);
+    const scripts = await this.packageScripts(dir, manifests);
+    return {
+      description,
+      descriptionSource,
+      readmeTitle,
+      readmeExcerpt,
+      modules,
+      scripts,
+      docs: [...new Set(docs)].slice(0, 40),
+      docker: manifests.some((item) => item === "Dockerfile" || item.startsWith("docker-compose")),
+      license: manifests.some((item) => item === "LICENSE" || item === "LICENSE.md"),
+      envExample: rootFiles.some((name) => [".env.example", ".env.sample", "env.example", ".env.template"].includes(name)),
+      structure: structure.slice(0, MAX_STRUCTURE),
+    };
+  }
+
+  private async packageScripts(dir: string, manifests: string[]): Promise<Record<string, string> | null> {
+    if (!manifests.includes("package.json")) return null;
+    const raw = await readFile(join(dir, "package.json"), "utf8").catch(() => "");
+    try {
+      const pkg = JSON.parse(raw) as { scripts?: Record<string, unknown> };
+      if (pkg.scripts === undefined || pkg.scripts === null) return null;
+      const scripts: Record<string, string> = {};
+      for (const [key, value] of Object.entries(pkg.scripts)) if (typeof value === "string") scripts[key] = value;
+      return Object.keys(scripts).length === 0 ? null : scripts;
+    } catch {
+      return null;
+    }
   }
 
   private async detectStack(dir: string, manifests: string[], languages: Record<string, number>): Promise<Row> {
-    const sorted = Object.entries(languages).sort((a, b) => b[1] - a[1]);
+    // 主语言只看代码语言：README/文档的 markdown 不能盖过 javascript，否则技术栈口径失真
+    const sorted = Object.entries(languages).filter(([name]) => CODE_LANGUAGES.has(name)).sort((a, b) => b[1] - a[1]);
     const primary = sorted.length === 0 ? null : sorted[0][0];
     const frameworks: string[] = [];
     let packageManager: string | null = null;
@@ -437,7 +668,9 @@ export class ProjectAutopilotService {
   // ---------------------------------------------------------------- 回填档案与计划
 
   private async applyProfile(projectId: number, repo: RepositoryInput, checkout: Row, scan: Row, kind: VcsKind): Promise<void> {
-    const techStack = { primaryLanguage: (scan.stack as Row).primary ?? null, languages: scan.languages, frameworks: (scan.stack as Row).frameworks, packageManager: (scan.stack as Row).packageManager };
+    const content = (scan.content ?? {}) as Row;
+    const stack = scan.stack as Row;
+    const techStack = { primaryLanguage: stack.primary ?? null, languages: scan.languages, frameworks: stack.frameworks, packageManager: stack.packageManager };
     const softwareProfile = {
       repositoryUrl: repo.url,
       vcs: kind,
@@ -450,34 +683,73 @@ export class ProjectAutopilotService {
       manifests: scan.manifests,
       tests: scan.tests,
       ci: scan.ci,
+      description: content.description ?? null,
+      descriptionSource: content.descriptionSource ?? null,
+      readmeTitle: content.readmeTitle ?? null,
+      readmeExcerpt: content.readmeExcerpt ?? null,
+      modules: content.modules ?? [],
+      scripts: content.scripts ?? null,
+      docs: content.docs ?? [],
+      docker: content.docker === true,
+      license: content.license === true,
+      envExample: content.envExample === true,
       scannerVersion: "autopilot-1",
       scannedAt: new Date().toISOString(),
     };
+    // 描述只在为空时回填：人工编辑过的描述不被下次检出覆盖
     await this.pool.query(
       `UPDATE biz.project
        SET project_type = 'software',
            tech_stack = $2::jsonb,
            software_profile = $3::jsonb,
+           description = CASE WHEN description IS NULL OR btrim(description) = '' THEN $4 ELSE description END,
            stage = CASE WHEN stage IS NULL OR stage = '' THEN 'planning' ELSE stage END
        WHERE id = $1`,
-      [projectId, JSON.stringify(techStack), JSON.stringify(softwareProfile)],
+      [projectId, JSON.stringify(techStack), JSON.stringify(softwareProfile), content.description ?? null],
     );
   }
 
+  /**
+   * 按项目内容生成三份计划：README/清单描述 → 范围与风险；模块目录 → 工作分解与测试焦点；
+   * 测试/CI/脚本/Docker → 测试类型与部署运行时。内容缺失时降级为通用基线并记录风险。
+   */
   private async generatePlans(projectId: number, repo: RepositoryInput, scan: Row): Promise<Row[]> {
+    const content = (scan.content ?? {}) as Row;
+    const description = typeof content.description === "string" ? content.description : null;
+    const modules = Array.isArray(content.modules) ? (content.modules as Array<{ name: string; files: number; loc: number }>) : [];
+    const scripts = (content.scripts ?? null) as Record<string, string> | null;
+    const docs = Array.isArray(content.docs) ? (content.docs as string[]) : [];
+    const tests = Array.isArray(scan.tests) ? (scan.tests as string[]) : [];
+    const ci = Array.isArray(scan.ci) ? (scan.ci as string[]) : [];
+    const manifests = Array.isArray(scan.manifests) ? (scan.manifests as string[]) : [];
+    const languages = Object.entries((scan.languages ?? {}) as Record<string, number>).sort((a, b) => b[1] - a[1]);
     const loc = Number(scan.loc ?? 0);
-    const weeks = clamp(Math.ceil(loc / 3000) + 1, 2, 12);
-    const hasTests = (scan.tests as string[]).length > 0;
-    const hasCi = (scan.ci as string[]).length > 0;
+    const weeks = clamp(Math.ceil(loc / 3000) + Math.min(6, Math.ceil(modules.length / 3)), 2, 12);
+    const hasTests = tests.length > 0;
+    const hasCi = ci.length > 0;
+    const hasDocker = content.docker === true;
+    const hasLicense = content.license === true;
+    const hasEnvExample = content.envExample === true;
     const created: Row[] = [];
 
-    // 1) 开发计划：里程碑 + 计划文档
-    const milestones = [
-      { name: "需求与范围冻结", day: 3 },
-      { name: "架构与接口设计", day: 3 + Math.ceil(weeks * 0.25) * 7 },
-      { name: "开发实现", day: 3 + Math.ceil(weeks * 0.7) * 7 },
-      { name: "联调与测试", day: 3 + Math.ceil(weeks * 0.9) * 7 },
-      { name: "发布上线", day: 3 + weeks * 7 },
+    const risks: string[] = [];
+    if (!hasTests) risks.push("仓库未发现自动化测试：先补测试基线，否则回归依赖人工");
+    if (!hasCi) risks.push("仓库未发现 CI：构建与测试需人工执行或后续接入流水线");
+    if (!hasLicense) risks.push("仓库未发现 LICENSE：对外发布前需确认许可口径");
+    if (hasEnvExample) risks.push("仓库存在 .env.example：部署前需在目标环境补齐真实配置");
+    if (modules.length === 0) risks.push("未识别到模块目录：以根目录代码为准，范围需人工复核");
+    const codeLanguages = languages.filter(([name]) => CODE_LANGUAGES.has(name));
+    if (codeLanguages.length >= 2 && codeLanguages[1][1] * 2 >= codeLanguages[0][1]) {
+      risks.push(`多语言并存（${codeLanguages.slice(0, 3).map(([name, n]) => `${name}:${n}`).join(" / ")}）：接口边界需在架构阶段确认`);
+    }
+
+    // 1) 开发计划：里程碑 + 基于模块/清单的阶段路线
+    const milestonePlan = [
+      { key: "freeze", name: "需求与范围冻结", day: 3, deliverables: ["范围清单", "验收标准", "风险清单"] },
+      { key: "design", name: "架构与接口设计", day: 3 + Math.ceil(weeks * 0.25) * 7, deliverables: ["架构说明", "接口契约", "数据模型"] },
+      { key: "build", name: "开发实现", day: 3 + Math.ceil(weeks * 0.7) * 7, deliverables: modules.slice(0, 5).map((item) => `${item.name} 模块可运行`) },
+      { key: "verify", name: "联调与测试", day: 3 + Math.ceil(weeks * 0.9) * 7, deliverables: ["测试报告", "缺陷清零", "回归通过"] },
+      { key: "release", name: "发布上线", day: 3 + weeks * 7, deliverables: ["发布单", "回滚预案", "验收记录"] },
     ];
     const existingMilestones = await this.pool.query<{ n: number }>(
       "SELECT count(*)::int AS n FROM biz.project_milestone WHERE project_id = $1",
@@ -485,7 +757,7 @@ export class ProjectAutopilotService {
     );
     const milestonesReused = (existingMilestones.rows[0]?.n ?? 0) > 0;
     if (!milestonesReused) {
-      for (const item of milestones) {
+      for (const item of milestonePlan) {
         await this.pool.query(
           `INSERT INTO biz.project_milestone (project_id, name, stage, target_date, status, owner, evidence)
            VALUES ($1,$2,$3,$4,'planned',$5,$6)`,
@@ -493,28 +765,60 @@ export class ProjectAutopilotService {
         );
       }
     }
+    const phases = milestonePlan.map((item, index) => ({
+      key: item.key,
+      title: item.name,
+      startDate: ciDate(index === 0 ? 0 : milestonePlan[index - 1].day),
+      endDate: ciDate(item.day),
+      owner: index === 1 ? "架构负责人" : "项目监理",
+      status: "planned",
+      deliverables: item.deliverables,
+    }));
+    const moduleWork = modules.slice(0, 10).map((item) => `${item.name}（${item.files} 文件 / 约 ${item.loc} 行）`);
+    const workBreakdown = [
+      ...(moduleWork.length > 0 ? moduleWork : ["根目录代码梳理"]),
+      "接口契约与联调",
+      "测试回归",
+      "发布与回滚演练",
+    ];
+    const assumptions = [
+      `代码规模约 ${loc} 行、${scan.fileCount} 个文件（扫描上限 ${MAX_FILES}）`,
+      hasTests ? `仓库已有 ${tests.length} 个测试目录/文件，可复用测试基线` : "仓库未发现测试，先建测试基线",
+      hasCi ? `仓库已有 CI：${ci.slice(0, 3).join("、")}` : "仓库未发现 CI，需接入",
+      modules.length > 0 ? `识别到 ${modules.length} 个顶层模块：${modules.slice(0, 5).map((item) => item.name).join("、")}` : "未识别到模块目录",
+      docs.length > 0 ? `仓库文档 ${docs.length} 份：${docs.slice(0, 3).join("、")}` : "仓库未发现 docs 文档",
+      description === null ? "仓库未抽取到项目描述：以人工填写为准" : `项目描述：${description}`,
+    ];
     const devContent = {
       weeks,
-      milestones: milestones.map((item) => ({ name: item.name, targetDate: ciDate(item.day) })),
+      description,
+      milestones: milestonePlan.map((item) => ({ name: item.name, targetDate: ciDate(item.day) })),
+      phases,
       milestonesReused,
-      workBreakdown: ["需求澄清", "架构设计", "接口契约", "编码实现", "代码评审", "联调", "测试回归", "发布"],
-      assumptions: [`代码规模约 ${loc} 行`, hasTests ? "仓库已有测试目录" : "仓库未发现测试，先建测试基线", hasCi ? "仓库已有 CI 配置" : "仓库未发现 CI，需接入"],
+      workBreakdown,
+      modules,
+      scripts,
+      docs,
+      assumptions,
+      risks,
+      generatedFrom: ["README/清单描述", "目录结构", "测试与 CI", "构建脚本"],
     };
     created.push(await this.insertPlan(projectId, "dev", "开发计划（自动生成）", devContent));
 
-    // 2) 测试计划：test_plan + 基线用例 + 计划文档
+    // 2) 测试计划：test_plan + 基线用例 + 基于测试目录/模块的计划文档
     const existingPlan = await this.pool.query<{ id: string }>(
       "SELECT id FROM biz.test_plan WHERE project_id = $1 ORDER BY id LIMIT 1",
       [projectId],
     );
+    const testTypes = hasTests ? ["unit", "integration"] : ["api"];
     let planId: string;
     if (existingPlan.rows.length > 0) {
       planId = String(existingPlan.rows[0].id);
     } else {
       const plan = await this.pool.query(
         `INSERT INTO biz.test_plan (project_id, version, scope, test_types, entry_criteria, exit_criteria, owner, status)
-         VALUES ($1,'0.1.0','自动生成基线',$2::jsonb,'构建与静态检查通过','P0/P1 全通过且无阻塞缺陷','项目监理','draft') RETURNING id`,
-        [projectId, JSON.stringify(hasTests ? ["unit", "integration"] : ["api"])],
+         VALUES ($1,'0.1.0','自动生成基线',$2::jsonb,$3,$4,'项目监理','draft') RETURNING id`,
+        [projectId, JSON.stringify(testTypes), hasTests ? "构建与静态检查通过；测试环境可用" : "构建通过；测试基线建立后进入", "P0/P1 全通过且无阻塞缺陷"],
       );
       planId = String((plan.rows[0] as Row).id);
     }
@@ -534,10 +838,36 @@ export class ProjectAutopilotService {
       );
       knownCases.add(item.code);
     }
-    const testContent = { planId, cases: cases.map((item) => item.code), testTypes: hasTests ? ["unit", "integration"] : ["api"], entryCriteria: "构建与静态检查通过", exitCriteria: "P0/P1 全通过且无阻塞缺陷" };
+    const caseDetails = [
+      { code: "TC-AUTO-001", title: "构建冒烟", priority: "P1", kind: "auto", focus: scripts?.build !== undefined ? `npm run build（${scripts.build}）` : manifests.includes("pom.xml") ? "mvn -q -DskipTests package" : "仓库构建命令" },
+      { code: "TC-AUTO-002", title: "自动化测试", priority: "P1", kind: "auto", focus: hasTests ? tests.slice(0, 3).join("、") : "仓库未发现自动化测试，先补测试基线" },
+      { code: "TC-AUTO-003", title: "部署验证", priority: "P1", kind: "auto", focus: "测试环境发布后健康检查 + 核心接口冒烟" },
+    ];
+    const suggestedCases = modules.slice(0, 5).map((item, index) => ({
+      code: `TC-MOD-${String(index + 1).padStart(3, "0")}`,
+      title: `${item.name} 模块冒烟`,
+      priority: "P2",
+      focus: item.name,
+      fileCount: item.files,
+      loc: item.loc,
+    }));
+    const testContent = {
+      planId,
+      cases: cases.map((item) => item.code),
+      caseDetails,
+      suggestedCases,
+      testTypes,
+      testFiles: tests.slice(0, 50),
+      ci,
+      focusAreas: modules.length > 0 ? modules.slice(0, 5).map((item) => item.name) : ["根目录"],
+      entryCriteria: hasTests ? "构建与静态检查通过；测试环境可用" : "构建通过；测试基线建立后进入",
+      exitCriteria: "P0/P1 全通过且无阻塞缺陷",
+      docs: docs.slice(0, 10),
+      risks: hasTests ? [] : ["仓库未发现自动化测试"],
+    };
     created.push(await this.insertPlan(projectId, "test", "测试计划（自动生成）", testContent));
 
-    // 3) 部署计划：优先复用公司默认测试服务器，生产目标留给老板裁决
+    // 3) 部署计划：优先复用公司默认测试服务器，运行时/制品按仓库内容生成，生产目标留给老板裁决
     const server = await this.pool.query<{ id: string; name: string; endpoint: string; default_account: string | null; credential_ref: string | null }>(
       `SELECT id, name, endpoint, default_account, credential_ref
        FROM ref.shared_resource WHERE kind = 'test_server' AND is_default AND status = 'active' ORDER BY id LIMIT 1`,
@@ -559,13 +889,31 @@ export class ProjectAutopilotService {
     const deployContent = {
       environmentId,
       environmentSource: server.rows.length > 0 ? server.rows[0].name : null,
+      runtime: {
+        docker: hasDocker ? (manifests.includes("Dockerfile") ? "Dockerfile" : "docker-compose") : null,
+        ci,
+        scripts,
+      },
       targets: [
-        { name: "test", strategy: "ssh", approval: "manual" },
-        { name: "prod", strategy: "ssh", approval: "manual", status: "waiting-for-decision" },
+        { name: "test", strategy: hasDocker ? "docker" : "ssh", approval: "manual" },
+        { name: "prod", strategy: hasDocker ? "docker" : "ssh", approval: "manual", status: "waiting-for-decision" },
       ],
-      steps: ["检出并构建制品", "部署到测试环境", "执行冒烟测试", "老板确认后发布生产", "失败回滚上一版本"],
+      steps: [
+        hasDocker ? "构建镜像并打版本标签" : "检出并构建制品",
+        "部署到测试环境",
+        "执行冒烟测试",
+        "老板确认后发布生产",
+        "失败回滚上一版本",
+      ],
       rollback: "保留上一版本制品与配置快照；失败回滚并记录发布单",
+      artifacts: scripts?.build !== undefined ? [`npm run build 产物（${scripts.build}）`] : hasDocker ? ["Docker 镜像"] : ["构建产物（以仓库构建脚本为准）"],
       secrets: "凭据仅引用 env:/ssh-agent:，不在计划中落地明文",
+      assumptions: [
+        hasDocker ? "仓库自带 Docker 配置，可构建镜像" : "仓库未发现 Docker 配置，按 SSH 方式部署",
+        hasCi ? "复用仓库 CI 产出" : "部署脚本需人工或后续接入",
+        hasEnvExample ? "目标环境需补齐 .env 配置" : "无环境样例，配置以部署环境登记为准",
+      ],
+      description,
     };
     created.push(await this.insertPlan(projectId, "deploy", "部署计划（自动生成）", deployContent));
     return created;
@@ -851,6 +1199,133 @@ export class ProjectAutopilotService {
     return { id: String((row.rows[0] as Row).id), releaseId, environmentId: envId, status, exitCode, healthUrl, logTail: log.slice(-500) };
   }
 
+  // ---------------------------------------------------------------- 执行记录（当前执行 / 历史）
+
+  /** 每次 bootstrap 追加一行执行记录；同项目已有 running 行时拒绝并发执行（409）。 */
+  private async startRun(projectId: number, trigger: string): Promise<number> {
+    // 进程重启/任务中断会留下 running 悬挂记录：超过 30 分钟视为中断，避免永久阻塞后续执行
+    const stale = await this.pool.query(
+      `UPDATE stat.project_autopilot_run
+       SET status = 'failed', error = '执行中断（进程重启或超时）', ended_at = now()
+       WHERE project_id = $1 AND status = 'running' AND started_at < now() - interval '30 minutes'
+       RETURNING id`,
+      [projectId],
+    );
+    if (stale.rows.length > 0) await this.record("project.autopilot.run.stale", projectId, { ids: stale.rows.map((row) => Number((row as Row).id)) });
+    const running = await this.pool.query("SELECT id FROM stat.project_autopilot_run WHERE project_id = $1 AND status = 'running' ORDER BY id DESC LIMIT 1", [projectId]);
+    if (running.rows.length > 0) {
+      throw new OpcError(ERR.AUTO_INVALID, "该项目已有自动驾驶正在执行，请等它完成后再看结果", 409);
+    }
+    const startedAt = new Date().toISOString();
+    const steps: AutopilotStep[] = AUTOPILOT_STAGES.map((item) => ({
+      stage: item.key,
+      label: item.label,
+      status: "pending",
+      startedAt: null,
+      endedAt: null,
+      durationMs: null,
+      detail: null,
+    }));
+    steps[0].status = "running";
+    steps[0].startedAt = startedAt;
+    const inserted = await this.pool.query(
+      `INSERT INTO stat.project_autopilot_run (project_id, trigger, status, stage, stage_label, steps)
+       VALUES ($1,$2,'running','register','登记版本库',$3::jsonb) RETURNING id`,
+      [projectId, trigger, JSON.stringify(steps)],
+    );
+    await this.record("project.autopilot.run.start", projectId, { trigger });
+    return Number((inserted.rows[0] as Row).id);
+  }
+
+  /** 推进到下一阶段：关闭当前 running 步骤，把目标阶段置为 running（页面据此展示「正在执行」）。 */
+  private async advanceRun(runId: number, stage: string): Promise<void> {
+    const at = new Date().toISOString();
+    await this.updateRunSteps(runId, (steps) => {
+      for (const step of steps) {
+        if (step.status === "running") {
+          step.status = "ok";
+          step.endedAt = at;
+          step.durationMs = durationBetween(step.startedAt, at);
+        }
+      }
+      const target = steps.find((step) => step.stage === stage);
+      if (target !== undefined) {
+        target.status = "running";
+        target.startedAt = at;
+        target.endedAt = null;
+        target.durationMs = null;
+      }
+    }, { stage, stageLabel: stageLabelOf(stage) });
+  }
+
+  /** 记录跳过的阶段（参数关闭 / 缺少条件），不伪造成功。 */
+  private async skipRunStage(runId: number, stage: string, detail: string): Promise<void> {
+    const at = new Date().toISOString();
+    await this.updateRunSteps(runId, (steps) => {
+      for (const step of steps) {
+        if (step.status === "running") {
+          step.status = "ok";
+          step.endedAt = at;
+          step.durationMs = durationBetween(step.startedAt, at);
+        }
+      }
+      const target = steps.find((step) => step.stage === stage);
+      if (target !== undefined) {
+        target.status = "skipped";
+        target.detail = detail;
+        target.startedAt = at;
+        target.endedAt = at;
+        target.durationMs = 0;
+      }
+    });
+  }
+
+  /** 收尾：成功时标记 done；失败保留失败阶段并写入错误摘要；未执行阶段记 skipped。 */
+  private async finishRun(runId: number, status: "ok" | "failed", result: Row | null, error: string | null): Promise<void> {
+    const at = new Date().toISOString();
+    await this.updateRunSteps(runId, (steps) => {
+      for (const step of steps) {
+        if (step.status === "running") {
+          step.status = status === "ok" ? "ok" : "failed";
+          step.endedAt = at;
+          step.durationMs = durationBetween(step.startedAt, at);
+        } else if (step.status === "pending") {
+          step.status = "skipped";
+          step.endedAt = at;
+          step.durationMs = 0;
+        }
+      }
+    }, {
+      status,
+      stage: status === "ok" ? "done" : undefined,
+      stageLabel: status === "ok" ? "完成" : undefined,
+      result,
+      error,
+      endedAt: at,
+    });
+  }
+
+  private async updateRunSteps(
+    runId: number,
+    mutate: (steps: AutopilotStep[]) => void,
+    extra: { stage?: string; stageLabel?: string; status?: string; result?: unknown; error?: string | null; endedAt?: string | null } = {},
+  ): Promise<void> {
+    const current = await this.pool.query("SELECT steps FROM stat.project_autopilot_run WHERE id = $1", [runId]);
+    if (current.rows.length === 0) return;
+    const raw = (current.rows[0] as Row).steps;
+    const steps: AutopilotStep[] = Array.isArray(raw) ? (raw as AutopilotStep[]).map((step) => ({ ...step })) : [];
+    mutate(steps);
+    const sets: string[] = ["steps = $2::jsonb"];
+    const params: unknown[] = [runId, JSON.stringify(steps)];
+    if (extra.stage !== undefined) { params.push(extra.stage); sets.push(`stage = $${params.length}`); }
+    if (extra.stageLabel !== undefined) { params.push(extra.stageLabel); sets.push(`stage_label = $${params.length}`); }
+    if (extra.status !== undefined) { params.push(extra.status); sets.push(`status = $${params.length}`); }
+    if (extra.result !== undefined) { params.push(JSON.stringify(extra.result)); sets.push(`result = $${params.length}::jsonb`); }
+    if (extra.error !== undefined) { params.push(extra.error); sets.push(`error = $${params.length}`); }
+    if (extra.endedAt !== undefined) { params.push(extra.endedAt); sets.push(`ended_at = $${params.length}`); }
+    await this.pool.query(`UPDATE stat.project_autopilot_run SET ${sets.join(", ")} WHERE id = $1`, params);
+  }
+
   // ---------------------------------------------------------------- 对外入口
 
   async bootstrap(projectId: number, repo: RepositoryInput, options: Row = {}): Promise<Row> {
@@ -865,58 +1340,289 @@ export class ProjectAutopilotService {
     if (kind === "git" && repo.revision !== undefined && repo.revision !== "") {
       throw new OpcError(ERR.AUTO_INVALID, "revision 仅用于 SVN 版本库", 400);
     }
-    const registered = await this.registerRepository(projectId, repo, kind);
-    const checkout = await this.checkout(projectId, Number(registered.id), repo, kind);
-    const scan = await this.scan(String(checkout.dir));
-    await this.applyProfile(projectId, repo, checkout, scan, kind);
-    const checkoutId = Number(checkout.id);
-    const scaffold = options.scaffold === false ? null : await this.generateScaffold(projectId, checkoutId, String(checkout.dir), scan, kind);
-    const pipeline = options.pipeline === false ? null : await this.runPipeline(projectId, checkoutId, String(checkout.dir), scan, options);
-    const plans = await this.generatePlans(projectId, repo, scan);
-    const deploy = options.deployTest === false ? null : await this.deployTestEnvironment(projectId, { healthUrl: options.healthUrl });
-    const decisions = await this.createDecisions(projectId, repo, scan, { scaffold, pipeline, deploy });
-    await this.pool.query(
-      `INSERT INTO stat.project_scan (project_id, checkout_id, languages, manifests, structure, tests, ci, findings, status)
-       VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,'ok')`,
-      [projectId, Number(checkout.id), JSON.stringify(scan.languages), JSON.stringify(scan.manifests), JSON.stringify(scan.structure), JSON.stringify(scan.tests), JSON.stringify(scan.ci), JSON.stringify({ stack: scan.stack, loc: scan.loc, fileCount: scan.fileCount })],
-    );
+    const trigger = options.trigger === "idea" ? "idea" : options.trigger === "api" ? "api" : "manual";
+    const runId = await this.startRun(projectId, trigger);
+    try {
+      const registered = await this.registerRepository(projectId, repo, kind);
+      await this.advanceRun(runId, "checkout");
+      const checkout = await this.checkout(projectId, Number(registered.id), repo, kind);
+      await this.pool.query("UPDATE stat.project_autopilot_run SET checkout_id = $2 WHERE id = $1", [runId, Number(checkout.id)]);
+      await this.advanceRun(runId, "scan");
+      const scan = await this.scan(String(checkout.dir));
+      await this.advanceRun(runId, "profile");
+      await this.applyProfile(projectId, repo, checkout, scan, kind);
+      const checkoutId = Number(checkout.id);
+      await this.advanceRun(runId, "scaffold");
+      const scaffold = options.scaffold === false ? null : await this.generateScaffold(projectId, checkoutId, String(checkout.dir), scan, kind);
+      if (scaffold === null) await this.skipRunStage(runId, "scaffold", "按参数跳过代码骨架");
+      await this.advanceRun(runId, "pipeline");
+      const pipeline = options.pipeline === false ? null : await this.runPipeline(projectId, checkoutId, String(checkout.dir), scan, options);
+      if (pipeline === null) await this.skipRunStage(runId, "pipeline", "按参数跳过测试流水线");
+      await this.advanceRun(runId, "plans");
+      const plans = await this.generatePlans(projectId, repo, scan);
+      await this.advanceRun(runId, "deploy");
+      let deploy: Row | null = null;
+      if (options.deployTest === false) {
+        await this.skipRunStage(runId, "deploy", "按参数跳过测试环境发布");
+      } else {
+        try {
+          deploy = await this.deployTestEnvironment(projectId, { healthUrl: options.healthUrl });
+        } catch (error) {
+          if (!(error instanceof OpcError)) throw error;
+          // 无测试环境/发布条件缺失不伪造成功：记跳过并让裁决队列承接
+          await this.skipRunStage(runId, "deploy", `测试环境发布未执行：${error.message.slice(0, 200)}`);
+        }
+      }
+      await this.advanceRun(runId, "decisions");
+      const decisions = await this.createDecisions(projectId, repo, scan, { scaffold, pipeline, deploy });
+      await this.advanceRun(runId, "done");
+      await this.pool.query(
+        `INSERT INTO stat.project_scan (project_id, checkout_id, languages, manifests, structure, tests, ci, findings, status)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,'ok')`,
+        [projectId, Number(checkout.id), JSON.stringify(scan.languages), JSON.stringify(scan.manifests), JSON.stringify(scan.structure), JSON.stringify(scan.tests), JSON.stringify(scan.ci), JSON.stringify({ stack: scan.stack, loc: scan.loc, fileCount: scan.fileCount, content: scan.content })],
+      );
+      const result: Row = {
+        projectId,
+        repository: { id: registered.id, url: repo.url, kind, branch: checkout.branch, reused: registered.reused === true },
+        checkout: { vcs: kind, commit: checkout.commitSha ?? null, revision: checkout.revision ?? null, files: checkout.files, bytes: checkout.bytes, status: checkout.status },
+        scan: {
+          languages: scan.languages,
+          frameworks: (scan.stack as Row).frameworks,
+          packageManager: (scan.stack as Row).packageManager,
+          tests: scan.tests,
+          ci: scan.ci,
+          loc: scan.loc,
+          description: (scan.content as Row).description ?? null,
+          modules: (scan.content as Row).modules ?? [],
+        },
+        scaffold,
+        pipeline,
+        plans,
+        deploy,
+        decisions,
+        readyForProduction: false,
+      };
+      await this.finishRun(runId, "ok", result, null);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.finishRun(runId, "failed", null, message.slice(0, 500)).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** 状态口径与展示字段（列表/详情共用）。 */
+  private projectRowStatus(projectRow: Row, currentRun: Row | null, latestRun: Row | null, pendingDecisions: number, planCount: number): string {
+    return deriveAutopilotStatus({
+      archived: projectRow.archived_at !== null && projectRow.archived_at !== undefined,
+      currentRun,
+      latestRun,
+      pendingDecisions,
+      planCount,
+    });
+  }
+
+  private buildRoadmap(plans: Row[], milestones: Row[]): Row {
+    const latestByKind: Record<string, Row> = {};
+    for (const plan of plans) {
+      const kind = String(plan.plan_kind ?? "");
+      const previous = latestByKind[kind];
+      if (previous === undefined || Number(plan.version) > Number(previous.version)) latestByKind[kind] = plan;
+    }
+    const devContent = (latestByKind.dev?.content ?? {}) as Row;
+    const phases = Array.isArray(devContent.phases) ? devContent.phases : [];
+    const weeks = typeof devContent.weeks === "number" ? devContent.weeks : null;
+    const planList = ["dev", "test", "deploy"]
+      .filter((kind) => latestByKind[kind] !== undefined)
+      .map((kind) => ({
+        planKind: kind,
+        version: latestByKind[kind].version,
+        title: latestByKind[kind].title,
+        status: latestByKind[kind].status,
+        generatedAt: latestByKind[kind].generated_at,
+        content: latestByKind[kind].content ?? {},
+      }));
+    const firstPhase = phases[0] as Row | undefined;
+    const lastPhase = phases.length > 0 ? (phases[phases.length - 1] as Row) : undefined;
+    const firstMilestone = milestones[0];
+    const lastMilestone = milestones.length > 0 ? milestones[milestones.length - 1] : undefined;
     return {
-      projectId,
-      repository: { id: registered.id, url: repo.url, kind, branch: checkout.branch, reused: registered.reused === true },
-      checkout: { vcs: kind, commit: checkout.commitSha ?? null, revision: checkout.revision ?? null, files: checkout.files, bytes: checkout.bytes, status: checkout.status },
-      scan: { languages: scan.languages, frameworks: (scan.stack as Row).frameworks, packageManager: (scan.stack as Row).packageManager, tests: scan.tests, ci: scan.ci, loc: scan.loc },
-      scaffold,
-      pipeline,
-      plans,
-      deploy,
-      decisions,
-      readyForProduction: false,
+      weeks,
+      startDate: firstPhase?.startDate ?? firstMilestone?.target_date ?? null,
+      endDate: lastPhase?.endDate ?? lastMilestone?.target_date ?? null,
+      milestones: milestones.map((item) => ({
+        id: Number(item.id),
+        name: item.name,
+        stage: item.stage,
+        targetDate: item.target_date,
+        actualDate: item.actual_date,
+        status: item.status,
+        owner: item.owner,
+        evidence: item.evidence,
+      })),
+      phases,
+      plans: planList,
     };
   }
 
+  /** 自动驾驶项目列表：状态、当前执行、最近执行、计划/待裁决计数（默认只看未归档）。 */
+  async listProjects(filter: "active" | "archived" | "all" = "active"): Promise<Row> {
+    const result = await this.pool.query(
+      `SELECT p.id, p.name, p.description, p.stage, p.project_type, p.progress, p.archived_at, p.archive_reason,
+              (SELECT row_to_json(c) FROM (
+                 SELECT status, vcs_kind, branch, commit_sha, revision, file_count, checked_out_at
+                 FROM ref.project_checkout WHERE project_id = p.id ORDER BY id DESC LIMIT 1
+               ) c) AS checkout,
+              (SELECT row_to_json(r) FROM (
+                 SELECT id, trigger, status, stage, stage_label, started_at, ended_at
+                 FROM stat.project_autopilot_run WHERE project_id = p.id ORDER BY id DESC LIMIT 1
+               ) r) AS run,
+              (SELECT row_to_json(d) FROM (
+                 SELECT kind, url, default_ref FROM ref.code_repository WHERE project_id = p.id ORDER BY id DESC LIMIT 1
+               ) d) AS repository,
+              (SELECT count(DISTINCT pl.plan_kind)::int FROM stat.project_plan pl WHERE pl.project_id = p.id) AS plan_count,
+              (SELECT count(*)::int FROM stat.project_decision dc WHERE dc.project_id = p.id AND dc.status = 'pending') AS pending_decisions
+       FROM biz.project p
+       ORDER BY p.archived_at NULLS FIRST, p.id DESC
+       LIMIT 500`,
+    );
+    const items = result.rows.map((row) => {
+      const rawCheckout = row.checkout as Row | null;
+      const rawRun = row.run as Row | null;
+      const rawRepository = row.repository as Row | null;
+      const checkout = rawCheckout === null ? null : {
+        status: rawCheckout.status,
+        vcsKind: rawCheckout.vcs_kind,
+        branch: rawCheckout.branch,
+        commitSha: rawCheckout.commit_sha,
+        revision: rawCheckout.revision,
+        fileCount: rawCheckout.file_count,
+        checkedOutAt: rawCheckout.checked_out_at,
+      };
+      const run: Row | null = rawRun === null ? null : {
+        id: Number(rawRun.id),
+        trigger: rawRun.trigger,
+        status: rawRun.status,
+        stage: rawRun.stage,
+        stageLabel: rawRun.stage_label,
+        startedAt: rawRun.started_at,
+        endedAt: rawRun.ended_at,
+        durationMs: durationBetween(rawRun.started_at, rawRun.ended_at),
+      };
+      const planCount = Number(row.plan_count ?? 0);
+      const pendingDecisions = Number(row.pending_decisions ?? 0);
+      const status = deriveAutopilotStatus({
+        archived: row.archived_at !== null && row.archived_at !== undefined,
+        currentRun: run !== null && run.status === "running" ? run : null,
+        latestRun: run,
+        pendingDecisions,
+        planCount,
+      });
+      return {
+        id: Number(row.id),
+        name: row.name,
+        description: row.description ?? null,
+        stage: row.stage,
+        projectType: row.project_type ?? null,
+        progress: row.progress ?? 0,
+        status,
+        statusLabel: STATUS_LABELS[status] ?? status,
+        archivedAt: row.archived_at ?? null,
+        archiveReason: row.archive_reason ?? null,
+        repository: rawRepository === null ? null : { kind: rawRepository.kind, url: rawRepository.url, defaultRef: rawRepository.default_ref ?? null },
+        lastCheckout: checkout,
+        currentRun: run !== null && run.status === "running" ? { id: run.id, status: run.status, stage: run.stage, stageLabel: run.stageLabel, startedAt: run.startedAt } : null,
+        lastRun: run,
+        planCount,
+        pendingDecisions,
+      };
+    });
+    const filtered = filter === "archived"
+      ? items.filter((item) => item.status === "archived")
+      : filter === "all"
+        ? items
+        : items.filter((item) => item.status !== "archived");
+    const counts = {
+      total: items.length,
+      active: items.filter((item) => item.status !== "archived").length,
+      archived: items.filter((item) => item.status === "archived").length,
+      running: items.filter((item) => item.status === "running").length,
+      waitingDecision: items.filter((item) => item.status === "waiting_decision").length,
+      ready: items.filter((item) => item.status === "ready").length,
+      failed: items.filter((item) => item.status === "failed").length,
+      notStarted: items.filter((item) => item.status === "not_started").length,
+    };
+    return { items: filtered, counts };
+  }
+
+  /** 归档/恢复项目：只改标记，不删除检出、计划、执行记录与裁决。 */
+  async setArchived(projectId: number, archived: boolean, reason: string | null = null): Promise<Row> {
+    await this.assertProject(projectId);
+    const result = await this.pool.query(
+      `UPDATE biz.project
+       SET archived_at = CASE WHEN $2 THEN now() ELSE NULL END,
+           archive_reason = CASE WHEN $2 THEN $3 ELSE NULL END
+       WHERE id = $1
+       RETURNING id, archived_at, archive_reason`,
+      [projectId, archived, archived ? reason?.slice(0, 200) ?? null : null],
+    );
+    const row = result.rows[0] as Row | undefined;
+    if (row === undefined) throw new OpcError(ERR.AUTO_INVALID, `项目不存在：${projectId}`, 404);
+    await this.record(archived ? "project.autopilot.archive" : "project.autopilot.unarchive", projectId, { reason: archived ? reason : null });
+    return { id: Number(row.id), archivedAt: row.archived_at ?? null, archiveReason: row.archive_reason ?? null };
+  }
+
+
   async summary(projectId: number): Promise<Row> {
     await this.assertProject(projectId);
-    const [checkout, scan, plans, decisions, project, scaffold, pipeline, deploy] = await Promise.all([
+    const [checkout, scan, plans, decisions, project, scaffold, pipeline, deploy, runs, milestones] = await Promise.all([
       this.pool.query("SELECT * FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
       this.pool.query("SELECT * FROM stat.project_scan WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
-      this.pool.query("SELECT id, plan_kind, version, title, status, generated_at FROM stat.project_plan WHERE project_id = $1 ORDER BY id", [projectId]),
+      this.pool.query("SELECT id, plan_kind, version, title, status, content, generated_at FROM stat.project_plan WHERE project_id = $1 ORDER BY plan_kind, version DESC", [projectId]),
       this.pool.query("SELECT id, topic, question, risk_level, status, decision, decided_by, decided_at FROM stat.project_decision WHERE project_id = $1 ORDER BY id", [projectId]),
-      this.pool.query("SELECT tech_stack, software_profile FROM biz.project WHERE id = $1", [projectId]),
+      this.pool.query("SELECT id, name, stage, project_type, description, tech_stack, software_profile, archived_at, archive_reason FROM biz.project WHERE id = $1", [projectId]),
       this.pool.query("SELECT * FROM stat.project_scaffold WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
       this.pool.query("SELECT * FROM stat.project_pipeline_run WHERE project_id = $1 ORDER BY id DESC LIMIT 10", [projectId]),
       this.pool.query("SELECT * FROM stat.project_deploy_run WHERE project_id = $1 ORDER BY id DESC LIMIT 5", [projectId]),
+      this.pool.query("SELECT * FROM stat.project_autopilot_run WHERE project_id = $1 ORDER BY id DESC LIMIT 10", [projectId]),
+      this.pool.query("SELECT * FROM biz.project_milestone WHERE project_id = $1 ORDER BY target_date, id", [projectId]),
     ]);
+    const projectRow = (project.rows[0] ?? {}) as Row;
+    const pendingDecisions = (decisions.rows as Array<{ status: string }>).filter((item) => item.status === "pending").length;
+    const runRows = runs.rows;
+    const currentRunRow = runRows.find((row) => row.status === "running") ?? null;
+    const latestRunRow = runRows.length > 0 ? runRows[0] : null;
+    const status = this.projectRowStatus(projectRow, currentRunRow, latestRunRow, pendingDecisions, plans.rows.length);
     return {
       projectId,
+      project: projectRow.id === undefined ? null : {
+        id: Number(projectRow.id),
+        name: projectRow.name,
+        stage: projectRow.stage,
+        projectType: projectRow.project_type ?? null,
+        description: projectRow.description ?? null,
+        archivedAt: projectRow.archived_at ?? null,
+        archiveReason: projectRow.archive_reason ?? null,
+      },
+      status,
+      statusLabel: STATUS_LABELS[status] ?? status,
+      description: projectRow.description ?? null,
+      descriptionSource: ((projectRow.software_profile ?? {}) as Row).descriptionSource ?? null,
+      archivedAt: projectRow.archived_at ?? null,
+      archiveReason: projectRow.archive_reason ?? null,
       checkout: checkout.rows[0] ?? null,
       scan: scan.rows[0] ?? null,
       plans: plans.rows,
       decisions: decisions.rows,
-      pendingDecisions: (decisions.rows as Array<{ status: string }>).filter((item) => item.status === "pending").length,
-      profile: project.rows[0] ?? null,
+      pendingDecisions,
+      profile: projectRow.id === undefined ? null : projectRow,
       scaffold: scaffold.rows[0] ?? null,
       pipeline: pipeline.rows,
       deploy: deploy.rows,
+      runs: runRows.map(mapRunRow),
+      currentRun: currentRunRow === null ? null : mapRunRow(currentRunRow),
+      roadmap: this.buildRoadmap(plans.rows, milestones.rows),
+      milestones: milestones.rows,
     };
   }
 

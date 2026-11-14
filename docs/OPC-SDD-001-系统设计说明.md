@@ -1,18 +1,18 @@
 ---
 doc_id: OPC-SDD-001
 title: OPC-玄机 · 一人公司中枢 系统设计说明
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D2
 owner: OPC-玄机 架构组
 upstream: ["OPC-SRS-001 软件需求规格说明", "OPC-IRS-001 接口需求规格说明", "OPC-PRD-001 一人公司中枢-产品设计 v2.10", "OPC-ARCH-001 技术选型与系统架构 v2.10", "spec/opc-xuanji/api.yaml + modules.yaml + usecases.yaml"]
 gate: G2
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # OPC-玄机 · 一人公司中枢 系统设计说明（OPC-SDD-001）
 
-本文档解决“中枢到底由哪些部件组成、它们按什么顺序与约束协作、坏了退到哪一步”的问题：把 `src/` 里真实存在的 34 个模块文件、89 个 HTTP operation、31 个 DSH 工具、15 个定时任务与 76 张数据表，组织成可评审的四层机制、可复制的启动步骤与明确的失败路径。使用者与时机：开发在动代码前用它确认依赖方向与错误码口径；评审在 G2 用它核对“设计描述=已实现行为”；运维在部署与排障时用第 7、9 章；接手者在第 10 章看清哪些能力只是接口占位。全文坚持一条底线——**只写代码里已经跑得通的行为**：凡未落地的能力（真实 LLM 裁判调用、DSH 运行时内嵌定时器、9 个业务域模块、流程看板与自动固化闭环）一律在 10.1 标为 Phase 2，不混进主流程描述。文中数字（34 个源文件、62 接口、31 工具、21 错误码、8 视图、15 任务、76 张表）均可在 `src/`、`spec/`、`migrations/` 与 `npm test` 输出中复算。
+本文档解决“中枢到底由哪些部件组成、它们按什么顺序与约束协作、坏了退到哪一步”的问题：把 `src/` 里真实存在的 34 个模块文件、117 个 HTTP operation、31 个 DSH 工具、15 个定时任务与 92 张数据表，组织成可评审的四层机制、可复制的启动步骤与明确的失败路径。使用者与时机：开发在动代码前用它确认依赖方向与错误码口径；评审在 G2 用它核对“设计描述=已实现行为”；运维在部署与排障时用第 7、9 章；接手者在第 10 章看清哪些能力只是接口占位。全文坚持一条底线——**只写代码里已经跑得通的行为**：凡未落地的能力（真实 LLM 裁判调用、DSH 运行时内嵌定时器、9 个业务域模块、流程看板与自动固化闭环）一律在 10.1 标为 Phase 2，不混进主流程描述。文中数字（34 个源文件、117 接口、31 工具、35 错误码、8 视图、15 任务、92 张表）均可在 `src/`、`spec/`、`migrations/` 与 `npm test` 输出中复算。
 
 ## 目录
 
@@ -98,7 +98,7 @@ npm test 2>&1 | grep -E "^. tests"       # 68 个用例（需测试库）
 | 中枢 | `src/platform` + `src/api` + `src/plugin` | 授权、令牌、审计、冲突、流程注册、评判封装、协议适配 | 员工不直连数据库；审计只经 `AuditService.record` |
 | 员工 | Phase 2（域模块） | 读视图、产出候选、提交写请求 | 员工间不直接调用；不可递归派工 |
 | TS 流程 | `src/workflow` | 版本注册、六项守卫、实例与幂等节点、评判封装、诊断 | 脚本不可被模型改写；版本不可变 |
-| 共享数据 | PostgreSQL 17.11 + pgvector 0.8.0 | 五个 schema、76 张表、视图级授权、冻结标记 | 敏感原文只进 `biz.customer_sensitive` |
+| 共享数据 | PostgreSQL 17.11 + pgvector 0.8.0 | 五个 schema、92 张表、视图级授权、冻结标记 | 敏感原文只进 `biz.customer_sensitive` |
 
 ### 2.2 组件架构
 
@@ -727,7 +727,13 @@ curl -s -X PUT http://127.0.0.1:3082/api/v1/tasks/invoice_backlog -H 'content-ty
 - 创意转项目（v2.20）：`IdeaService`（`src/domains/project/idea.ts`）把文本/文档创意解析为项目档案（DeepSeek/OpenAI 兼容端点，失败降级规则）；`src/platform/documents.ts` 用 Node 内置 zlib 解析 docx/xlsx OOXML 与 PDF 文本层，不引入第三方依赖；`AdminService.createProjectFromIdea` 建项目、绑定默认资源，有仓库则串自动驾驶，无仓库则写 `repository` 裁决并落 `stat.project_idea`。管理面「自动驾驶」页签新增「从创意新建项目」卡片（多文件上传）。
 - 微信推送（v2.21）：`WechatPushService`（`src/notify/wechat.ts`）把裁决与每日简报写入 `stat.wechat_push` 队列，经 dsh-im（BotHarness）主动投递端点 `POST /api/dsh-im/delivery/messages`（`{botId,targetId,text}`）发送；后台任务 `wechat_push` 每分钟投递，失败按 2s→300s 退避 5 次；未绑定只排队不阻塞。老板在微信里对话即进入 DSH 会话，可直接使用全部 `opc_*` 工具查询与操作。
 - SVN 检出（v2.22）：自动驾驶支持 SVN（公司主用版本库）。入参 `repository:{url,kind?,branch?,revision?,authRef?,name?}`（工具平铺 `repositoryKind`/`revision`）；`kind` 显式优先、`svn://`/`svn+ssh://` 推断 svn、其余默认 git；`branch` 为主干/分支路径、`revision` 默认 HEAD；SVN 地址允许空格与中文。`ref.project_checkout` 新增 `vcs_kind varchar(8) NOT NULL DEFAULT 'git'`（CHECK git/svn）与 `revision varchar(32)`；响应 `repository.kind`、`checkout.vcs`/`revision`（git revision=null、svn commit=null）。svn 缺失 502 `ERR-AUTO-002` + `svn_client` 裁决；`authRef` 未填时仅对 `OPC_SVN_TRUSTED_HOSTS` 白名单主机自动使用服务环境 `OPC_SVN_PASSWORD`（白名单外主机不送口令）；SVN 骨架只落工作副本（`status=generated`）、不建分支不提交、不产生 `scaffold_review`；测试环境发布版本号取 `coalesce(commit_sha, revision)`。
-- HTTP 管理面统一挂 `/api/v1/admin`，共 52 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
+- 自动驾驶控制台（v2.23）：`ProjectAutopilotService` 增执行记录、状态派生、描述抽取与内容化计划，`AdminService` 增列表/归档/恢复入口。
+  - **执行记录**：每次 `bootstrap` 先 `startRun` 追加 `stat.project_autopilot_run`（`trigger=manual|idea|api`、`status=running`、`stage=register`、`steps` 预置 10 阶段 pending），再逐阶段 `advanceRun`（关当前 running 步、置目标步 running 并更新 `stage/stage_label`）；`finishRun` 成功置 `status=ok,stage=done`，失败置 `status=failed` 并保留失败阶段与 `error`，未执行步记 `skipped`；`updateRunSteps` 以「读 steps → 改 → 整体回写」保证 JSON 一致性。同项目已有 `running` 行时 `startRun` 抛 409 `ERR-AUTO-001`，不并跑、不覆盖历史。
+  - **状态派生**：`deriveAutopilotStatus` 单点函数（列表与 summary 共用），优先级 `archived > running > 最近一次失败(failed) > waiting_decision > ready(planCount>0) > not_started`；`STATUS_LABELS` 提供中文标签。列表查询用相关子查询一次取最近检出、最近执行、最近版本库与 plan/decision 计数，避免 N+1；`currentRun` 只在 `status=running` 时非空。
+  - **描述抽取**：`scan` 阶段的 `extractContent`（只读检出目录）先按 README 候选取标题与首段正文（去徽章/图片/代码块/链接/HTML，≤200 字，`readmeExcerpt` 两段 ≤600 字），无描述时回退构建清单（package.json/pom.xml/pyproject.toml/Cargo.toml/setup.py）；`applyProfile` 写 `software_profile`（description/descriptionSource/readmeTitle/readmeExcerpt/modules/scripts/docs/docker/license/envExample），并 `UPDATE biz.project SET description = COALESCE(NULLIF(description,''), $new)` 只填空值——人工描述不被覆盖。
+  - **内容化计划**：`generatePlans` 读取扫描 content 生成三份 `stat.project_plan.content`：dev 含 weeks/phases（5 阶段，起止/负责人/交付物）/workBreakdown（模块 ≤10）/assumptions/risks/generatedFrom；test 含 caseDetails/suggestedCases（TC-MOD-*）/testFiles/ci/focusAreas/entryCriteria/exitCriteria；deploy 含 runtime{docker,ci,scripts}/targets/steps/rollback/artifacts/secrets。无 Docker 时 `targets.strategy=ssh`，缺口写入 assumptions/risks 后降级而非中断。
+  - **路线图与接口**：`buildRoadmap` 取各 plan_kind 最新版本，`phases` 优先、里程碑兜底（`startDate/endDate` 取首阶段起/末阶段止，缺则取里程碑日期）；`summary` 返回 `runs`（≤10，最新在前）、`currentRun`、`roadmap`。新增 `GET /admin/autopilot/projects`（`listAutopilotProjects`，`archived=active|archived|all` + counts）、`POST /admin/projects/{id}/archive`（`setArchived(true, reason)`，审计 `project.autopilot.archive`）、`POST /admin/projects/{id}/unarchive`（`setArchived(false)`）；归档只写 `archived_at/archive_reason`，不触碰检出/计划/执行记录/裁决。`PUT /admin/projects/{id}` 的 `PROJECT_FIELDS` 增 `description`。
+- HTTP 管理面统一挂 `/api/v1/admin`，共 55 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
 - 删除保护：被发布单引用的环境、被批次引用的计划/套件、被结果引用的用例、仍被绑定的来源、已有条目的情报空间，删除返回 409。
 
 ## 6. 失败与降级路径
@@ -915,7 +921,7 @@ NODE_ENV=test OPC_PG_DSN="postgresql://<user>:<password>@localhost:5432/opc_test
 cd /path/to/opc-xuanji
 # 规格包内部一致性（写域归属、实体/接口/用例引用），实测 PASS（WARN 为既有追溯缺口）
 npm run spec:check
-# “89 个 operation 均有路由、76 张表在库内存在、21 个错误码集合一致”由该测试断言
+# “117 个 operation 均有路由、92 张表在库内存在、35 个错误码集合一致”由该测试断言
 node --test test/integration/spec.test.ts
 grep -c "operationId" spec/opc-xuanji/api.yaml    # 28
 grep -c "pattern: /" src/api/http.ts             # 89 条路由（Route 接口里的 pattern 声明不计）
@@ -1070,7 +1076,7 @@ curl -s http://127.0.0.1:3082/api/v1/health
 | :--- | :--- | :--- | :--- |
 | 独立服务 | `npm run serve -- --port 3082` | 全量 16 路由 + `seedDefaults` + `setInterval` tick | headless 常驻首选 |
 | DSH 插件 | `cordis.patch.yml` 装配后由宿主加载 | 26 个工具 + 15 条**静态**路由（无路径参数） | 带路径参数的动态路由由独立进程提供 |
-| 测试 | `npm test` | 单元 25 + 集成 43（Web/员工增量需测试库） | 集成测试只连 `OPC_TEST_DSN`，清 76 张表不清 `_opc_migrations` |
+| 测试 | `npm test` | 单元 25 + 集成 43（Web/员工增量需测试库） | 集成测试只连 `OPC_TEST_DSN`，清 92 张表不清 `_opc_migrations` |
 
 进程退出时：`serve.ts` 监听 `SIGINT`/`SIGTERM`，先 `clearInterval` 再关 server 与连接池；插件 `apply` 在宿主 `dispose` 事件里同样清定时器并 `pool.end()`。
 

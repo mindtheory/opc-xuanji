@@ -1,7 +1,7 @@
 ---
 doc_id: OPC-DBDD-001
 title: OPC-玄机 · 一人公司中枢 数据库设计说明
-version: 0.4
+version: 0.5
 status: 评审稿
 stage: D2
 owner: OPC-玄机 架构组
@@ -12,7 +12,7 @@ updated: 2026-11-14
 
 # OPC-玄机 · 一人公司中枢 数据库设计说明（OPC-DBDD-001）
 
-本文档解决“共享数据层究竟建成什么样、为什么这样建、改动时哪条线不能碰”的问题：把 `biz/ref/audit/stat/vec` 五个语义 schema 的职责边界、76 张表的列与约束、关键索引（审计复合主键、向量 HNSW、令牌唯一、幂等唯一）、迁移链与不可变约束、备份与 30 年审计归档一次讲清。DBA 在预装扩展、建库与迁移时用第 5 章；后端在改表、加索引、写迁移前用第 3、4、7 章；审计与合规在取证、归档、保留期判定时用第 6 章。文中所有数字取自 `migrations/` 下的真实 DDL 与本地/私有部署的 `opc_test` 库基线实测（37 表 / 272 列 / 58 索引 / 75 个约束对象）+ v2.10 Web 层 8 表 + v2.11 员工线 9 表 + v2.12 项目研发 12 表 + v2.13 情报日报 10 表，不取自设想。
+本文档解决“共享数据层究竟建成什么样、为什么这样建、改动时哪条线不能碰”的问题：把 `biz/ref/audit/stat/vec` 五个语义 schema 的职责边界、92 张表的列与约束、关键索引（审计复合主键、向量 HNSW、令牌唯一、幂等唯一）、迁移链与不可变约束、备份与 30 年审计归档一次讲清。DBA 在预装扩展、建库与迁移时用第 5 章；后端在改表、加索引、写迁移前用第 3、4、7 章；审计与合规在取证、归档、保留期判定时用第 6 章。文中所有数字取自 `migrations/` 下的真实 DDL 与本地/私有部署的 `opc_test` 库基线实测（37 表 / 272 列 / 58 索引 / 75 个约束对象）+ v2.10 Web 层 8 表 + v2.11 员工线 9 表 + v2.12 项目研发 12 表 + v2.13 情报日报 10 表，不取自设想。
 
 ## 目录
 
@@ -46,7 +46,7 @@ updated: 2026-11-14
 
 | 口径 | 规则 | 库内例证 |
 | :--- | :--- | :--- |
-| 主键 | `bigint GENERATED ALWAYS AS IDENTITY`，76 张表全部如此；复合主键仅审计表 | `biz.ledger.id`、`audit.audit_log (id, created_at)` |
+| 主键 | `bigint GENERATED ALWAYS AS IDENTITY`，92 张表全部如此；复合主键仅审计表 | `biz.ledger.id`、`audit.audit_log (id, created_at)` |
 | 对外标识 | 不用自增主键对外暴露；用 uuid 或 16 字节随机 hex | `audit.workflow_instance.instance_uuid`（`DEFAULT gen_random_uuid()`）、`ref.token.token_code`（应用侧 `randomBytes(16).toString("hex")`） |
 | 金额 | `numeric(18,2)`；单价单独放宽到 4 位小数；里程 2 位；评分 2 位；置信度 2 位 | `biz.ledger.amount`、`biz.stock_txn.unit_price numeric(18,4)`、`biz.vehicle_log.km numeric(10,2)`、`audit.verifier_verdict.confidence numeric(3,2)` |
 | 时间 | 时间点一律 `timestamptz`；只有“日历日”语义用 `date` | `created_at/started_at/expires_at` 为 timestamptz；`entry_date/trip_date/due/deadline/report_date/decided_on/quoted_on/published_at` 为 date |
@@ -66,12 +66,12 @@ set -a; . ./.env; set +a      # 把 .env 载入当前 shell；下文 psql 用 $O
 # 1) 迁移链是否已全部应用（应输出 0001–0007 七条）
 node scripts/migrate.ts --test
 
-# 2) 表数（应输出 biz 44 / ref 11 / audit 6 / stat 14 / vec 1，合计 76）
+# 2) 表数（应输出 biz 44 / ref 15 / audit 6 / stat 26 / vec 1，合计 92）
 psql "$OPC_PG_DSN" -c \
   "select table_schema, count(*) from information_schema.tables
    where table_schema in ('biz','ref','audit','stat','vec') group by 1 order by 1;"
 
-# 3) 列数与索引数（应输出 272 列、58 个索引）
+# 3) 列数与索引数（v2.23 实测 868 列、195 个索引）
 psql "$OPC_PG_DSN" -c \
   "select (select count(*) from information_schema.columns where table_schema in ('biz','ref','audit','stat','vec')) as cols,
           (select count(*) from pg_indexes where schemaname in ('biz','ref','audit','stat','vec')) as idx;"
@@ -132,7 +132,7 @@ flowchart LR
 
 跨 schema 的引用只存 id、不建 FK 的三处代表：`audit.audit_log.workflow_instance_id`（审计在实例删除后仍需可读）、`biz.conflict_queue.frozen_unit_id`（多态冻结单元：ledger/contract/stock_txn/vehicle_log 四选一）、`biz.ledger.project_id`（业务弱引用，避免跨域锁）。
 
-### 2.3 91 张表清单总览
+### 2.3 92 张表清单总览
 
 基线列数合计 272（37 表）；v2.10 Web 层新增 8 表另计。下表是第 3 章的索引页：先看清单定位，再进 3.x 看列级定义。
 
@@ -148,7 +148,7 @@ flowchart LR
 | 8 | `biz.action_item` | 会议行动项 | 5 | 主键 |
 | 9 | `biz.objective` | 目标与关键结果 | 4 | 主键 |
 | 10 | `biz.decision` | 决策与裁决留痕 | 6 | 主键 |
-| 11 | `biz.project` | 项目（含研发档案） | 16 | `progress BETWEEN 0 AND 100` |
+| 11 | `biz.project` | 项目（含研发档案） | 19 | `progress BETWEEN 0 AND 100`；`description`/`archived_at`/`archive_reason`（v2.23） |
 | 12 | `biz.customer` | 客户基础信息 | 7 | 主键 |
 | 13 | `biz.customer_sensitive` | 客户敏感字段（私有） | 5 | 唯一 `(customer_id, field)`；FK 级联 |
 | 14 | `biz.commitment` | 客户承诺 | 6 | FK 级联 |
@@ -229,11 +229,12 @@ flowchart LR
 | 89 | `stat.issue_filing` | Issue 草稿与投递 | 14 | `fingerprint` 唯一；`source/status/severity` CHECK；`index(status,created_at)` |
 | 90 | `stat.project_idea` | 项目创意记录 | 8 | `source/status` CHECK；`index(project_id,created_at)` |
 | 91 | `stat.wechat_push` | 微信推送队列 | 12 | `kind/status` CHECK；`dedupe_key` 唯一；`index(status,next_attempt_at)` |
+| 92 | `stat.project_autopilot_run` | 自动驾驶执行记录 | 12 | `trigger/status` CHECK（manual/idea/api、running/ok/failed）；`index(project_id,id DESC)`；`status='running'` 部分索引 |
 
-清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，v2.18 运维闭环 3 表，v2.20 创意转项目 1 表，v2.21 微信推送 1 表，明细见 3.6–3.15）：
+清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，v2.18 运维闭环 3 表，v2.20 创意转项目 1 表，v2.21 微信推送 1 表，v2.22 SVN 检出不增表（仅加列），v2.23 自动驾驶控制台 1 表，明细见 3.6–3.16）：
 
 ```sql
--- 按 schema 统计表与列（v2.21 后：biz 44、ref 15、audit 6、stat 25、vec 1；列数随增量表变化）
+-- 按 schema 统计表与列（v2.23 后：biz 44、ref 15、audit 6、stat 26、vec 1，合计 92）
 SELECT table_schema AS schema,
        count(DISTINCT table_name) AS tables,
        count(*)                   AS columns
@@ -242,7 +243,7 @@ WHERE table_schema IN ('biz','ref','audit','stat','vec')
 GROUP BY table_schema ORDER BY table_schema;
 ```
 
-## 3. 表结构（91 张）
+## 3. 表结构（92 张）
 
 本章按 schema 分节。每张表给出列级定义（列名 / 类型 / 可空 / 默认 / 说明）与索引约束，字段口径见 1.2。所有表主键均为 `id bigint GENERATED ALWAYS AS IDENTITY`，为避免重复，下文不再逐行标注主键列，只在“索引与约束”里写明主键名。
 
@@ -398,8 +399,11 @@ GROUP BY table_schema ORDER BY table_schema;
 | `blockers` | jsonb | NULL | — | 阻塞项数组 |
 | `milestones` | jsonb | NULL | — | 里程碑数组 |
 | `cost_actual` | numeric(18,2) | NULL | — | 实际成本 |
+| `description` | text | NULL | — | 项目描述：人工编辑优先，空时由自动驾驶从 README/构建清单抽取（v2.23） |
+| `archived_at` | timestamptz | NULL | — | 归档时间：非空表示已归档，默认列表隐藏（v2.23） |
+| `archive_reason` | varchar(200) | NULL | — | 归档原因，可空（v2.23） |
 
-索引与约束：主键 `project_pkey (id)`；CHECK `progress BETWEEN 0 AND 100`——进度只允许 0–100 的整数。
+索引与约束：主键 `project_pkey (id)`；CHECK `progress BETWEEN 0 AND 100`——进度只允许 0–100 的整数。v2.12 另由 `0006` 增加 8 列（见 3.7），v2.23 由 `0015` 增加 `description`/`archived_at`/`archive_reason` 3 列，列数 16→19。
 
 #### 3.1.12 biz.customer（客户基础信息）
 
@@ -935,9 +939,19 @@ GROUP BY table_schema ORDER BY table_schema;
 
 **通道口径**：投递复用 dsh-im（BotHarness）主动投递端点 `POST /api/dsh-im/delivery/messages`，body `{botId,targetId,text}`；未配置目标时不发、不丢、不阻塞主流程。
 
+### 3.16 自动驾驶控制台（v2.23 新增 1 张）
+
+> 迁移：`migrations/0015_autopilot_console.sql`；实体：`ProjectAutopilotRun`。同一迁移为 `biz.project` 增加 `description`、`archived_at`、`archive_reason` 3 列（表数 91→92，`biz.project` 列数 16→19，`stat` 层 25→26）。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `stat.project_autopilot_run` | `project_id, checkout_id, trigger, status, stage, stage_label, steps, result, error, started_at, ended_at, created_at` | `trigger varchar(16) NOT NULL DEFAULT 'manual'` CHECK（manual/idea/api）；`status varchar(16) NOT NULL DEFAULT 'running'` CHECK（running/ok/failed）；`project_autopilot_run_project_idx(project_id,id DESC)`；`project_autopilot_run_running_idx(project_id) WHERE status='running'` | 每次 `bootstrap` 追加一行：`steps` jsonb 记录 10 阶段进度 `[{stage,label,status,startedAt,endedAt,durationMs,detail}]`；当前执行 = `status='running'` 的行；失败保留失败阶段与 `error`；同项目已有 running 时 409 `ERR-AUTO-001` |
+
+**口径**：执行记录只追加、不覆盖历史，`runs` 读取按 `id DESC` 限 10 条；归档只写 `biz.project.archived_at`/`archive_reason`，不删检出（`ref.project_checkout`）、计划（`stat.project_plan`）、执行记录与裁决（`stat.project_decision`）；描述只填空值，人工编辑后不覆盖。
+
 ## 4. 关键索引设计
 
-基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）；v2.17 自动化生产另增 3 个主键与 3 个显式索引（明细见 3.12）；v2.18 运维闭环另增 3 个主键、3 个唯一与 5 个显式索引（明细见 3.13）；v2.20 创意转项目另增 1 个主键与 1 个显式索引（明细见 3.14）；v2.21 微信推送另增 1 个主键、1 个唯一与 1 个显式索引（明细见 3.15）。
+基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）；v2.17 自动化生产另增 3 个主键与 3 个显式索引（明细见 3.12）；v2.18 运维闭环另增 3 个主键、3 个唯一与 5 个显式索引（明细见 3.13）；v2.20 创意转项目另增 1 个主键与 1 个显式索引（明细见 3.14）；v2.21 微信推送另增 1 个主键、1 个唯一与 1 个显式索引（明细见 3.15）；v2.23 自动驾驶控制台另增 1 个主键与 2 个显式索引（明细见 3.16）。
 
 ### 4.1 audit_log 复合主键与分区预留
 
@@ -1183,7 +1197,7 @@ await pool.end();
 | DDL ↔ 代码 | 代码中出现的表名与列名逐个回查 DDL | 一致；偏差仅 7.2 列出的五项 |
 
 ```bash
-# spec 里的 76 个表名
+# spec 里的 92 个表名
 grep -oP '(?<=table: ).*' spec/opc-xuanji/entities.yaml | sort | head -40
 # 库里的表名
 psql "$OPC_PG_DSN" -Atc \
@@ -1216,7 +1230,7 @@ psql "$OPC_PG_DSN" -Atc \
 ## 8. 自检清单
 
 - [x] frontmatter 九字段齐全，`doc_id` 为 `OPC-DBDD-001`、`status` 为评审稿、`updated` 为 2026-11-06。
-- [x] 76 张表逐张给出列级定义，与 `migrations/0001-0007` 逐列一致（基线 272 列 + Web/员工线/项目研发/情报新增列）。
+- [x] 92 张表逐张给出列级定义，与 `migrations/0001-0015` 逐列一致（基线 272 列 + Web/员工线/项目研发/情报/运维/创意/微信/控制台新增列；v2.23 实测 868 列）。
 - [x] 五个 schema 的职责、禁止项与当前表数（biz 44 / ref 11 / audit 6 / stat 14 / vec 1）已写明。
 - [x] 关键索引四类（复合主键、HNSW、token_code、幂等键）各有 SQL 原文与选择理由。
 - [x] 扩展版本（vector 0.8.0 / pgcrypto 1.3 / unaccent 1.1）与“由 DBA 预装”的边界已写明。
@@ -1232,7 +1246,7 @@ psql "$OPC_PG_DSN" -Atc \
 | :--- | :--- | :--- |
 | `OPC-玄机 · 一人公司中枢-产品设计.md`（v2.10） | 上游：定义业务实体与保留期要求 | 表名/列名以本文与 DDL 为准，偏差见 7.2 |
 | `OPC-玄机 · 技术选型与系统架构.md`（v2.10） | 上游：定义 PG16+/pgvector、HNSW 参数、分区与备份基线 | 本文落到具体 DDL；实测运行版本为 PostgreSQL 17.11 |
-| `spec/opc-xuanji/entities.yaml` | 同层：实体与表名映射（76 条） | 76/76 命中；可空性偏差见 7.2 第 1 条 |
+| `spec/opc-xuanji/entities.yaml` | 同层：实体与表名映射（92 条） | 92/92 命中；可空性偏差见 7.2 第 1 条 |
 | [OPC-SDD-001 系统设计说明](OPC-SDD-001-系统设计说明.md) | 下游：本文件是其第 3 层“共享数据层”的结构细化 | 表结构与索引以本文为准 |
 | [migrations/0001_init.sql](../migrations/0001_init.sql) | 结构真值 | 两者不一致时先修迁移再改本文 |
 | [docs/uml/opc-er.mmd](uml/opc-er.mmd) | 图形视图：核心 12 张表 ER | 图覆盖核心链路，全量看本文第 3 章 |

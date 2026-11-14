@@ -1,18 +1,18 @@
 ---
 doc_id: OPC-STP-001
 title: OPC-玄机 · 一人公司中枢 测试计划
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D4
 owner: 质量与交付组（docs-test）
 upstream: ["spec/opc-xuanji/usecases.yaml", "spec/opc-xuanji/api.yaml", "spec/opc-xuanji/entities.yaml", "OPC-玄机 · 一人公司中枢-产品设计.md（v2.11）", "OPC-玄机 · 技术选型与系统架构.md（v2.11）"]
 gate: G4
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # OPC-STP-001 · OPC-玄机 · 一人公司中枢 测试计划
 
-本计划解决“验证到底要验什么、验到什么程度算过、谁来验”的问题：把上游规格（31 个用例、62 条 TC、114 个 HTTP 接口、35 个错误码）与仓库里真实存在的 129 个自动化用例对账，定出级别、环境、数据、准入准出与缺陷回流规则。**读者与使用时点**：测试执行者在 G4（D4 验证门禁）复跑与签收前逐章核对；开发在失败定位与修复回流时看第 8 章；评审人在判断“能不能过门禁”时只看第 7、9 章；发布/归档者按第 7、11 章取证据。
+本计划解决“验证到底要验什么、验到什么程度算过、谁来验”的问题：把上游规格（31 个用例、64 条 TC、117 个 HTTP 接口、35 个错误码）与仓库里真实存在的 134 个自动化用例对账，定出级别、环境、数据、准入准出与缺陷回流规则。**读者与使用时点**：测试执行者在 G4（D4 验证门禁）复跑与签收前逐章核对；开发在失败定位与修复回流时看第 8 章；评审人在判断“能不能过门禁”时只看第 7、9 章；发布/归档者按第 7、11 章取证据。
 
 ## 目录
 
@@ -68,7 +68,7 @@ updated: 2026-11-06
 - 平台能力：视图授权查询、一次性令牌签发/消费、冲突冻结与裁决、审计写入/查询/导出。
 - 流程能力：注册守卫与风险等级、实例启动、写节点幂等、Verifier 评判与升级。
 - 自动化能力：cron 解析与下次触发、任务配置增改与校验、执行幂等、到点 tick、晨报聚合、审计导出任务。
-- 契约层：`/api/v1` 62 个 operation 的 HTTP 状态码、`code`/`errorCode` 口径；DSH 工具清单与参数 schema。
+- 契约层：`/api/v1` 117 个 operation 的 HTTP 状态码、`code`/`errorCode` 口径；DSH 工具清单与参数 schema。
 - 规格一致性：实体列、路由数、错误码集合、REQ/UC/TC 追溯引用。
 
 ### 2.3 范围外（本阶段不作自动化判定）
@@ -385,14 +385,27 @@ updated: 2026-11-06
 
 **前置**：TC-AUTO-010 需可用的 `svn` CLI（≥1.10）或 PATH 夹具桩；TC-AUTO-011 用隔离 PATH 模拟 svn 缺失，不卸载系统包、不改全局环境。
 
+## 20. v2.23 自动驾驶控制台增量测试项（2026-11-14）
+
+本轮增量：项目状态/当前执行/执行记录/计划路线图/归档、项目描述从版本库抽取（人工优先）、基于项目内容的计划生成。
+
+| TC | 测试文件 | 复现命令 | 通过判据 |
+| :--- | :--- | :--- | :--- |
+| TC-AUTO-012..016 | `test/integration/autopilot.test.ts` | `NODE_ENV=test node --test --test-concurrency=1 test/integration/autopilot.test.ts` | 16/16 pass（已实测） |
+| 迁移 `0015_autopilot_console.sql` | 业务库 + 测试库 | `npm run migrate && npm run migrate:test` | 各 applied 1、exit 0（表数 91→92，`biz.project` 16→19 列） |
+| 契约 | `spec/opc-xuanji/api.yaml` | `npm run spec:check` | PASS（92 实体 / 31 用例 / 21 模块，117 operation） |
+| 全量回归 | `npm test` | 串行执行 | 134/134 pass（2026-11-14 实测） |
+
+**前置**：TC-AUTO-012/014 依赖本地 `file://` git 夹具（含 README、`package.json`、`Dockerfile`、`test/` 目录）；TC-AUTO-015/016 直接读写 `stat.project_autopilot_run`，需测试库已应用 `0015`；不得为通过测试而放宽归档/并发断言。
+
 ## 自检清单
 
-- [x] 目标与范围已对齐 `usecases.yaml` 的 31 个 UC、62 条 TC，数量与规格一致。
-- [x] 四个测试级别均有资产文件、用例数、依赖与通过判据，129 = 单元 42 + 集成 87 可复算（基线 68 + v2.12–v2.22 增量 61）。
+- [x] 目标与范围已对齐 `usecases.yaml` 的 31 个 UC、64 条 TC，数量与规格一致。
+- [x] 四个测试级别均有资产文件、用例数、依赖与通过判据，134 = 单元 42 + 集成 92 可复算（基线 68 + v2.12–v2.23 增量 66）。
 - [x] 环境表列出 Node ≥24.9、PostgreSQL 17.11、pgvector 0.8.0、`opc_test` 与 `opc` 隔离及校验命令。
-- [x] 数据策略覆盖 `resetDb`（91 表 + advisory lock）、`seedEmployee`、固定时钟三件套。
+- [x] 数据策略覆盖 `resetDb`（92 表 + advisory lock）、`seedEmployee`、固定时钟三件套。
 - [x] 进入准则 8 项可勾选、可命令化验证，无“视情况而定”表述。
-- [x] 通过标准含 129/129、`typecheck` exit 0、`check-spec` PASS，并声明硬/软门禁差异。
+- [x] 通过标准含 134/134、`typecheck` exit 0、`check-spec` PASS，并声明硬/软门禁差异。
 - [x] 缺陷分级 P0–P3 均有定义、示例、回流路径与门禁影响；规格变更走契约流程。
 - [x] 风险表覆盖真实 LLM 桩替代、共享测试库并发、时区抖动、环境不可达、错误码归属不一致等 9 项。
 - [x] 进度表含 5 个阶段、责任角色、交付物、完成判据与时点，责任边界写清。
@@ -405,8 +418,8 @@ updated: 2026-11-06
 | 文档 | 关系 | 说明 |
 | :--- | :--- | :--- |
 | [spec/opc-xuanji/usecases.yaml](../spec/opc-xuanji/usecases.yaml) | 上游（唯一 TC 来源） | 21 个 UC 的 `tests` 字段决定本计划与 STD 的 31 条 TC 清单（员工分册 AC 直验另计） |
-| [spec/opc-xuanji/api.yaml](../spec/opc-xuanji/api.yaml) | 上游 | 62 个 operation 与 19 个错误码构成契约层判据 |
-| [spec/opc-xuanji/entities.yaml](../spec/opc-xuanji/entities.yaml) | 上游 | 76 张表的列级对账依据 |
+| [spec/opc-xuanji/api.yaml](../spec/opc-xuanji/api.yaml) | 上游 | 117 个 operation 与 35 个错误码构成契约层判据 |
+| [spec/opc-xuanji/entities.yaml](../spec/opc-xuanji/entities.yaml) | 上游 | 92 张表的列级对账依据 |
 | `OPC-玄机 · 一人公司中枢-产品设计.md` | 上游 | 8.6.9.2 三关测试、8.6.3 评判、8.6.9.5 守卫与风险规则的本计划依据 |
 | `OPC-玄机 · 技术选型与系统架构.md` | 上游 | 3.2 Verifier 缓存口径、3.3 判别力局限，解释为何以桩替代并登记风险 |
 | [docs/OPC-STD-001-测试设计说明.md](OPC-STD-001-测试设计说明.md) | 同级（下游细化） | 承接本计划的 TC 映射、逐条用例设计与未覆盖项登记 |

@@ -107,6 +107,23 @@ window.__ModuleLoader__.load({
       if (typeof v === "object") return JSON.stringify(v);
       return String(v);
     }
+    function fmtDate(v) {
+      if (!v) return "-";
+      var s = String(v);
+      return s.length > 10 ? s.slice(0, 10) : s;
+    }
+    function fmtDuration(ms) {
+      if (typeof ms !== "number" || !isFinite(ms) || ms < 0) return "-";
+      if (ms < 1000) return Math.round(ms) + "ms";
+      var seconds = ms / 1000;
+      if (seconds < 60) return (Math.round(seconds * 10) / 10) + "s";
+      var minutes = Math.floor(seconds / 60);
+      var restSeconds = Math.round(seconds % 60);
+      if (minutes < 60) return minutes + "m" + (restSeconds ? " " + restSeconds + "s" : "");
+      var hours = Math.floor(minutes / 60);
+      var restMinutes = minutes % 60;
+      return hours + "h" + (restMinutes ? " " + restMinutes + "m" : "");
+    }
     function short(v, n) {
       var s = typeof v === "string" ? v : JSON.stringify(v);
       s = s || "";
@@ -258,6 +275,38 @@ window.__ModuleLoader__.load({
       ".ocDangerText{color:var(--oc-bad)}",
       ".ocProgressWrap{display:flex;align-items:center;gap:8px;min-width:180px;max-width:340px;flex:1 1 180px}",
       ".ocProgressWrap .ocBar{flex:1}",
+      // autopilot console
+      ".ocLinkBtn{border:0;background:transparent;color:var(--oc-accent);font:inherit;font-weight:600;padding:0;cursor:pointer;text-align:left;border-radius:4px;min-width:0}",
+      ".ocLinkBtn:hover{text-decoration:underline}",
+      ".ocCellStack{display:flex;flex-direction:column;gap:2px;min-width:0;white-space:normal;text-align:left}",
+      ".ocCellDesc{font-size:11px;opacity:.6;max-width:38ch;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;word-break:break-word}",
+      ".ocRowLine{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}",
+      ".ocOpsStack{display:flex;flex-direction:column;gap:4px;align-items:flex-start;white-space:normal}",
+      ".ocOpsStack .ocField{min-width:150px}",
+      ".ocBanner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--oc-warn);border-radius:8px;padding:8px 10px;background:var(--oc-warn-weak);color:inherit;font-size:12px}",
+      ".ocBannerMsg{flex:1 1 220px;min-width:0;word-break:break-word}",
+      ".ocSteps{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}",
+      ".ocStep{display:flex;gap:10px;min-width:0;padding-bottom:10px}",
+      ".ocStep:last-child{padding-bottom:0}",
+      ".ocStepRail{display:flex;flex-direction:column;align-items:center;width:12px;flex:0 0 auto}",
+      ".ocStepDot{width:9px;height:9px;border-radius:50%;margin-top:4px;background:#8a8a8a;flex:0 0 auto}",
+      ".ocStepDot.ok{background:var(--oc-ok)}.ocStepDot.failed{background:var(--oc-bad)}.ocStepDot.running{background:var(--oc-warn);box-shadow:0 0 0 3px var(--oc-warn-weak)}.ocStepDot.pending,.ocStepDot.skipped{background:var(--oc-border-strong)}",
+      ".ocStepLine{flex:1 1 auto;width:1px;background:var(--oc-border);margin:3px 0 -1px}",
+      ".ocStepBody{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}",
+      ".ocStepHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}",
+      ".ocStepName{font-weight:600}",
+      ".ocStepMeta{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;opacity:.6}",
+      ".ocStepDetail{font-size:11.5px;opacity:.8;white-space:pre-wrap;word-break:break-word}",
+      ".ocTimeline{display:flex;flex-wrap:wrap;gap:10px;min-width:0}",
+      ".ocTlItem{flex:1 1 220px;min-width:0;max-width:100%;border:1px solid var(--oc-border);border-radius:var(--oc-radius);padding:9px 10px;background:var(--oc-surface);display:flex;flex-direction:column;gap:4px}",
+      ".ocTlTitle{font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}",
+      ".ocTlDates{font-size:11px;opacity:.6;font-variant-numeric:tabular-nums}",
+      ".ocTlDeliv{display:flex;flex-wrap:wrap;gap:4px}",
+      ".ocPlanNote{font-size:11.5px;opacity:.72;word-break:break-word;white-space:pre-wrap}",
+      ".ocBullets{margin:0;padding-left:18px;font-size:12px;display:flex;flex-direction:column;gap:2px;word-break:break-word}",
+      ".ocDescBlock{font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;border-left:3px solid var(--oc-border-strong);padding-left:10px}",
+      ".ocRunDetail{display:flex;flex-direction:column;gap:8px;margin-top:8px}",
+      "@media (max-width:640px){.ocTimeline{flex-direction:column}.ocTlItem{flex:1 1 auto}.ocOpsStack .ocField{min-width:120px}}",
       "@media (max-width:1100px){.ocSplit{grid-template-columns:minmax(0,1fr) 300px}}",
       "@media (max-width:860px){.ocSplit{grid-template-columns:1fr}.ocSplitSide{position:static;max-height:none;overflow:visible}}",
       // motion / responsive
@@ -2018,9 +2067,466 @@ window.__ModuleLoader__.load({
       return repo;
     }
 
+    // ---- 自动驾驶展示辅助（只读视图；后端字段缺失时一律优雅降级） ----
+    var PROJECT_STATUS_TONE = { ready: "ok", running: "warn", waiting_decision: "warn", failed: "bad", not_started: "mute", archived: "mute" };
+    var PROJECT_STATUS_LABEL = { ready: "计划就绪", running: "进行中", waiting_decision: "待裁决", failed: "执行失败", not_started: "未开始", archived: "已归档" };
+    var RUN_STATUS_LABEL = { running: "运行中", ok: "成功", failed: "失败" };
+    var STEP_STATUS_LABEL = { pending: "待执行", running: "执行中", ok: "完成", failed: "失败", skipped: "跳过" };
+    var PLAN_KIND_TITLE = { dev: "开发计划", test: "测试计划", deploy: "部署计划" };
+
+    function projectStatusTone(status) {
+      return PROJECT_STATUS_TONE[status] || toneOf(status);
+    }
+    function projectStatusLabel(item) {
+      if (!item) return "-";
+      return item.statusLabel || PROJECT_STATUS_LABEL[item.status] || item.status || "-";
+    }
+    function runStatusTone(status) {
+      return status === "ok" ? "ok" : status === "failed" ? "bad" : status === "running" ? "warn" : "mute";
+    }
+    function runStatusLabel(status) {
+      return RUN_STATUS_LABEL[status] || status || "-";
+    }
+    function stepStatusTone(status) {
+      return status === "ok" ? "ok" : status === "failed" ? "bad" : status === "running" ? "warn" : "mute";
+    }
+    function stepStatusLabel(status) {
+      return STEP_STATUS_LABEL[status] || status || "-";
+    }
+    function asList(value) {
+      if (value === null || value === undefined || value === "") return [];
+      return Array.isArray(value) ? value : [value];
+    }
+    function fmtRange(start, end) {
+      if (!start && !end) return "-";
+      return fmtDate(start) + " → " + fmtDate(end);
+    }
+    function autoText(label, value) {
+      if (value === null || value === undefined || value === "") return null;
+      var text = typeof value === "object" ? jsonPreview(value, 8) : String(value);
+      return h("div", null, h("span", { className: "ocMuted" }, label + "："), h("span", { className: "ocPlanNote" }, text));
+    }
+    function jsonPreview(value, maxLines) {
+      if (value === null || value === undefined) return "";
+      var text = "";
+      try { text = JSON.stringify(value, null, 2) || ""; } catch (e) { text = String(value); }
+      var lines = text.split("\n");
+      var limit = maxLines || 200;
+      if (lines.length > limit) return lines.slice(0, limit).join("\n") + "\n…（已截断，共 " + lines.length + " 行）";
+      return text;
+    }
+    function autoTags(items, max) {
+      var list = asList(items);
+      if (!list.length) return null;
+      var limit = max || 8;
+      var nodes = list.slice(0, limit).map(function (item, index) {
+        var text = item && typeof item === "object" ? (item.name || item.title || item.code || item.key || jsonPreview(item, 4)) : String(item);
+        return h("span", { key: index, className: "ocTag", title: text }, short(text, 48));
+      });
+      if (list.length > limit) nodes.push(h("span", { key: "__more", className: "ocTag" }, "+" + (list.length - limit)));
+      return h("div", { className: "ocTlDeliv" }, nodes);
+    }
+    function autoBullets(label, items, max) {
+      var list = asList(items);
+      if (!list.length) return null;
+      var limit = max || 12;
+      var nodes = list.slice(0, limit).map(function (item, index) {
+        var text = item && typeof item === "object" ? jsonPreview(item, 8) : String(item);
+        return h("li", { key: index }, text);
+      });
+      if (list.length > limit) nodes.push(h("li", { key: "__more", className: "ocMuted" }, "…共 " + list.length + " 项"));
+      return h("div", null,
+        h("div", { className: "ocMuted" }, label),
+        h("ul", { className: "ocBullets" }, nodes));
+    }
+    function planContentOf(content) {
+      if (!content) return null;
+      if (typeof content === "string") {
+        try { return JSON.parse(content); } catch (e) { return null; }
+      }
+      return typeof content === "object" ? content : null;
+    }
+
+    // ---- 自动驾驶展示组件 ----
+    function StepList(props) {
+      var steps = props.steps || [];
+      if (!steps.length) return h("div", { className: "ocMuted" }, props.empty || "暂无步骤明细");
+      return h("ol", { className: "ocSteps" }, steps.map(function (step, index) {
+        var status = step.status || "pending";
+        return h("li", { className: "ocStep", key: (step.stage || "step") + "-" + index },
+          h("div", { className: "ocStepRail" },
+            h("span", { className: "ocStepDot " + status, "aria-hidden": "true" }),
+            index < steps.length - 1 ? h("span", { className: "ocStepLine", "aria-hidden": "true" }) : null),
+          h("div", { className: "ocStepBody" },
+            h("div", { className: "ocStepHead" },
+              h("span", { className: "ocStepName" }, step.label || step.stage || "步骤 " + (index + 1)),
+              h(Badge, { tone: stepStatusTone(status) }, stepStatusLabel(status)),
+              step.durationMs !== null && step.durationMs !== undefined ? h("span", { className: "ocMuted" }, "耗时 " + fmtDuration(step.durationMs)) : null),
+            (step.startedAt || step.endedAt) ? h("div", { className: "ocStepMeta" },
+              step.startedAt ? h("span", null, "开始 " + fmtTime(step.startedAt)) : null,
+              step.endedAt ? h("span", null, "结束 " + fmtTime(step.endedAt)) : null) : null,
+            step.detail ? h("div", { className: "ocStepDetail" }, short(step.detail, 400)) : null));
+      }));
+    }
+
+    function RunDetail(props) {
+      var run = props.run;
+      if (!run) return null;
+      return h("div", { className: "ocRunDetail" },
+        h("div", { className: "ocMeta" },
+          h(Badge, { tone: runStatusTone(run.status) }, runStatusLabel(run.status)),
+          h("span", { className: "ocMuted" }, "阶段 " + textOf(run.stageLabel || run.stage)),
+          h("span", { className: "ocMuted" }, "耗时 " + fmtDuration(run.durationMs)),
+          h("span", { className: "ocMuted" }, "开始 " + fmtTime(run.startedAt)),
+          h("span", { className: "ocMono" }, "触发 " + textOf(run.trigger))),
+        run.error ? h("div", { className: "ocErr" }, h("span", { className: "ocErrMsg" }, "运行错误：" + run.error)) : null,
+        h("div", { className: "ocH" }, "步骤明细"),
+        h(StepList, { steps: run.steps, empty: "该次运行没有记录步骤" }),
+        run.result ? h("div", null,
+          h("div", { className: "ocH" }, "结果摘要"),
+          h("pre", { className: "ocJson" }, jsonPreview(run.result, 200))) : null);
+    }
+
+    function RunsCard(props) {
+      var runs = props.runs || [];
+      var openS = react.useState("");
+      var open = openS[0], setOpen = openS[1];
+      var expanded = null;
+      for (var i = 0; i < runs.length; i += 1) if (String(runs[i].id) === String(open)) expanded = runs[i];
+      var columns = [
+        { key: "startedAt", label: "开始时间", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.startedAt)); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: runStatusTone(r.status) }, runStatusLabel(r.status)); } },
+        { key: "stage", label: "阶段", render: function (r) { return h("span", null, textOf(r.stageLabel || r.stage)); } },
+        { key: "durationMs", label: "耗时", render: function (r) { return h("span", { className: "ocMono" }, fmtDuration(r.durationMs)); } },
+        { key: "trigger", label: "触发", render: function (r) { return h("span", { className: "ocMono" }, textOf(r.trigger)); } },
+        { key: "error", label: "错误", render: function (r) { return r.error ? h("span", { className: "ocDangerText", title: r.error }, short(r.error, 42)) : h("span", { className: "ocMuted" }, "-"); } },
+        { key: "__ops", label: "操作", render: function (r) {
+          var on = String(r.id) === String(open);
+          return h(Btn, { onClick: function () { setOpen(on ? "" : String(r.id)); } }, on ? "收起" : "详情");
+        } },
+      ];
+      return h(Card, null,
+        h("div", { className: "ocH" }, "执行记录", h("span", { className: "ocCount" }, runs.length + " 条")),
+        h(Table, { columns: columns, rows: runs, loading: props.loading, empty: "暂无执行记录", emptyHint: "对项目执行一次自动驾驶后，这里会记录每次运行的阶段与结果。", emptyIcon: "clock" }),
+        expanded ? h(RunDetail, { run: expanded }) : null);
+    }
+
+    function RoadmapTimeline(props) {
+      var phases = props.phases || [];
+      var milestones = props.milestones || [];
+      if (phases.length) {
+        return h("div", { className: "ocTimeline" }, phases.map(function (phase, index) {
+          return h("div", { className: "ocTlItem", key: phase.key || index },
+            h("div", { className: "ocTlTitle" }, phase.title || phase.key || "阶段 " + (index + 1), h(Badge, { tone: toneOf(phase.status) }, textOf(phase.status))),
+            h("div", { className: "ocTlDates" }, fmtRange(phase.startDate, phase.endDate) + (phase.owner ? " · " + phase.owner : "")),
+            autoTags(phase.deliverables, 6));
+        }));
+      }
+      if (milestones.length) {
+        return h("div", { className: "ocTimeline" }, milestones.map(function (ms, index) {
+          return h("div", { className: "ocTlItem", key: ms.id || index },
+            h("div", { className: "ocTlTitle" }, ms.name || "里程碑 " + (index + 1), h(Badge, { tone: toneOf(ms.status) }, textOf(ms.status))),
+            h("div", { className: "ocTlDates" }, "目标 " + fmtDate(ms.targetDate) + (ms.actualDate ? " · 实际 " + fmtDate(ms.actualDate) : "") + (ms.owner ? " · " + ms.owner : "")),
+            ms.evidence ? h("div", { className: "ocPlanNote" }, short(ms.evidence, 120)) : null);
+        }));
+      }
+      return h("div", { className: "ocMuted" }, "暂无路线图：执行一次自动驾驶后生成阶段与里程碑。");
+    }
+
+    function DevPlanBody(props) {
+      var c = props.content || {};
+      var phases = asList(c.phases);
+      var modules = asList(c.modules);
+      var hasAny = phases.length || asList(c.workBreakdown).length || modules.length || asList(c.assumptions).length || asList(c.risks).length || c.description || c.weeks !== null && c.weeks !== undefined;
+      if (!hasAny) return h("div", { className: "ocMuted" }, "暂无开发计划内容");
+      return h(Fragment, null,
+        autoText("周数", c.weeks),
+        autoText("说明", c.description),
+        phases.length ? h("div", null,
+          h("div", { className: "ocMuted" }, "阶段"),
+          h("div", { className: "ocTimeline" }, phases.map(function (phase, index) {
+            return h("div", { className: "ocTlItem", key: phase.key || index },
+              h("div", { className: "ocTlTitle" }, phase.title || phase.key || "阶段 " + (index + 1), h(Badge, { tone: toneOf(phase.status) }, textOf(phase.status))),
+              h("div", { className: "ocTlDates" }, fmtRange(phase.startDate, phase.endDate) + (phase.owner ? " · " + phase.owner : "")),
+              autoTags(phase.deliverables, 6));
+          }))) : null,
+        autoBullets("工作分解", c.workBreakdown),
+        modules.length ? h("div", null,
+          h("div", { className: "ocMuted" }, "模块"),
+          h("div", { className: "ocRow" }, modules.map(function (m, index) {
+            return h("span", { key: index, className: "ocChip" },
+              textOf(m && m.name),
+              m && m.files !== undefined && m.files !== null ? " · " + textOf(m.files) + " 文件" : "",
+              m && m.loc !== undefined && m.loc !== null ? " · " + fmtNum(m.loc) + " 行" : "");
+          }))) : null,
+        autoBullets("假设", c.assumptions),
+        autoBullets("风险", c.risks));
+    }
+
+    function TestPlanBody(props) {
+      var c = props.content || {};
+      var caseDetails = asList(c.caseDetails);
+      var focusTags = autoTags(c.focusAreas, 8);
+      var hasAny = asList(c.testTypes).length || asList(c.cases).length || caseDetails.length || asList(c.testFiles).length || asList(c.ci).length || c.entryCriteria || c.exitCriteria;
+      if (!hasAny) return h("div", { className: "ocMuted" }, "暂无测试计划内容");
+      var columns = [
+        { key: "code", label: "编号", render: function (r) { return h("span", { className: "ocMono" }, textOf(r.code)); } },
+        { key: "title", label: "标题", render: function (r) { return h("span", { className: "ocEllip", title: textOf(r.title) }, short(textOf(r.title), 48)); } },
+        { key: "priority", label: "优先级", render: function (r) { return h(Badge, { tone: toneOf(r.priority) }, textOf(r.priority)); } },
+        { key: "kind", label: "类型", render: function (r) { return h("span", null, textOf(r.kind)); } },
+        { key: "focus", label: "关注点", render: function (r) { return h("span", { className: "ocEllip", title: textOf(r.focus) }, short(textOf(r.focus), 40)); } },
+      ];
+      return h(Fragment, null,
+        autoText("测试类型", asList(c.testTypes).join(" / ")),
+        autoText("进入标准", c.entryCriteria),
+        autoText("退出标准", c.exitCriteria),
+        caseDetails.length ? h("div", null,
+          h("div", { className: "ocMuted" }, "用例明细"),
+          h(Table, { columns: columns, rows: caseDetails, empty: "暂无用例" })) : null,
+        autoBullets("基线用例", c.cases),
+        autoBullets("测试文件", c.testFiles),
+        autoBullets("CI 命令", c.ci),
+        focusTags ? h("div", null, h("div", { className: "ocMuted" }, "重点关注"), focusTags) : null);
+    }
+
+    function DeployPlanBody(props) {
+      var c = props.content || {};
+      var runtime = c.runtime || {};
+      var targets = asList(c.targets);
+      var scripts = runtime.scripts && typeof runtime.scripts === "object" ? runtime.scripts : null;
+      var artifacts = autoTags(c.artifacts, 8);
+      var hasAny = c.environmentId || c.environmentSource || targets.length || asList(c.steps).length || c.rollback || artifacts || runtime.docker || asList(runtime.ci).length || scripts;
+      if (!hasAny) return h("div", { className: "ocMuted" }, "暂无部署计划内容");
+      return h(Fragment, null,
+        autoText("环境", c.environmentId),
+        autoText("环境来源", c.environmentSource),
+        h("div", null,
+          h("div", { className: "ocMuted" }, "运行时"),
+          h("div", { className: "ocRow" },
+            h("span", { className: "ocChip" }, "Docker：" + textOf(runtime.docker, "未配置")),
+            asList(runtime.ci).length ? h("span", { className: "ocChip" }, "CI：" + asList(runtime.ci).join(" / ")) : null,
+            scripts ? h("span", { className: "ocChip" }, "脚本：" + Object.keys(scripts).join(" / ")) : null)),
+        scripts ? h("pre", { className: "ocJson", style: { maxHeight: 140 } }, jsonPreview(scripts, 12)) : null,
+        targets.length ? h("div", null,
+          h("div", { className: "ocMuted" }, "发布目标"),
+          h("div", { className: "ocRow" }, targets.map(function (t, index) {
+            return h("span", { key: index, className: "ocChip" },
+              textOf(t && t.name),
+              " · " + textOf(t && t.strategy),
+              t && t.approval ? " · 审批 " + t.approval : "");
+          }))) : null,
+        autoBullets("发布步骤", c.steps),
+        autoText("回滚", c.rollback),
+        artifacts ? h("div", null, h("div", { className: "ocMuted" }, "产物"), artifacts) : null);
+    }
+
+    function PlanKindCard(props) {
+      var kind = props.kind;
+      var plan = props.plan || null;
+      var content = plan ? planContentOf(plan.content) : null;
+      var version = plan ? (plan.version === undefined ? "-" : plan.version) : "-";
+      var generatedAt = plan ? (plan.generatedAt || plan.generated_at) : null;
+      var meta = plan ? "v" + version + " · " + textOf(plan.status) + (generatedAt ? " · " + fmtTime(generatedAt) : "") : "未生成";
+      var body;
+      if (!plan) body = h("div", { className: "ocMuted" }, "尚未生成" + (PLAN_KIND_TITLE[kind] || "计划") + "。执行一次自动驾驶后生成。");
+      else if (!content) body = h("div", { className: "ocMuted" }, "该计划没有结构化内容（旧版本计划），执行一次自动驾驶可补齐。");
+      else if (kind === "dev") body = h(DevPlanBody, { content: content });
+      else if (kind === "test") body = h(TestPlanBody, { content: content });
+      else body = h(DeployPlanBody, { content: content });
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocH" },
+          PLAN_KIND_TITLE[kind] || "计划",
+          plan && plan.title ? h("span", { className: "ocMuted" }, plan.title) : null,
+          h("span", { className: "ocCount" }, meta)),
+        body);
+    }
+
+    function RoadmapCard(props) {
+      var roadmap = props.roadmap || {};
+      var plans = props.plans || [];
+      var roadmapPlans = asList(roadmap.plans);
+      var phases = asList(roadmap.phases);
+      var milestones = asList(roadmap.milestones);
+      var byKind = {};
+      roadmapPlans.forEach(function (p) { if (p && p.planKind) byKind[p.planKind] = p; });
+      var planFallback = {};
+      plans.forEach(function (p) {
+        var kind = p.planKind || p.plan_kind;
+        if (!kind || byKind[kind]) return;
+        var current = planFallback[kind];
+        if (!current || (p.version || 0) > (current.version || 0)) planFallback[kind] = p;
+      });
+      for (var fk in planFallback) if (!byKind[fk]) byKind[fk] = planFallback[fk];
+      var planCount = Math.max(plans.length, roadmapPlans.length);
+      return h(Card, null,
+        h("div", { className: "ocH" }, "计划路线图", h("span", { className: "ocCount" }, (roadmap.startDate || roadmap.endDate) ? fmtRange(roadmap.startDate, roadmap.endDate) : "未排期")),
+        h(KpiGrid, { items: [
+          { label: "周期（周）", value: roadmap.weeks === null || roadmap.weeks === undefined ? "-" : roadmap.weeks },
+          { label: "里程碑", value: milestones.length },
+          { label: "计划版本", value: planCount },
+          { label: "开始日期", value: fmtDate(roadmap.startDate) },
+          { label: "结束日期", value: fmtDate(roadmap.endDate) },
+        ] }),
+        h("div", { className: "ocMuted" }, "时间线（优先阶段，其次里程碑）"),
+        h(RoadmapTimeline, { phases: phases, milestones: milestones }),
+        h("div", { className: "ocFormStack" },
+          h(PlanKindCard, { kind: "dev", plan: byKind.dev }),
+          h(PlanKindCard, { kind: "test", plan: byKind.test }),
+          h(PlanKindCard, { kind: "deploy", plan: byKind.deploy })));
+    }
+
+    function CurrentRunCard(props) {
+      var run = props.run;
+      var last = props.last;
+      if (!run) {
+        return h(Card, null,
+          h("div", { className: "ocH" }, "当前执行", h("span", { className: "ocCount" }, "空闲")),
+          h("div", { className: "ocMuted" }, last
+            ? "最近一次：" + fmtTime(last.startedAt) + " · " + textOf(last.stageLabel || last.stage) + " · " + runStatusLabel(last.status) + " · 耗时 " + fmtDuration(last.durationMs)
+            : "还没有执行记录。填写页面底部的「新建与执行」开始自动生产。"),
+          last ? h("div", { className: "ocStickyActions" },
+            h(Badge, { tone: runStatusTone(last.status) }, runStatusLabel(last.status)),
+            last.error ? h("span", { className: "ocDangerText" }, short(last.error, 120)) : null) : null);
+      }
+      var steps = run.steps || [];
+      var total = steps.length;
+      var okCount = 0;
+      steps.forEach(function (step) { if (step.status === "ok") okCount += 1; });
+      var percent = total ? Math.round((okCount / total) * 100) : 0;
+      return h(Card, null,
+        h("div", { className: "ocH" }, "当前执行", h("span", { className: "ocCount" }, "运行中自动刷新 · 每 2.5s")),
+        h("div", { className: "ocMeta" },
+          h(Badge, { tone: runStatusTone(run.status) }, runStatusLabel(run.status)),
+          h("b", null, textOf(run.stageLabel || run.stage)),
+          h("span", { className: "ocMuted" }, "开始 " + fmtTime(run.startedAt)),
+          h("span", { className: "ocMuted" }, "耗时 " + fmtDuration(run.durationMs)),
+          h("span", { className: "ocMono" }, "触发 " + textOf(run.trigger))),
+        h("div", { className: "ocRow" },
+          h("span", { className: "ocMuted" }, "进度 " + okCount + "/" + total),
+          h("div", { className: "ocProgressWrap" },
+            h("div", { className: "ocBar", role: "progressbar", "aria-valuenow": percent, "aria-valuemin": 0, "aria-valuemax": 100 }, h("i", { style: { width: percent + "%" } })),
+            h("b", null, percent + "%"))),
+        h(StepList, { steps: steps, empty: "本次运行还没有步骤明细" }));
+    }
+
+    function ArchiveControl(props) {
+      var confirmS = react.useState(false);
+      var confirm = confirmS[0], setConfirm = confirmS[1];
+      var reasonS = react.useState("");
+      var reason = reasonS[0], setReason = reasonS[1];
+      if (props.archived) {
+        return h(Btn, { kind: "primary", disabled: props.busy, onClick: function () { props.onUnarchive(); } }, "恢复");
+      }
+      if (!confirm) {
+        return h(Btn, { kind: "danger", disabled: props.busy, onClick: function () { setConfirm(true); } }, props.label || "归档");
+      }
+      return h("div", { className: "ocOpsStack" },
+        h(Field, { label: "归档原因（可选）", value: reason, onChange: setReason, placeholder: "例如：已交付 / 暂停" }),
+        h("div", { className: "ocStickyActions" },
+          h(Btn, { kind: "danger", disabled: props.busy, onClick: function () { setConfirm(false); props.onArchive(reason); } }, "确认归档"),
+          h(Btn, { disabled: props.busy, onClick: function () { setConfirm(false); } }, "取消")));
+    }
+
+    function ProjectInfoCard(props) {
+      var project = props.project || {};
+      var tech = props.tech || {};
+      var repository = props.repository;
+      return h(Card, null,
+        h("div", { className: "ocH" },
+          h("b", null, project.name || ("项目 #" + (project.id === undefined || project.id === null ? "-" : project.id))),
+          h(Badge, { tone: projectStatusTone(props.status) }, props.statusLabel),
+          h("span", { className: "ocCount" }, "项目信息")),
+        props.archived ? h("div", { className: "ocBanner" },
+          h("span", { className: "ocBannerMsg" }, "该项目已归档"
+            + (props.archivedAt ? "（" + fmtTime(props.archivedAt) + "）" : "")
+            + (props.archiveReason ? "：" + props.archiveReason : "")
+            + "。归档项目不会再被执行，但历史数据保留。"),
+          props.busy ? null : h(Btn, { kind: "primary", onClick: props.onUnarchive }, "恢复项目")) : null,
+        h("div", { className: "ocMeta" },
+          h("span", { className: "ocMuted" }, "阶段 " + textOf(project.stage)),
+          h("span", { className: "ocMuted" }, "类型 " + textOf(project.projectType)),
+          h("span", { className: "ocMuted" }, "主语言 " + textOf(tech.primaryLanguage)),
+          h("span", { className: "ocMuted" }, "框架 " + (asList(tech.frameworks).length ? asList(tech.frameworks).join(" / ") : "-"))),
+        repository ? h("div", { className: "ocRow" },
+          h("span", { className: "ocMuted" }, "版本库"),
+          h("span", { className: "ocMono" }, (repository.kind === "svn" ? "SVN" : "Git") + " · " + repository.url)) : null,
+        h("div", null,
+          h("div", { className: "ocMuted" }, "项目描述" + (props.description && props.descriptionSource ? "（来源：" + props.descriptionSource + "）" : "")),
+          props.description ? h("div", { className: "ocDescBlock" }, props.description) : h("div", { className: "ocHint" }, "尚未从版本库抽取描述，执行一次自动驾驶即可。")),
+        h("div", { className: "ocStickyActions" },
+          props.archived ? null : h(ArchiveControl, { busy: props.busy, onArchive: props.onArchive }),
+          h(Btn, { onClick: props.onRefresh }, h(Icon, { name: "refresh", size: 14 }), "刷新详情")));
+    }
+
+    function ProjectOverviewCard(props) {
+      var projects = props.projects || [];
+      var counts = props.counts || {};
+      var columns = [
+        { key: "name", label: "项目", render: function (row) {
+          var archived = row.status === "archived" || !!row.archivedAt;
+          return h("div", { className: "ocCellStack" },
+            h("div", { className: "ocRowLine" },
+              h("button", { type: "button", className: "ocLinkBtn", title: "查看项目详情", onClick: function () { props.onSelect(row); } }, row.name || ("项目 #" + row.id)),
+              String(row.id) === String(props.selectedId) ? h(Badge, { tone: "warn" }, "当前") : null,
+              archived ? h(Badge, { tone: "mute" }, "已归档") : null),
+            row.description ? h("div", { className: "ocCellDesc", title: row.description }, short(row.description, 90)) : h("div", { className: "ocCellDesc ocMuted" }, "无描述"));
+        } },
+        { key: "status", label: "状态", render: function (row) { return h(Badge, { tone: projectStatusTone(row.status) }, projectStatusLabel(row)); } },
+        { key: "currentRun", label: "当前执行", render: function (row) {
+          return row.currentRun ? h("span", null, textOf(row.currentRun.stageLabel || row.currentRun.stage)) : h("span", { className: "ocMuted" }, "空闲");
+        } },
+        { key: "planCount", label: "计划", render: function (row) { return h("span", { className: "ocMono" }, String(row.planCount || 0)); } },
+        { key: "pendingDecisions", label: "待裁决", render: function (row) {
+          var n = row.pendingDecisions || 0;
+          return n > 0 ? h(Badge, { tone: "warn" }, String(n)) : h("span", { className: "ocMuted" }, "0");
+        } },
+        { key: "lastRun", label: "最近执行", render: function (row) {
+          if (!row.lastRun) return h("span", { className: "ocMuted" }, "-");
+          return h("div", { className: "ocCellStack" },
+            h("span", { className: "ocMono" }, fmtTime(row.lastRun.startedAt)),
+            h("span", { className: "ocMuted" }, runStatusLabel(row.lastRun.status) + " · " + fmtDuration(row.lastRun.durationMs)));
+        } },
+        { key: "__ops", label: "操作", render: function (row) {
+          var archived = row.status === "archived" || !!row.archivedAt;
+          return h("div", { className: "ocOpsStack" },
+            h(Btn, { onClick: function () { props.onSelect(row); } }, "查看"),
+            h(ArchiveControl, {
+              archived: archived,
+              busy: String(props.busyId) === String(row.id),
+              onArchive: function (reason) { props.onArchive(row, reason); },
+              onUnarchive: function () { props.onUnarchive(row); },
+            }));
+        } },
+      ];
+      var filterOptions = [
+        { id: "active", label: "进行中" },
+        { id: "archived", label: "已归档" },
+        { id: "all", label: "全部" },
+      ];
+      return h(Card, null,
+        h("div", { className: "ocH" }, "项目状态总览", h("span", { className: "ocCount" }, counts.total === undefined ? "共 " + projects.length + " 条" : "共 " + counts.total + " 个项目")),
+        h(KpiGrid, { items: [
+          { label: "进行中", value: counts.running || 0, tone: (counts.running || 0) > 0 ? "warn" : "" },
+          { label: "待裁决", value: counts.waitingDecision || 0, tone: (counts.waitingDecision || 0) > 0 ? "warn" : "" },
+          { label: "计划就绪", value: counts.ready || 0, tone: (counts.ready || 0) > 0 ? "ok" : "" },
+          { label: "执行失败", value: counts.failed || 0, tone: (counts.failed || 0) > 0 ? "bad" : "" },
+          { label: "已归档", value: counts.archived || 0 },
+        ] }),
+        h("div", { className: "ocSeg", role: "group", "aria-label": "项目过滤" },
+          filterOptions.map(function (option) {
+            var on = props.filter === option.id;
+            return h("button", { key: option.id, type: "button", className: "ocSegItem" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", onClick: function () { props.onFilter(option.id); } }, option.label);
+          })),
+        h(Table, { columns: columns, rows: props.rows || [], loading: props.loading, empty: "暂无项目", emptyHint: "新建项目后，这里显示状态、当前执行与归档操作。", emptyIcon: "layers" }));
+    }
+
     function AutopilotTab(props) {
-      var projectsS = useLoad(function () { return apiGet("/admin/projects"); }, []);
-      var projects = (projectsS[0].data && projectsS[0].data.items) || [];
+      var filterS = react.useState("active");
+      var filter = filterS[0], setFilter = filterS[1];
+      var listS = useLoad(function () { return apiGet("/admin/autopilot/projects" + qs({ archived: filter })); }, [filter]);
+      var listData = listS[0].data || {};
+      var projects = listData.items || [];
+      var counts = listData.counts || {};
       var selS = react.useState("");
       var selected = selS[0], setSelected = selS[1];
       react.useEffect(function () {
@@ -2028,7 +2534,13 @@ window.__ModuleLoader__.load({
       }, [projects.length, selected]);
       var sumS = useLoad(function () { return selected ? apiGet("/admin/projects/" + selected + "/autopilot") : Promise.resolve(null); }, [selected]);
       var sumData = sumS[0].data;
-      var sum = sumData || {};
+      var detailReady = false;
+      if (sumData) {
+        var detailPid = sumData.projectId !== undefined && sumData.projectId !== null ? sumData.projectId : (sumData.project && sumData.project.id);
+        if (detailPid !== undefined && detailPid !== null) detailReady = String(detailPid) === String(selected);
+        else detailReady = !sumS[0].loading;
+      }
+      var sum = detailReady && sumData ? sumData : {};
       var reposS = useLoad(function () {
         return selected
           ? apiGet("/admin/projects/" + selected + "/repositories").then(function (d) { return { projectId: String(selected), items: (d && d.items) || [] }; })
@@ -2048,6 +2560,8 @@ window.__ModuleLoader__.load({
       var ideaFiles = filesS[0], setIdeaFiles = filesS[1];
       var analysisS = react.useState(null);
       var ideaResult = analysisS[0], setIdeaResult = analysisS[1];
+      var archiveBusyS = react.useState("");
+      var archiveBusy = archiveBusyS[0], setArchiveBusy = archiveBusyS[1];
       function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
       function upRepoKind(value) {
         var next = Object.assign({}, form);
@@ -2080,7 +2594,64 @@ window.__ModuleLoader__.load({
         if (nextKind !== "svn") next.revision = "";
         setForm(next);
       }, [selected, repoData, sumData]);
-      function refreshAll() { projectsS[1](); if (selected) sumS[1](); }
+
+      // ---- 派生只读数据（详情未到位前一律不渲染，避免串项目） ----
+      var plans = asList(sum.plans);
+      var decisions = asList(sum.decisions);
+      var pending = decisions.filter(function (d) { return d.status === "pending"; });
+      var pipeline = asList(sum.pipeline);
+      var deploy = asList(sum.deploy);
+      var checkout = sum.checkout;
+      var scan = sum.scan || {};
+      var scanFindings = scan.findings || {};
+      var tech = (sum.profile && sum.profile.tech_stack) || {};
+      var selectedItem = null;
+      for (var pi = 0; pi < projects.length; pi += 1) if (String(projects[pi].id) === String(selected)) selectedItem = projects[pi];
+      var project = (sum.project && sum.project.id) ? sum.project : selectedItem;
+      var status = sum.status || (project && project.status) || "not_started";
+      var statusLabel = sum.statusLabel || (project && project.statusLabel) || PROJECT_STATUS_LABEL[status] || status;
+      var archived = !!(sum.archivedAt || (project && project.archivedAt) || status === "archived");
+      var archivedAt = sum.archivedAt || (project && project.archivedAt) || null;
+      var archiveReason = sum.archiveReason || (project && project.archiveReason) || "";
+      var description = sum.description !== undefined && sum.description !== null ? sum.description : ((project && project.description) || "");
+      var descriptionSource = sum.descriptionSource || "";
+      var runs = asList(sum.runs);
+      var currentRun = sum.currentRun || null;
+      if (!currentRun) {
+        for (var ri = 0; ri < runs.length; ri += 1) if (runs[ri].status === "running") { currentRun = runs[ri]; break; }
+      }
+      var lastRun = (selectedItem && selectedItem.lastRun) || null;
+      if (!lastRun && runs.length) lastRun = runs[0];
+      var repository = null;
+      var repoSource = (selectedItem && selectedItem.repository) || sum.repository || null;
+      if (!repoSource && repos.length) repoSource = { kind: repoKind(repos[0].kind), url: repos[0].url };
+      if (repoSource && repoSource.url) repository = { kind: repoKind(repoSource.kind), url: repoSource.url };
+      else if (knownRepoUrl()) repository = { kind: repoKind(form.kind), url: knownRepoUrl() };
+      var roadmap = sum.roadmap || {};
+      var listRows = projects.map(function (p) {
+        var copy = Object.assign({}, p);
+        copy.__key = String(p.id);
+        return copy;
+      });
+      var inList = false;
+      for (var li = 0; li < projects.length; li += 1) if (String(projects[li].id) === String(selected)) inList = true;
+      var projectOptions = projects.map(function (p) {
+        return { value: String(p.id), label: (p.name || ("#" + p.id)) + " · " + (p.statusLabel || PROJECT_STATUS_LABEL[p.status] || p.stage || "") };
+      });
+      if (selected && !inList) {
+        projectOptions = [{ value: String(selected), label: ((project && project.name) || ("#" + selected)) + " · " + statusLabel }].concat(projectOptions);
+      }
+      var polling = !!(currentRun && currentRun.status === "running");
+      react.useEffect(function () {
+        if (!polling) return;
+        var timer = setInterval(function () { sumS[1](); listS[1](); }, 2500);
+        return function () { clearInterval(timer); };
+      }, [polling, selected]);
+
+      function refreshAll() {
+        listS[1]();
+        if (selected) { sumS[1](); reposS[1](); }
+      }
       function run() {
         if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
         setBusy(true);
@@ -2170,14 +2741,15 @@ window.__ModuleLoader__.load({
           if (r.deploy) parts.push("测试环境 " + r.deploy.status);
           if (r.repository && r.repository.reused) parts.push("复用已登记版本库");
           props.flash("已执行：" + (parts.join(" · ") || "完成") + "（计划版本递增）");
-          sumS[1](); reposS[1]();
+          refreshAll();
         }).catch(function (e) { props.flash(e.message || String(e), false); })
           .then(function () { setBusy(false); });
       }
       function rerunDeploy() {
+        if (!selected) { props.flash("先选一个项目", false); return; }
         setBusy(true);
         apiPost("/admin/projects/" + selected + "/deploy-test", {})
-          .then(function (r) { props.flash("测试环境发布：" + r.status); sumS[1](); })
+          .then(function (r) { props.flash("测试环境发布：" + r.status); refreshAll(); })
           .catch(function (e) { props.flash(e.message || String(e), false); })
           .then(function () { setBusy(false); });
       }
@@ -2185,22 +2757,115 @@ window.__ModuleLoader__.load({
         var text = deciding && deciding.text ? deciding.text : "";
         if (!text) { props.flash("请填写裁决内容", false); return; }
         apiPost("/admin/projects/" + selected + "/decisions/" + decisionId + "/decide", { decision: text, decidedBy: "老板" })
-          .then(function () { props.flash("已裁决"); setDeciding(null); sumS[1](); })
+          .then(function () { props.flash("已裁决"); setDeciding(null); refreshAll(); })
           .catch(function (e) { props.flash(e.message || String(e), false); });
       }
-      var plans = sum.plans || [];
-      var decisions = sum.decisions || [];
-      var pending = decisions.filter(function (d) { return d.status === "pending"; });
-      var pipeline = sum.pipeline || [];
-      var deploy = sum.deploy || [];
-      var checkout = sum.checkout;
-      var scanFindings = (sum.scan && sum.scan.findings) || {};
-      var tech = (sum.profile && sum.profile.tech_stack) || {};
+      function archiveProject(row, reason) {
+        setArchiveBusy(String(row.id));
+        apiPost("/admin/projects/" + row.id + "/archive", reason ? { reason: reason } : {})
+          .then(function () { props.flash("已归档项目「" + (row.name || ("#" + row.id)) + "」"); refreshAll(); })
+          .catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setArchiveBusy(""); });
+      }
+      function unarchiveProject(row) {
+        setArchiveBusy(String(row.id));
+        apiPost("/admin/projects/" + row.id + "/unarchive", {})
+          .then(function () { props.flash("已恢复项目「" + (row.name || ("#" + row.id)) + "」"); refreshAll(); })
+          .catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setArchiveBusy(""); });
+      }
       return h(Fragment, null,
-        h(PageHeader, { title: "自动驾驶", subtitle: "填写版本库 → 检出 → 扫描 → 骨架 → 测试流水线 → 计划 → 测试环境；只有裁决项等人" },
-          h(Select, { label: "当前项目", value: selected, options: projects.map(function (p) { return { value: String(p.id), label: p.name + " · " + p.stage }; }), onChange: setSelected }),
+        h(PageHeader, { title: "自动驾驶", subtitle: "项目状态 · 当前执行 · 路线图 · 执行记录 · 归档" },
+          h(Select, { label: "当前项目", value: selected, options: projectOptions, onChange: setSelected }),
           h(Btn, { onClick: refreshAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
-        h(ErrLine, { error: projectsS[0].error || sumS[0].error, onRetry: refreshAll }),
+        h(ErrLine, { error: listS[0].error || sumS[0].error, onRetry: refreshAll }),
+        h(ProjectOverviewCard, {
+          projects: projects,
+          rows: listRows,
+          counts: counts,
+          loading: listS[0].loading && !projects.length,
+          filter: filter,
+          selectedId: selected,
+          busyId: archiveBusy,
+          onFilter: setFilter,
+          onSelect: function (row) { setSelected(String(row.id)); },
+          onArchive: archiveProject,
+          onUnarchive: unarchiveProject,
+        }),
+        !selected
+          ? h(EmptyState, { title: "先选择一个项目", hint: "在上方项目表格点击项目名或「查看」，即可查看项目信息、当前执行、路线图与执行记录。", icon: "target" })
+          : !detailReady
+            ? h(Card, null,
+                h("div", { className: "ocH" }, "项目详情", h("span", { className: "ocCount" }, sumS[0].error ? "加载失败" : "加载中…")),
+                h(SkeletonTable, { columns: [{ key: "a" }, { key: "b" }, { key: "c" }, { key: "d" }], rows: 4 }),
+                sumS[0].error ? h("div", { className: "ocStickyActions" }, h(Btn, { onClick: sumS[1] }, t("panel.retry"))) : null)
+            : h(Fragment, null,
+                h(ProjectInfoCard, {
+                  project: project || { id: selected },
+                  status: status,
+                  statusLabel: statusLabel,
+                  archived: archived,
+                  archivedAt: archivedAt,
+                  archiveReason: archiveReason,
+                  description: description,
+                  descriptionSource: descriptionSource,
+                  tech: tech,
+                  repository: repository,
+                  busy: String(archiveBusy) === String(selected),
+                  onArchive: function (reason) { archiveProject({ id: selected, name: project && project.name }, reason); },
+                  onUnarchive: function () { unarchiveProject({ id: selected, name: project && project.name }); },
+                  onRefresh: refreshAll,
+                }),
+                h(CurrentRunCard, { run: currentRun, last: lastRun }),
+                h(RoadmapCard, { roadmap: roadmap, plans: plans }),
+                h(RunsCard, { runs: runs, loading: false }),
+                h(Card, null,
+                  h("div", { className: "ocH" }, "检出与扫描"),
+                  h(KpiGrid, { items: [
+                    { label: "检出", value: checkout && checkout.status === "ok" ? 1 : 0, unit: checkout && checkout.status === "ok" ? "ok" : "", tone: checkout && checkout.status === "ok" ? "ok" : "warn" },
+                    { label: "源码文件", value: (checkout && checkout.file_count) || 0 },
+                    { label: "主语言", value: tech.primaryLanguage || "-" },
+                    { label: "计划", value: plans.length },
+                    { label: "待裁决", value: pending.length, tone: pending.length > 0 ? "warn" : "ok" },
+                    { label: "流水线失败", value: pipeline.filter(function (r) { return r.status === "failed"; }).length, tone: pipeline.some(function (r) { return r.status === "failed"; }) ? "bad" : "ok" },
+                    { label: "测试环境", value: deploy.length ? deploy[0].status : "-", tone: deploy.length && deploy[0].status === "ok" ? "ok" : "warn" },
+                  ] }),
+                  h("div", { className: "ocMuted" }, checkout ? (checkoutRefText(checkout) + " · 文件 " + (checkout.file_count || 0) + " · 字节 " + (checkout.size_bytes || 0) + " · 分支 " + (checkout.branch || "-")) : "尚未检出"),
+                  h("div", { className: "ocMuted" }, "语言：" + Object.keys(scan.languages || {}).join(" / ") + "；测试：" + (asList(scan.tests).length) + "；CI：" + (asList(scan.ci).length)),
+                  h("div", { className: "ocMuted" }, "缓存排除：" + Object.keys(scanFindings).length + " 项扫描证据")),
+                h(Card, null,
+                  h("div", { className: "ocH" }, "待裁决（" + pending.length + "）"),
+                  pending.length ? pending.map(function (d) {
+                    var editing = deciding && deciding.id === d.id;
+                    return h("div", { key: d.id, className: "ocSection" },
+                      h("div", { className: "ocRow" },
+                        h(Badge, { tone: d.risk_level === "high" ? "bad" : d.risk_level === "medium" ? "warn" : "mute" }, d.risk_level || "low"),
+                        h("b", null, d.topic),
+                        h("span", { style: { flex: 1 } }, d.question),
+                        h(Btn, { onClick: function () { setDeciding(editing ? null : { id: d.id, text: "" }); } }, editing ? "取消" : "裁决")),
+                      editing ? h("div", { className: "ocFormRow" },
+                        h(Field, { label: "裁决内容", value: deciding.text, onChange: function (v) { setDeciding({ id: d.id, text: v }); } }),
+                        h(Btn, { kind: "primary", onClick: function () { submitDecision(d.id); } }, "确认裁决")) : null);
+                  }) : h("div", { className: "ocMuted" }, "没有待裁决事项：自动化不需要你拍板。"))),
+                h(Card, null,
+                  h("div", { className: "ocH" }, "测试流水线与骨架"),
+                  h(Table, { columns: [
+                    { key: "stage", label: "阶段" },
+                    { key: "command", label: "命令" },
+                    { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
+                    { key: "exit_code", label: "退出码" },
+                  ], rows: pipeline, empty: "还没跑过流水线", emptyHint: "自动生产默认会跑仓库既有的 lint/build/test 脚本。", emptyIcon: "flow" })),
+                h(Card, null,
+                  h("div", { className: "ocH" }, "测试环境发布"),
+                  h("div", { className: "ocRow" },
+                    h(Btn, { kind: "primary", disabled: busy, onClick: rerunDeploy }, "发布到测试环境")),
+                  h(Table, { columns: [
+                    { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
+                    { key: "release_id", label: "发布单" },
+                    { key: "exit_code", label: "退出码" },
+                    { key: "health_url", label: "健康检查" },
+                  ], rows: deploy, empty: "还没发布过测试环境", emptyHint: "配置 OPC_TEST_DEPLOY_CMD 后可自动发布。", emptyIcon: "layers" })),
+        h("div", { className: "ocH", style: { marginTop: 4 } }, "新建与执行"),
         h(Card, null,
           h("div", { className: "ocH" }, "新建项目并自动生产"),
           h("div", { className: "ocFormRow" },
@@ -2246,7 +2911,7 @@ window.__ModuleLoader__.load({
             (ideaResult.goals || []).length ? h("div", { className: "ocMuted" }, "目标：" + ideaResult.goals.join("；")) : null,
             (ideaResult.risks || []).length ? h("div", { className: "ocMuted" }, "风险：" + ideaResult.risks.join("；")) : null,
             (ideaResult.openQuestions || []).length ? h("div", { className: "ocMuted" }, "待裁决问题：" + ideaResult.openQuestions.join("；")) : null) : null),
-        !selected ? null : h(Card, null,
+        selected ? h(Card, null,
           h("div", { className: "ocH" }, "对已选项目执行自动驾驶"),
           h("div", { className: "ocMuted" }, "已建项目也能走同一条流水线：检出 → 扫描 → 回填档案 → 计划（版本递增）→ 可选骨架/流水线/测试环境发布；不会重复建版本库、里程碑、测试计划与裁决。"),
           h("div", { className: "ocFormRow" },
@@ -2256,62 +2921,7 @@ window.__ModuleLoader__.load({
             form.kind === "svn" ? h(Field, { label: "修订号", value: form.revision, onChange: function (v) { up("revision", v); }, placeholder: "HEAD 或 12345" }) : null,
             h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
             h(Btn, { kind: "primary", disabled: busy, onClick: runExisting }, busy ? "执行中…" : "在现有项目执行")),
-          repos.length > 0 ? h("div", { className: "ocMuted" }, "已登记版本库：" + repos.map(function (r) { return r.name + "（" + repoKindLabel(r.kind) + " · " + r.url + "）"; }).join("；")) : null),
-        !selected ? null : h(Fragment, null,
-          h(KpiGrid, { items: [
-            { label: "检出", value: checkout && checkout.status === "ok" ? 1 : 0, unit: checkout && checkout.status === "ok" ? "ok" : "", tone: checkout && checkout.status === "ok" ? "ok" : "warn" },
-            { label: "源码文件", value: (checkout && checkout.file_count) || 0 },
-            { label: "主语言", value: tech.primaryLanguage || "-" },
-            { label: "计划", value: plans.length },
-            { label: "待裁决", value: pending.length, tone: pending.length > 0 ? "warn" : "ok" },
-            { label: "流水线失败", value: pipeline.filter(function (r) { return r.status === "failed"; }).length, tone: pipeline.some(function (r) { return r.status === "failed"; }) ? "bad" : "ok" },
-            { label: "测试环境", value: deploy.length ? deploy[0].status : "-", tone: deploy.length && deploy[0].status === "ok" ? "ok" : "warn" },
-          ] }),
-          h(Card, null,
-            h("div", { className: "ocH" }, "检出与扫描"),
-            h("div", { className: "ocMuted" }, checkout ? (checkoutRefText(checkout) + " · 文件 " + (checkout.file_count || 0) + " · 字节 " + (checkout.size_bytes || 0) + " · 分支 " + (checkout.branch || "-")) : "尚未检出"),
-            h("div", { className: "ocMuted" }, "语言：" + Object.keys((sum.scan && sum.scan.languages) || {}).join(" / ") + "；测试：" + (((sum.scan && sum.scan.tests) || []).length) + "；CI：" + (((sum.scan && sum.scan.ci) || []).length)),
-            h("div", { className: "ocMuted" }, "缓存排除：" + Object.keys(scanFindings).length + " 项扫描证据")),
-          h(Card, null,
-            h("div", { className: "ocH" }, "开发/测试/部署计划"),
-            h(Table, { columns: [
-              { key: "plan_kind", label: "类型", render: function (r) { return h(Badge, { tone: "mute" }, r.plan_kind); } },
-              { key: "title", label: "标题" },
-              { key: "version", label: "版本" },
-              { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "active" ? "ok" : "mute" }, r.status); } },
-            ], rows: plans, empty: "还没有自动计划", emptyHint: "执行自动生产后会生成开发/测试/部署计划。", emptyIcon: "layers" })),
-          h(Card, null,
-            h("div", { className: "ocH" }, "测试流水线与骨架"),
-            h(Table, { columns: [
-              { key: "stage", label: "阶段" },
-              { key: "command", label: "命令" },
-              { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
-              { key: "exit_code", label: "退出码" },
-            ], rows: pipeline, empty: "还没跑过流水线", emptyHint: "自动生产默认会跑仓库既有的 lint/build/test 脚本。", emptyIcon: "flow" })),
-          h(Card, null,
-            h("div", { className: "ocH" }, "测试环境发布"),
-            h("div", { className: "ocRow" },
-              h(Btn, { kind: "primary", disabled: busy, onClick: rerunDeploy }, "发布到测试环境")),
-            h(Table, { columns: [
-              { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
-              { key: "release_id", label: "发布单" },
-              { key: "exit_code", label: "退出码" },
-              { key: "health_url", label: "健康检查" },
-            ], rows: deploy, empty: "还没发布过测试环境", emptyHint: "配置 OPC_TEST_DEPLOY_CMD 后可自动发布。", emptyIcon: "layers" })),
-          h(Card, null,
-            h("div", { className: "ocH" }, "待裁决（" + pending.length + "）"),
-            pending.length ? pending.map(function (d) {
-              var editing = deciding && deciding.id === d.id;
-              return h("div", { key: d.id, className: "ocSection" },
-                h("div", { className: "ocRow" },
-                  h(Badge, { tone: d.risk_level === "high" ? "bad" : d.risk_level === "medium" ? "warn" : "mute" }, d.risk_level || "low"),
-                  h("b", null, d.topic),
-                  h("span", { style: { flex: 1 } }, d.question),
-                  h(Btn, { onClick: function () { setDeciding(editing ? null : { id: d.id, text: "" }); } }, editing ? "取消" : "裁决")),
-                editing ? h("div", { className: "ocFormRow" },
-                  h(Field, { label: "裁决内容", value: deciding.text, onChange: function (v) { setDeciding({ id: d.id, text: v }); } }),
-                  h(Btn, { kind: "primary", onClick: function () { submitDecision(d.id); } }, "确认裁决")) : null);
-            }) : h("div", { className: "ocMuted" }, "没有待裁决事项：自动化不需要你拍板。"))));
+          repos.length > 0 ? h("div", { className: "ocMuted" }, "已登记版本库：" + repos.map(function (r) { return r.name + "（" + repoKindLabel(r.kind) + " · " + r.url + "）"; }).join("；")) : null) : null);
     }
 
     // ================= 主控制台 =================

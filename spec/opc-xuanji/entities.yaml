@@ -493,6 +493,15 @@ entities:
       - name: software_profile
         type: jsonb
         nullable: true
+      - name: description
+        type: text
+        nullable: true
+      - name: archived_at
+        type: timestamptz
+        nullable: true
+      - name: archive_reason
+        type: varchar(200)
+        nullable: true
     relations:
       - name: milestones
         target: ProjectMilestone
@@ -2827,6 +2836,51 @@ entities:
       - name: created_at
         type: timestamptz
         nullable: true
+  - name: ProjectAutopilotRun
+    table: stat.project_autopilot_run
+    module: project
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: project_id
+        type: bigint
+        nullable: false
+      - name: checkout_id
+        type: bigint
+        nullable: true
+      - name: trigger
+        type: varchar(16)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: stage
+        type: varchar(32)
+        nullable: false
+      - name: stage_label
+        type: varchar(64)
+        nullable: false
+      - name: steps
+        type: jsonb
+        nullable: false
+      - name: result
+        type: jsonb
+        nullable: true
+      - name: error
+        type: text
+        nullable: true
+      - name: started_at
+        type: timestamptz
+        nullable: false
+      - name: ended_at
+        type: timestamptz
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: false
   - name: UsageEvent
     table: stat.usage_event
     module: platform

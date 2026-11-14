@@ -7,7 +7,7 @@
 运行在 **DeepSeek Harness（DSH ≥ 0.2.1）** 上的 Bundle 插件：以「中枢调度 + 专业员工矩阵 + 三级沉淀 + TS 流程固化」补全一人公司在财税、法务、行政、战略、项目、情报、客户、车务、进销存上的职能短板，并把**公司日常经营中需要定期执行的事**做成配置驱动的自动化任务。
 
 - 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.12、《OPC-玄机 · 技术选型与系统架构.md》v2.12（与本仓库同目录）、《OPC-SDD-003 Super Agent 应用层设计》（应用层定位）
-- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（42 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（114 个 operation）+ PostgreSQL 17 / pgvector 数据层
+- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（42 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（117 个 operation）+ PostgreSQL 17 / pgvector 数据层
 - 应用层依赖：**[mindtheory/dsh-super-agents](https://github.com/mindtheory/dsh-super-agents)**（软依赖，同 profile 安装即得员工超级智能体：部署/派活/回流/健康；未装则 agent 类工具降级，其余功能不受影响）
 - 当前阶段：**v0.1.0 已发布**。CI 在 Node 24.9/24/26 上单元与门禁全绿；PostgreSQL 17 + pgvector 集成 **68/68** 通过。本地跑集成仍需 `OPC_TEST_DSN`。
 
@@ -34,7 +34,7 @@ opc-xuanji/
 │   ├── plugin/      # DSH cordis 插件入口（42 个工具）
 │   └── db/          # 连接池与迁移执行器
 ├── scripts/         # gen-spec / migrate / serve
-├── test/            # 单元 42 + 集成 87（共 129 例；新增 Web/员工用例需测试库）
+├── test/            # 单元 42 + 集成 92（共 134 例；新增 Web/员工用例需测试库）
 ├── docs/员工需求/   # 11 个员工需求分册（一人一份）
 ├── docs/            # 软件工程文档（SRS/IRS/SDD/DBDD/SDP/SCMP/SQAP/RMP/RTM/SVD/STP/STD/STR + UML + PA）
 ├── AGENTS.md        # 主会话 Agent 运行章程（幕僚长/COO 行为约定）
@@ -97,11 +97,11 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | 微信推送 | `src/notify/wechat.ts` | 裁决/每日简报 → `stat.wechat_push` 队列 → dsh-im（BotHarness）主动投递端点推微信；失败退避 5 次；未绑定只排队；老板在微信里可直接使用 `opc_*` 工具 |
 | 基础资源（公司共享） | `src/domains/admin` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记在 `ref.shared_resource`；公司默认口径 Debian + SSH、默认账号 `canetwork` 存 `ref.shared_setting`；新建项目默认按 `is_default` 选型绑定到 `ref.project_shared_resource`；口令只以 `env:OPC_DEFAULT_SSH_PASSWORD` 引用登记，不入库不入仓 |
 | 流程（TS 固化） | `ref.workflow_registry` + `audit.workflow_*` | 版本不可变、代码哈希与测试哈希一致、幂等键 `instance_id + node_id`、三关测试与影子运行在 Phase 2 接 `dsh-workflow-ptc` |
-| 数据（共享层） | `biz/ref/audit/stat/vec` | 91 张表（37 基线 + 8 Web + 9 员工线 + 12 项目研发 + 10 情报日报 + 3 基础资源 + 4 项目自动驾驶 + 3 自动化生产 + 3 运维反馈 + 1 创意转项目 + 1 微信推送）；审计 `(id, created_at)` 复合主键为分区预留；pgvector HNSW `m=16, ef_construction=64` |
+| 数据（共享层） | `biz/ref/audit/stat/vec` | 92 张表（37 基线 + 8 Web + 9 员工线 + 12 项目研发 + 10 情报日报 + 3 基础资源 + 4 项目自动驾驶 + 3 自动化生产 + 3 运维反馈 + 1 创意转项目 + 1 微信推送 + 1 自动驾驶控制台）；审计 `(id, created_at)` 复合主键为分区预留；pgvector HNSW `m=16, ef_construction=64` |
 
 ### HTTP 契约（`/api/v1`）
 
-`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`，管理面 `admin/projects*`、`admin/shared-resources*`、`admin/projects/{id}/autopilot`、`admin/projects/{id}/deploy-test`、`admin/usage/*`、`admin/issues*`、`admin/ideas/*`、`admin/projects/from-idea`、`admin/wechat/*` 等共 114 个 operation。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
+`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`，管理面 `admin/projects*`、`admin/shared-resources*`、`admin/projects/{id}/autopilot`、`admin/autopilot/projects`、`admin/projects/{id}/archive`、`admin/projects/{id}/unarchive`、`admin/projects/{id}/deploy-test`、`admin/usage/*`、`admin/issues*`、`admin/ideas/*`、`admin/projects/from-idea`、`admin/wechat/*` 等共 117 个 operation。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
 
 ### Web 界面（DSH 插件栏「OPC驾驶舱」）
 
@@ -165,7 +165,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 ## 测试与门禁
 
 ```bash
-npm test          # 129 用例：单元 42 + 集成 87（本地需 OPC_TEST_DSN；CI 已全绿）
+npm test          # 134 用例：单元 42 + 集成 92（本地需 OPC_TEST_DSN；CI 已全绿）
 npm run typecheck # tsc --noEmit，0 错误
 npm run spec:check# check-spec：PASS（ERROR 0）
 npm run docs:check# check-docs：frontmatter/文末两节/编号

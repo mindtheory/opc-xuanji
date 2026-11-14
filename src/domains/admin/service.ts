@@ -161,6 +161,7 @@ function coerce(field: FieldDef, value: unknown, domain: Domain): unknown {
 
 const PROJECT_FIELDS: FieldDef[] = [
   { key: "name", column: "name", type: "string", required: true },
+  { key: "description", column: "description", type: "string" },
   { key: "projectType", column: "project_type", type: "string" },
   { key: "stage", column: "stage", type: "string", required: true },
   { key: "progress", column: "progress", type: "int", min: 0, max: 100 },
@@ -779,9 +780,10 @@ export class AdminService {
 
   async listProjects(): Promise<Row[]> {
     const result = await this.pool.query(
-      `SELECT id, name, project_type, stage, progress, start_date, target_end_date, actual_start_date,
-              actual_end_date, timezone, work_calendar, tech_stack, software_profile, cost_actual, blockers
-       FROM biz.project ORDER BY id DESC LIMIT 500`,
+      `SELECT id, name, description, project_type, stage, progress, start_date, target_end_date, actual_start_date,
+              actual_end_date, timezone, work_calendar, tech_stack, software_profile, cost_actual, blockers,
+              archived_at, archive_reason
+       FROM biz.project ORDER BY archived_at NULLS FIRST, id DESC LIMIT 500`,
     );
     return result.rows.map((row) => camelize(row as Row));
   }
@@ -888,7 +890,7 @@ export class AdminService {
           authRef: repositoryInput?.authRef,
           kind: repositoryInput?.kind,
           revision: repositoryInput?.revision,
-        }, (input.options as Row) ?? {});
+        }, { ...((input.options as Row) ?? {}), trigger: "idea" });
         status = "autopilot";
       } catch (caught) {
         status = "failed";
@@ -953,6 +955,24 @@ export class AdminService {
   async autopilotSummary(projectId: number): Promise<Row> {
     if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
     return this.autopilot.summary(projectId);
+  }
+
+  /** 自动驾驶项目列表：状态/当前执行/最近执行/计划与待裁决计数（archived=active|archived|all）。 */
+  async listAutopilotProjects(filter: string | null): Promise<Row> {
+    if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
+    const normalized: "active" | "archived" | "all" = filter === "archived" ? "archived" : filter === "all" ? "all" : "active";
+    return this.autopilot.listProjects(normalized);
+  }
+
+  async archiveProject(projectId: number, input: Row = {}): Promise<Row> {
+    if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
+    const reason = typeof input.reason === "string" && input.reason.trim() !== "" ? input.reason.trim() : null;
+    return this.autopilot.setArchived(projectId, true, reason);
+  }
+
+  async unarchiveProject(projectId: number): Promise<Row> {
+    if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
+    return this.autopilot.setArchived(projectId, false);
   }
 
   async listProjectPlans(projectId: number): Promise<Row[]> {

@@ -582,28 +582,38 @@ usecases:
     actors:
       - 老板
       - 项目监理
-    goal: 新建项目时填写版本库，Git 浅克隆或 SVN 检出后静态扫描，回填项目档案
+    goal: 新建项目时填写版本库，Git 浅克隆或 SVN 检出后静态扫描，回填项目档案；控制台按状态/当前执行/执行记录/路线图展示并可归档恢复
     entities:
       - Project
       - CodeRepository
       - ProjectCheckout
       - ProjectScan
+      - ProjectAutopilotRun
       - AuditLog
     api:
       - createAdminProject
       - bootstrapProjectAutopilot
       - getProjectAutopilot
+      - listAutopilotProjects
+      - archiveProject
+      - unarchiveProject
     tests:
       - TC-AUTO-001
       - TC-AUTO-010
       - TC-AUTO-011
+      - TC-AUTO-012
+      - TC-AUTO-013
+      - TC-AUTO-015
+      - TC-AUTO-016
     preconditions: 版本库地址可达（Git：https/ssh/file/本地路径；SVN：svn://、svn+ssh:// 或绝对 URL）；Node 环境可用 git，SVN 另需 subversion ≥1.10
     steps:
       - 老板新建项目并填写版本库（kind 可显式指定；svn://、svn+ssh:// 自动识别为 svn，其余默认 git；svn 的 branch=主干/分支路径、revision=HEAD|数字|r数字）
       - 中枢登记 ref.code_repository，Git 浅克隆记 commit_sha、SVN checkout 记 revision，vcs_kind 落 ref.project_checkout
       - 静态扫描语言、清单、测试、CI 与目录结构（不执行仓库代码，跳过 .git/.svn/.hg/node_modules/dist 等目录）
-      - 回填 biz.project 的 project_type/tech_stack/software_profile（含 vcs/revision）
+      - 回填 biz.project 的 project_type/tech_stack/software_profile（含 vcs/revision）；描述优先人工填写，空描述才从 README/清单抽取
+      - 每次执行追加 stat.project_autopilot_run（10 阶段 steps 留痕），同项目已有 running 时 409 ERR-AUTO-001
       - SVN 客户端缺失 → 502 ERR-AUTO-002 并登记 svn_client 裁决；检出失败记录 status=failed，不伪造档案
+      - 归档/恢复只改 biz.project 标记（不删检出/计划/执行记录/裁决），默认列表隐藏归档项目
 
   - id: UC-025
     title: 自动生成开发/测试/部署计划并推送裁决
@@ -611,7 +621,7 @@ usecases:
     actors:
       - 老板
       - 项目监理
-    goal: 依据扫描结果生成三份计划与测试基线，仅把需老板拍板的事项推入裁决队列
+    goal: 依据扫描与检出内容生成三份带全文的计划与测试基线，仅把需老板拍板的事项推入裁决队列
     entities:
       - Project
       - ProjectPlan
@@ -620,6 +630,7 @@ usecases:
       - TestPlan
       - TestCase
       - DeployEnvironment
+      - ProjectAutopilotRun
       - AuditLog
     api:
       - getProjectAutopilot
@@ -630,6 +641,7 @@ usecases:
       - TC-AUTO-002
       - TC-AUTO-003
       - TC-AUTO-004
+      - TC-AUTO-014
     preconditions: 项目已完成自动驾驶检出与扫描
     steps:
       - 按代码规模估算工期并写入 5 个里程碑（开发计划）

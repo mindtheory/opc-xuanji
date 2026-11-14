@@ -1,13 +1,13 @@
 ---
 doc_id: OPC-STD-001
 title: OPC-玄机 · 一人公司中枢 测试设计说明
-version: 0.4
+version: 0.5
 status: 评审稿
 stage: D4
 owner: 质量与交付组（docs-test）
 upstream: ["spec/opc-xuanji/usecases.yaml", "spec/opc-xuanji/api.yaml", "spec/opc-xuanji/entities.yaml", "docs/OPC-STP-001-测试计划.md"]
 gate: G4
-updated: 2026-11-11
+updated: 2026-11-14
 ---
 
 # OPC-STD-001 · OPC-玄机 · 一人公司中枢 测试设计说明
@@ -714,6 +714,20 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.22 增量，基线核算（5.1）只统计基线 68 例。
 
+### 4.33 TC-AUTO-012 … TC-AUTO-016 · 自动驾驶控制台（v2.23 增量）
+
+**追溯**：REQ-PRJ-037/038/039；`test/integration/autopilot.test.ts`；实体 Project、ProjectAutopilotRun、ProjectPlan、ProjectCheckout。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-AUTO-012 | 描述抽取与人工优先 | 建项目带 `repository` 检出夹具 → `POST /admin/projects` 响应 `autopilot.scan.description` 命中 README 首段；summary `description` 命中、`descriptionSource='README.md'`、`profile.software_profile.description` 命中；`biz.project.description` 落库；`roadmap.plans[0].content.description` 命中；**人工优先**：先 `PUT` 写 `description='人工描述优先'` 再执行 → summary 仍为人工值，`software_profile.description` 更新为抽取结果（机器不覆盖人工） |
+| TC-AUTO-013 | 执行记录与状态口径 | 一次 `bootstrap` 后 summary `status='waiting_decision'`、`statusLabel='待裁决'`、**`currentRun=null`**（无 running 不伪造）、`runs.length=1`；`runs[0]` 的 `status='ok'`、`trigger='manual'`、`steps.length=10` 且阶段序列为 register/checkout/scan/profile/scaffold/pipeline/plans/deploy/decisions/done、每步 ∈ {ok,skipped}、末步 ok、`durationMs` 为数字、`error=null`、`checkoutId` 非空；库中恰 1 行 `status=ok/stage=done/stage_label=完成`；列表项 `lastRun.id` 与之一致、`planCount=3`、`pendingDecisions≥1` |
+| TC-AUTO-014 | 路线图与内容化计划 | `roadmap.weeks` 为数字、`phases=5`、`plans=3`、`milestones=5`、`startDate`/`endDate` 为 `YYYY-MM-DD`；dev 计划 `content.modules` 含 `src`/`test`、`workBreakdown` 含 `src`、`risks` 含 LICENSE 缺口；test 计划 `content.testFiles` 含 `test/app.test.js`、`focusAreas` 含 `src`、`caseDetails=3`、`suggestedCases` 含 `src` 模块项；deploy 计划 `runtime.docker='Dockerfile'`、首步含「镜像」；同一 content 也出现在 `GET /admin/projects/{id}/plans`（兼容旧消费方） |
+| TC-AUTO-015 | 归档/恢复与列表过滤 | `POST .../archive {reason:'验收归档'}` → `archivedAt` 非空、`archiveReason` 一致；`?archived=active` 不含该项目且 `counts.archived≥1`；`?archived=archived` 该项 `status='archived'`、`statusLabel='已归档'`；`?archived=all` 含该项；归档后**执行记录仍 1 行、计划仍 3 行**（只改标记不删数据）；summary `status='archived'`；`unarchive` 后 `archivedAt=null` 且回到 active 列表 |
+| TC-AUTO-016 | 并发执行被拒 | 先手工插一行 `status='running'` 的执行记录 → `POST .../autopilot` 返回 **409**、`errorCode='ERR-AUTO-001'`、message 含「正在执行」；不产生第二条 running、不覆盖历史 |
+
+**结论口径**：本章为 v2.23 增量；`autopilot.test.ts` 用例数 11→16，基线核算（5.1）仍只统计基线 68 例。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -763,6 +777,11 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-AUTO-009 | UC-029 / REQ-PRJ-034 | `test/integration/autopilot.test.ts` | 重复执行：复用资源、计划版本递增、裁决去重 |
 | TC-AUTO-010 | UC-024 / REQ-PRJ-036 | `test/integration/autopilot.test.ts` | SVN 检出：修订号落库、跳过 `.svn`、档案回填、发布版本号；服务环境凭据仅对白名单主机自动使用 |
 | TC-AUTO-011 | UC-024 / REQ-PRJ-036 | `test/integration/autopilot.test.ts` | svn 客户端缺失：502 `ERR-AUTO-002` + `svn_client` 裁决 |
+| TC-AUTO-012 | UC-025 / REQ-PRJ-038 | `test/integration/autopilot.test.ts` | README 首段抽取、descriptionSource=README.md、人工描述不被覆盖 |
+| TC-AUTO-013 | UC-024 / REQ-PRJ-037 | `test/integration/autopilot.test.ts` | 10 步执行记录落库；currentRun 无 running 时为 null；status=waiting_decision |
+| TC-AUTO-014 | UC-025 / REQ-PRJ-039 | `test/integration/autopilot.test.ts` | roadmap 5 阶段/3 计划/5 里程碑；三份计划 content 基于检出内容 |
+| TC-AUTO-015 | UC-024 / REQ-PRJ-037 | `test/integration/autopilot.test.ts` | 归档/恢复只改标记；active/archived/all 过滤；执行记录与计划不删 |
+| TC-AUTO-016 | UC-024 / REQ-PRJ-037 | `test/integration/autopilot.test.ts` | 已有 running 时 409 `ERR-AUTO-001`，不并跑 |
 | TC-IDEA-001 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 文本创意 AI 解析 |
 | TC-IDEA-002 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | txt/docx/xlsx/pdf 多文件解析 |
 | TC-IDEA-003 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 建项目并进自动驾驶 |
@@ -834,7 +853,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | 33 | `exportEmployeePackage` | `POST /api/v1/employees/{pluginId}/export` | TC-EMP-003 | `employees.test.ts` |
 | 34 | `importEmployeePackage` | `POST /api/v1/employees/import` | TC-EMP-003 | `employees.test.ts` |
 
-矩阵闭合性由 `spec.test.ts`「api.yaml 的每个 operation 都有对应 HTTP 路由」保证：62 个 operation 全部要在 `ROUTES` 命中，且数量必须相等（`count === ROUTES.length`）。参数级负例（400/404）未逐接口覆盖，见第 8 章 N-6。
+矩阵闭合性由 `spec.test.ts`「api.yaml 的每个 operation 都有对应 HTTP 路由」保证：117 个 operation 全部要在 `ROUTES` 命中，且数量必须相等（`count === ROUTES.length`）。参数级负例（400/404）未逐接口覆盖，见第 8 章 N-6。
 
 ## 7. 横切验证（不对应 TC 的用例）
 

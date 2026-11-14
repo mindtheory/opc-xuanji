@@ -1184,6 +1184,30 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/autopilot\/projects$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: await requireAdmin(ctx).listAutopilotProjects(query.get("archived")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/archive$/,
+    keys: ["projectId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await requireAdmin(ctx).archiveProject(requireId(params, "projectId"), body as Record<string, unknown>) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/unarchive$/,
+    keys: ["projectId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await requireAdmin(ctx).unarchiveProject(requireId(params, "projectId")) };
+    },
+  },
+  {
     method: "POST",
     pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/deploy-test$/,
     keys: ["projectId"],

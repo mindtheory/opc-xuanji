@@ -1718,11 +1718,63 @@ paths:
     get:
       operationId: getProjectAutopilot
       tags: [admin]
-      summary: 自动驾驶汇总（最近检出、扫描、计划、裁决与回填档案）
+      summary: 自动驾驶汇总（状态、项目描述、当前执行、执行记录、计划路线图、检出/扫描/裁决与回填档案）
+      description: >-
+        响应含 status/statusLabel（not_started 未接入、running 运行中、waiting_decision 待裁决、failed 执行失败、ready 计划就绪、archived 已归档）、
+        description/descriptionSource（取自 README 或构建清单，人工编辑优先）、archivedAt/archiveReason、project、
+        currentRun（status=running 的执行，无则 null）、runs（最近 10 次执行，最新在前）、
+        roadmap{weeks,startDate,endDate,milestones,phases,plans[{planKind,version,title,status,generatedAt,content}]}（阶段优先、里程碑兜底）与 milestones。
+        状态优先级：archived > running > 最近一次失败(failed) > waiting_decision > ready(planCount>0) > not_started。
       parameters:
         - { name: projectId, in: path, required: true, schema: { type: integer } }
       responses:
-        '200': { description: OK }
+        '200': { description: "OK；plans[] 带 content（dev/test/deploy 三份计划全文）" }
+        '404': { description: ERR-AUTO-001 项目不存在 }
+
+  /api/v1/admin/autopilot/projects:
+    get:
+      operationId: listAutopilotProjects
+      tags: [admin]
+      summary: 自动驾驶项目列表（状态口径、当前执行/最近执行、计划与待裁决计数；默认只列未归档）
+      description: >-
+        archived=active|archived|all，缺省 active。items[] 每项含 id/name/description/stage/projectType/progress/status/statusLabel/
+        archivedAt/archiveReason、repository{kind,url,defaultRef}|null、lastCheckout{status,vcsKind,branch,commitSha,revision,fileCount,checkedOutAt}|null、
+        currentRun{id,status,stage,stageLabel,startedAt}|null、lastRun{id,trigger,status,stage,stageLabel,startedAt,endedAt,durationMs}|null、
+        planCount、pendingDecisions；counts 含 total/active/archived/running/waitingDecision/ready/failed/notStarted。
+      parameters:
+        - { name: archived, in: query, required: false, schema: { type: string, enum: [active, archived, all] } }
+      responses:
+        '200': { description: OK；默认 archived=active，已归档项目不出现在默认列表 }
+        '400': { description: ERR-AUTO-001 参数非法 }
+
+  /api/v1/admin/projects/{projectId}/archive:
+    post:
+      operationId: archiveProject
+      tags: [admin]
+      summary: 归档项目（只改标记：不删检出、计划、执行记录与裁决）
+      description: 写 biz.project.archived_at/archive_reason（reason ≤200 字），审计 project.autopilot.archive；归档只影响默认列表与状态口径，不删除任何数据。
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveProjectRequest'
+      responses:
+        '200': { description: "OK；返回 {id, archivedAt, archiveReason}" }
+        '404': { description: ERR-AUTO-001 项目不存在 }
+
+  /api/v1/admin/projects/{projectId}/unarchive:
+    post:
+      operationId: unarchiveProject
+      tags: [admin]
+      summary: 恢复归档项目（清空 archived_at/archive_reason，写审计 project.autopilot.unarchive）
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: "OK；返回 {id, archivedAt: null, archiveReason: null}" }
+        '404': { description: ERR-AUTO-001 项目不存在 }
 
   /api/v1/admin/projects/{projectId}/plans:
     get:
@@ -1893,6 +1945,12 @@ components:
             revision: { type: string, description: 'SVN 修订号：HEAD|数字|r数字，默认 HEAD；Git 不传，传了返回 400 ERR-AUTO-001' }
             authRef: { type: string, description: '凭据引用，仅接受 env: 引用；未填时若目标主机在 OPC_SVN_TRUSTED_HOSTS 白名单内则自动使用服务环境 OPC_SVN_PASSWORD；SVN 密码经 stdin 传送，不落库不落日志' }
             name: { type: string }
+    ArchiveProjectRequest:
+      type: object
+      additionalProperties: false
+      description: 归档项目入参；reason 可空，最长 200 字（超长按 200 截断）。归档只改标记，不删除检出/计划/执行记录/裁决。
+      properties:
+        reason: { type: string, maxLength: 200, description: 归档原因（可空） }
     ProjectResourceRequest:
       type: object
       additionalProperties: true

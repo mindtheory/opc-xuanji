@@ -1,7 +1,7 @@
 ---
 doc_id: OPC-IRS-001
 title: OPC-玄机 · 一人公司中枢 接口需求规格说明
-version: 0.4
+version: 0.5
 status: 评审稿
 stage: D1
 owner: 玄机文档组
@@ -12,12 +12,12 @@ updated: 2026-11-14
 
 # OPC-玄机 · 一人公司中枢 接口需求规格说明
 
-本文档解决"中枢对外到底承诺什么形状"这个问题：把 `spec/opc-xuanji/api.yaml` 的 89 个 `/api/v1` operation 与 DSH 上的 `opc_*` 工具，写成开发可直接照做、测试可直接照验的接口需求——每个接口的用途、调用方、入参出参、错误码、幂等与重试、鉴权与审计六项齐全，并且统一 Result 口径（成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`）。使用者与时机：后端在 D2 设计前用它确定契约边界；前端/插件在联调前用它对齐字段；测试在 G2 契约门禁前用它逐 operation 断言。凡本文未在 `api.yaml` 登记的错误码、字段、枚举值，一律视为契约外内容，不得实现。
+本文档解决"中枢对外到底承诺什么形状"这个问题：把 `spec/opc-xuanji/api.yaml` 的 117 个 `/api/v1` operation 与 DSH 上的 `opc_*` 工具，写成开发可直接照做、测试可直接照验的接口需求——每个接口的用途、调用方、入参出参、错误码、幂等与重试、鉴权与审计六项齐全，并且统一 Result 口径（成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`）。使用者与时机：后端在 D2 设计前用它确定契约边界；前端/插件在联调前用它对齐字段；测试在 G2 契约门禁前用它逐 operation 断言。凡本文未在 `api.yaml` 登记的错误码、字段、枚举值，一律视为契约外内容，不得实现。
 
 ## 目录
 
 1. [通用约定（Result 口径与横切规则）](#1-通用约定result-口径与横切规则)
-2. [接口清单（89 个 /api/v1 operation）](#2-接口清单89-个-apiv1-operation)
+2. [接口清单（117 个 /api/v1 operation）](#2-接口清单117-个-apiv1-operation)
 3. [平台类接口（P1–P6）](#3-平台类接口p1p6)
 4. [流程类接口（P7–P10）](#4-流程类接口p7p10)
 5. [审计类接口（P11–P12）](#5-审计类接口p11p12)
@@ -156,9 +156,9 @@ updated: 2026-11-14
 - 新增/修改接口、字段、枚举、错误码，必须先改 `api.yaml`，再改本文，再改实现，同一需求同一提交序列（不允许先改代码后补 spec）。
 - 破坏性变更（删字段、改语义、收紧必填）须在本文"与其他文档的关系"记录变更点并升 `version`。
 
-## 2. 接口清单（114 个 /api/v1 operation）
+## 2. 接口清单（117 个 /api/v1 operation）
 
-> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P101 管理面（项目/情报 Web 控制台、公司基础资源、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P104 管理面（项目/情报 Web 控制台、公司基础资源、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -839,7 +839,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
-### 7.6 管理面接口（P50–P101，Web 控制台）
+### 7.6 管理面接口（P50–P104，Web 控制台）
 
 管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
 
@@ -853,6 +853,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 情报条目/日报/流水线 | `GET /admin/intel/items`、`PUT /admin/intel/items/{itemId}`、`GET /admin/intel/briefs[/{briefId}]`、`GET /admin/intel/runs`、`POST /admin/intel/run/{stage}`、`GET /admin/intel/summary` | 条目状态、日报详情、运行记录、手动触发 analyze/aggregate/brief/push 与 KPI |
 | 公司基础资源 | `GET/POST /admin/shared-resources`、`GET /admin/shared-resources/defaults`、`PUT/DELETE /admin/shared-resources/{resourceId}`、`GET/POST /admin/projects/{projectId}/shared-resources`、`DELETE /admin/projects/{projectId}/shared-resources/{resourceId}` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记与默认口径（debian/ssh/canetwork）；新建项目默认选型绑定；明文凭据 400 `ERR-RES-002`，被绑定删除 409 `ERR-RES-004` |
 | 项目自动驾驶 | `POST/GET /admin/projects/{projectId}/autopilot`、`GET /admin/projects/{projectId}/plans`、`GET /admin/projects/{projectId}/decisions`、`POST /admin/projects/{projectId}/decisions/{decisionId}/decide` | 建项目填版本库即检出（Git 浅克隆 / SVN checkout）→ 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 仅裁决项入队；svn 客户端缺失或检出失败 502 `ERR-AUTO-002`，裁决重复 404 `ERR-AUTO-004` |
+| 自动驾驶控制台 | `GET /admin/autopilot/projects`、`POST /admin/projects/{projectId}/archive`、`POST /admin/projects/{projectId}/unarchive` | 项目列表按 6 态（未接入/运行中/待裁决/执行失败/计划就绪/已归档）展示状态、当前执行与最近执行、计划与待裁决计数；归档/恢复只改 `archived_at`/`archive_reason` 标记（不删检出/计划/执行记录/裁决），默认列表隐藏归档；同项目并发执行 409 `ERR-AUTO-001` |
 | 自动化生产 | `POST /admin/projects/{projectId}/deploy-test` | 自动发布测试环境：建发布单 → 执行 `OPC_TEST_DEPLOY_CMD` 或显式命令 → 健康检查；无命令 202 转裁决，执行失败 502 `ERR-AUTO-005` |
 | 运维反馈 | `GET /admin/usage/summary`、`POST /admin/usage/insight`、`GET /admin/issues`、`POST /admin/issues/sync` | 用量回顾（动作/状态/耗时聚合）、AI/规则审视产出体验需求草稿、Issue 草稿列表与投递（去重 + 单轮5/单日20 限额；未配置 token 保留草稿） |
 | 创意转项目 | `POST /admin/ideas/analyze`、`POST /admin/projects/from-idea`、`GET /admin/projects/{projectId}/ideas` | 文本/文档创意（txt/md/docx/xlsx/pdf，多文件）经 AI/规则解析后自动建项目并进自动驾驶；无仓库转 repository 裁决；不支持格式 415 `ERR-IDEA-002` |
@@ -873,6 +874,20 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 失败 | 参数/凭据非法 400 `ERR-AUTO-001/003`；检出失败或缺少 svn 客户端 502 `ERR-AUTO-002`（后者登记 `topic=svn_client` 裁决） |
 
 **SVN 检出与客户端口径**：SVN 检出走本机 CLI（subversion ≥1.10），认证密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库、不进日志；SVN 地址允许空格与中文（公司路径可直接填）；未填 `authRef` 时仅对 `OPC_SVN_TRUSTED_HOSTS` 白名单主机自动使用服务环境凭据，白名单外主机不送口令；svn 客户端缺失时返回 502 `ERR-AUTO-002` 并登记 `topic=svn_client` 裁决，不伪造工作副本、档案与计划；扫描跳过 `.git/.svn/.hg/node_modules/dist`；SVN 骨架只落工作副本（`status=generated`）、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号取 `coalesce(commit_sha, revision)`。
+
+**P102–P104 自动驾驶控制台契约细节（v2.23 增补）**：
+
+| 项 | 内容 |
+| :--- | :--- |
+| P102 列表 | `GET /admin/autopilot/projects?archived=active\|archived\|all`，缺省 `active`；返回 `{items:[ProjectItem], counts:{total,active,archived,running,waitingDecision,ready,failed,notStarted}}` |
+| ProjectItem | `id`、`name`、`description`、`stage`、`projectType`、`progress`、`status`、`statusLabel`、`archivedAt`、`archiveReason`、`repository{kind,url,defaultRef}\|null`、`lastCheckout{status,vcsKind,branch,commitSha,revision,fileCount,checkedOutAt}\|null`、`currentRun{id,status,stage,stageLabel,startedAt}\|null`、`lastRun{id,trigger,status,stage,stageLabel,startedAt,endedAt,durationMs}\|null`、`planCount`、`pendingDecisions` |
+| 状态派生 | 优先级 `archived > running > 最近一次失败(failed) > waiting_decision > ready(planCount>0) > not_started`；`currentRun` 仅 `status=running` 时非空，否则为 `null`（不伪造运行中） |
+| P103 归档 | `POST /admin/projects/{projectId}/archive`，body `{reason?: string}`（≤200 字，超长截断）；只写 `archived_at`/`archive_reason`，返回 `{id,archivedAt,archiveReason}`；审计 `project.autopilot.archive` |
+| P104 恢复 | `POST /admin/projects/{projectId}/unarchive`，返回 `{id,archivedAt:null,archiveReason:null}`；审计 `project.autopilot.unarchive` |
+| 描述字段 | `PUT /admin/projects/{projectId}` 接受 `description`（人工编辑优先，自动驾驶只填空描述）；`GET .../autopilot` 返回 `description`/`descriptionSource` |
+| 汇总扩展 | `GET /admin/projects/{projectId}/autopilot` 增 `status`/`statusLabel`、`description`/`descriptionSource`、`archivedAt`/`archiveReason`、`project`、`currentRun`、`runs`（≤10，最新在前）、`roadmap{weeks,startDate,endDate,milestones,phases,plans[{planKind,version,title,status,generatedAt,content}]}`、`milestones`；`plans[]` 带 `content` |
+| 执行记录 | 每次 `bootstrap` 追加 `stat.project_autopilot_run`（`trigger=manual\|idea\|api`、`status=running\|ok\|failed`、`stage`、`stage_label`、10 阶段 `steps[{stage,label,status,startedAt,endedAt,durationMs,detail}]`）；同项目已有 `running` 时 409 `ERR-AUTO-001` |
+| 失败 | 无新增错误码：并发/参数 400 或 409 `ERR-AUTO-001`，检出 502 `ERR-AUTO-002`，凭据 400 `ERR-AUTO-003`，裁决 404 `ERR-AUTO-004` |
 
 ## 8. DSH 工具契约（工具即接口）
 
@@ -1076,7 +1091,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P83 bindProjectSharedResources | ✓ |  |  |  |
 | P84 unbindProjectSharedResource |  |  | ✓ |  |
 
-#### 9.1.2 项目自动驾驶接口错误码（P85–P89）
+#### 9.1.2 项目自动驾驶接口错误码（P85–P104）
 
 | 接口 | ERR-AUTO-001 | ERR-AUTO-002 | ERR-AUTO-003 | ERR-AUTO-004 |
 | :--- | :---: | :---: | :---: | :---: |
@@ -1097,6 +1112,9 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P99 listWechatOutbox |  |  |  |  |
 | P100 pushWechatText |  |  |  |  |
 | P101 syncWechatOutbox |  |  |  |  |
+| P102 listAutopilotProjects | ✓ |  |  |  |
+| P103 archiveProject | ✓ |  |  |  |
+| P104 unarchiveProject | ✓ |  |  |  |
 
 ### 9.2 失败语义三原则
 
@@ -1170,7 +1188,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P83 | REQ-PRJ-025 | UC-023 | TC-RES-003 | 显式选型覆盖默认；非法资源 400 `ERR-RES-001` |
 | P84 | REQ-PRJ-026 | UC-023 | TC-RES-005 | 未绑定 404 `ERR-RES-003`；解绑写审计 |
 | P85 | REQ-PRJ-027..029、036 | UC-024、025 | TC-AUTO-001..003、010、011 | Git/SVN 双协议检出；svn 修订号落库；svn 客户端缺失 502 `ERR-AUTO-002` + `svn_client` 裁决；只读扫描；三计划 draft |
-| P86 | REQ-PRJ-027、028 | UC-024 | TC-AUTO-001 | 返回最近检出/扫描/计划/裁决与回填档案 |
+| P86 | REQ-PRJ-027、028、037、038 | UC-024、025 | TC-AUTO-001、012、013 | 返回最近检出/扫描/计划/裁决与回填档案，v2.23 增 `status`/`statusLabel`、`description`/`descriptionSource`、`archivedAt`/`archiveReason`、`project`、`currentRun`（无 running 为 null）、`runs`（≤10 最新在前）、`roadmap`（阶段优先、里程碑兜底）与带 `content` 的 `plans[]` |
 | P87 | REQ-PRJ-029 | UC-025 | TC-AUTO-002 | 返回 dev/test/deploy 三份计划 |
 | P88 | REQ-PRJ-030 | UC-025 | TC-AUTO-003 | 默认全部；`status=pending` 仅待裁决 |
 | P89 | REQ-PRJ-030 | UC-025 | TC-AUTO-003、004 | 非 pending 404 `ERR-AUTO-004`；裁决写审计 |
@@ -1186,6 +1204,9 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P99 | REQ-OPS-004 | UC-031 | TC-WECHAT-005 | 队列列表（含最近错误与下次重试） |
 | P100 | REQ-OPS-004 | UC-031 | TC-WECHAT-002 | 未配置只入队；配置后投递 |
 | P101 | REQ-OPS-004 | UC-031 | TC-WECHAT-003 | 到期投递，失败退避 |
+| P102 | REQ-PRJ-037、038 | UC-024、UC-025 | TC-AUTO-013、015 | 6 态口径与 counts；默认 archived=active；`currentRun` 仅 running 时非空 |
+| P103 | REQ-PRJ-037 | UC-024 | TC-AUTO-015 | 只写 archived_at/archive_reason，不删数据；审计 project.autopilot.archive |
+| P104 | REQ-PRJ-037 | UC-024 | TC-AUTO-015 | 清空两列；审计 project.autopilot.unarchive |
 
 ### 10.2 G2 契约门禁验收命令
 
@@ -1218,14 +1239,14 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 
 - [ ] frontmatter 九字段齐全，`doc_id` 为 `OPC-IRS-001` 且与 SRS 不重号，`updated` 为 2026-11-06。
 - [ ] 首段写明"解决什么问题/谁何时用"，`## 目录` 覆盖 9 章且锚点可跳转。
-- [ ] 114 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
+- [ ] 117 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
 - [ ] 每个接口六项齐全：用途、调用方、入参、出参、错误码、幂等与重试 + 审计。
 - [ ] Result 口径写死为"成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`"，并有成功/失败两个可复制示例。
 - [ ] 35 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应（含 ERR-RES、ERR-AUTO、ERR-OPS、ERR-IDEA、ERR-WECHAT）。
 - [ ] 工具契约表含工具名、用途、必填参数、返回结构、失败语义五列，覆盖 `hub` + 十一族共 31 个实现工具（含员工目录/员工包）。
 - [ ] TI-1..TI-8 八条"工具即接口"约定齐备，且明确与 Java/TS 实现语言无关。
 - [ ] §8.1 矩阵中每个接口的 ✓ 与 §3~§6 各接口错误码表述一致。
-- [ ] §10.1 映射覆盖 UC-001..031 全部三十一个用例与 114 个接口（管理面 52 个见 §7.6）。
+- [ ] §10.1 映射覆盖 UC-001..031 全部三十一个用例与 117 个接口（管理面 55 个见 §7.6）。
 - [ ] 全文无未决占位标记，无 `api.yaml` 与设计文档之外的新增数值或字段。
 - [ ] 文末两节齐备，`## 与其他文档的关系` 位于全文最后。
 
@@ -1237,7 +1258,7 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 | 上游 | `spec/opc-xuanji/usecases.yaml`（baselineTag `gate-G2-20261105`） | 接口与用例/测试的映射依据；本文 §9.1 的 UC 与 TC 列直接引用其条目 |
 | 上游 | `OPC-SRS-001-软件需求规格说明.md` | 需求的接口层展开对象；本文每个接口标注对应 REQ，SRS §12 追溯表的"接口"列反向指向本文 |
 | 上游 | `OPC-玄机 · 技术选型与系统架构.md`（v2.11） | 横切约束来源：超时绑定（`AbortSignal.timeout(300_000)`）、缓存与 `evidence_hash` 口径、PgBouncer 不支持跨语句 `SET`、审计链头表、`write_targets` 判定规则 |
-| 上游 | `spec/opc-xuanji/entities.yaml` | 出参字段的存储侧依据（snake_case 列名 → camelCase 接口字段的映射）；76 个实体与接口的 `x-entity` 标注对应 |
+| 上游 | `spec/opc-xuanji/entities.yaml` | 出参字段的存储侧依据（snake_case 列名 → camelCase 接口字段的映射）；92 个实体与接口的 `x-entity` 标注对应 |
 | 上游 | `spec/opc-xuanji/modules.yaml` | 工具族到模块的归属依据；§7.3 末尾给出九个域族与 `opc.*` 包的对应 |
 | 下游 | `OPC-SDD-001-系统设计说明.md` | 按本文契约做分层与实现设计；接口实现不得超出本文登记的错误码与字段 |
 | 下游 | `OPC-STD-001-测试设计说明.md`、`OPC-STP-001-测试计划.md` | 按本文 §9.1 的契约断言生成契约测试；`TC-*` 与接口一一对应 |

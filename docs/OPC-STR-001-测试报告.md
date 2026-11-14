@@ -1,13 +1,13 @@
 ---
 doc_id: OPC-STR-001
 title: OPC-玄机·一人公司中枢 测试报告
-version: 0.3
+version: 0.4
 status: 评审稿
 stage: D4
 owner: 集成验证组
 upstream: [OPC-STP-001, OPC-STD-001, OPC-SRS-001, OPC-IRS-001]
 gate: G4
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # OPC-玄机·一人公司中枢 测试报告
@@ -286,6 +286,19 @@ node scripts/check-spec.mjs --dir spec
 | 口径项 | `vcs_kind`/`revision` 落库；扫描跳过 `.svn`/`.hg`；发布版本号 `coalesce(commit_sha, revision)` | TC-AUTO-010 断言 `checkout.vcs=svn`、`software_profile.vcs=svn` |
 
 **结论**：SVN 与 Git 双协议检出在迁移、检出、扫描、档案回填、发布版本号与降级六个层面均已验证；SVN 骨架只落工作副本、不提交，生产发布仍需人工审批。
+
+## 19. v2.23 自动驾驶控制台增量验证（2026-11-14）
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0015_autopilot_console.sql` | 测试库已应用（applied 1） | 表数 91→92，`biz.project` 16→19 列；新增 `stat.project_autopilot_run` 与两个索引 |
+| 新增用例（`autopilot.test.ts`） | **16/16 pass**（已实测） | TC-AUTO-012..016 描述抽取/执行记录/路线图/归档/并发 409；TC-AUTO-001..011 无回归 |
+| 全量测试（`npm test`） | **134/134 pass**（2026-11-14 实测，单元 42 + 集成 92） | 自动化用例 129→134（+5）；与 §18 基线串行执行结果一致 |
+| 类型检查 / 规格 / 文档 | PASS | `tsc --noEmit` 0 错误；`spec:check` 92 实体 / 31 用例 / 21 模块；`docs:check` 28 份（门禁统计不含 `docs/过程资产/`，新增 PA-OPC-032） |
+| 口径项 | 6 态状态优先级 `archived > running > failed > waiting_decision > ready > not_started`（失败比待裁决更紧急）、`currentRun` 仅 running 非空、10 步执行记录、归档只改标记、同项目并发 409 | TC-AUTO-013/015/016 断言 |
+| 描述优先 | 人工 `description` 不被检出覆盖；`software_profile` 保留抽取证据 | TC-AUTO-012 断言 |
+
+**结论**：v2.23 的自动驾驶控制台、描述抽取与内容化计划已验证（`autopilot.test.ts` 16/16、全量 `npm test` 134/134、`typecheck` / `spec:check` / `docs:check` 均通过）。
 
 ## 自检清单
 

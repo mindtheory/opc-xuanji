@@ -57,7 +57,7 @@ async function makeFixtureRepo(): Promise<string> {
   await writeFile(join(dir, "src/index.js"), "const express = require('express');\nconst app = express();\napp.get('/health', (req, res) => res.json({ ok: true }));\nmodule.exports = app;\n");
   await writeFile(join(dir, "test/app.test.js"), "import assert from 'node:assert';\nassert.ok(true);\n");
   await writeFile(join(dir, "Dockerfile"), "FROM node:24-alpine\nWORKDIR /app\nCOPY . .\nCMD [\"node\", \"src/index.js\"]\n");
-  await writeFile(join(dir, "README.md"), "# fixture-app\n\n自动检出夹具。\n");
+  await writeFile(join(dir, "README.md"), "# fixture-app\n\n自动检出夹具：用于验证自动驾驶从版本库抽取项目描述。\n");
   await exec("git", ["init", "-q", "-b", "main", dir]);
   await exec("git", ["-C", dir, "-c", "user.name=fixture", "-c", "user.email=fixture@example.com", "add", "-A"]);
   await exec("git", ["-C", dir, "-c", "user.name=fixture", "-c", "user.email=fixture@example.com", "commit", "-q", "-m", "init"]);
@@ -510,3 +510,182 @@ test("TC-AUTO-011 svn 客户端缺失：502 明确提示并登记 svn_client 裁
     else process.env.PATH = originalPath;
   }
 });
+
+test("TC-AUTO-012 项目描述从版本库 README/清单抽取，人工描述不被覆盖", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "描述抽取项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  assert.equal(created.status, 201);
+  const projectId = created.json.data.id;
+  assert.match(created.json.data.autopilot.scan.description, /自动检出夹具/);
+
+  const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  assert.equal(summary.status, 200);
+  assert.match(summary.json.data.description, /自动检出夹具/);
+  assert.equal(summary.json.data.descriptionSource, "README.md");
+  assert.match(summary.json.data.profile.software_profile.description, /自动检出夹具/);
+  assert.equal(summary.json.data.project.name, "描述抽取项目");
+  assert.match(summary.json.data.roadmap.plans[0].content.description, /自动检出夹具/);
+
+  const stored = await pool.query<{ description: string }>("SELECT description FROM biz.project WHERE id = $1", [projectId]);
+  assert.match(stored.rows[0].description, /自动检出夹具/);
+
+  // 人工编辑过的描述优先：再次检出只更新克隆档案里的抽取结果
+  const manual = await call("POST", "/api/v1/admin/projects", { name: "人工描述项目", stage: "planning" });
+  const manualId = manual.json.data.id;
+  const updated = await call("PUT", `/api/v1/admin/projects/${manualId}`, { name: "人工描述项目", stage: "planning", description: "人工描述优先" });
+  assert.equal(updated.status, 200);
+  const ran = await call("POST", `/api/v1/admin/projects/${manualId}/autopilot`, {
+    repository: { url: `file://${fixtureRepo}` },
+    options: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  assert.equal(ran.status, 201);
+  const again = await call("GET", `/api/v1/admin/projects/${manualId}/autopilot`);
+  assert.equal(again.json.data.description, "人工描述优先");
+  assert.match(again.json.data.profile.software_profile.description, /自动检出夹具/);
+});
+
+test("TC-AUTO-013 执行记录：一次执行落库，阶段进度完整，状态为待裁决", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "执行记录项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  assert.equal(created.status, 201);
+  const projectId = created.json.data.id;
+
+  const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  assert.equal(summary.status, 200);
+  const data = summary.json.data;
+  assert.equal(data.status, "waiting_decision");
+  assert.equal(data.statusLabel, "待裁决");
+  assert.equal(data.currentRun, null);
+  assert.equal(data.runs.length, 1);
+  const run = data.runs[0];
+  assert.equal(run.status, "ok");
+  assert.equal(run.trigger, "manual");
+  assert.equal(run.steps.length, 10);
+  assert.deepEqual(run.steps.map((step: any) => step.stage), ["register", "checkout", "scan", "profile", "scaffold", "pipeline", "plans", "deploy", "decisions", "done"]);
+  assert.equal(run.steps.every((step: any) => ["ok", "skipped"].includes(step.status)), true);
+  assert.equal(run.steps[run.steps.length - 1].status, "ok");
+  assert.equal(typeof run.durationMs, "number");
+  assert.equal(run.error, null);
+  assert.equal(run.checkoutId !== null, true);
+
+  const rows = await pool.query("SELECT status, trigger, stage, stage_label FROM stat.project_autopilot_run WHERE project_id = $1", [projectId]);
+  assert.equal(rows.rows.length, 1);
+  assert.deepEqual(rows.rows[0], { status: "ok", trigger: "manual", stage: "done", stage_label: "完成" });
+
+  const list = await call("GET", "/api/v1/admin/autopilot/projects?archived=active");
+  assert.equal(list.status, 200);
+  const item = list.json.data.items.find((entry: any) => String(entry.id) === String(projectId));
+  assert.equal(item.status, "waiting_decision");
+  assert.equal(item.lastRun.id, run.id);
+  assert.equal(item.planCount, 3);
+  assert.equal(item.pendingDecisions >= 1, true);
+});
+
+test("TC-AUTO-014 计划路线图：三份计划内容基于检出项目内容生成", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "路线图项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+  const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  const data = summary.json.data;
+  const roadmap = data.roadmap;
+  assert.equal(typeof roadmap.weeks, "number");
+  assert.equal(roadmap.phases.length, 5);
+  assert.equal(roadmap.plans.length, 3);
+  assert.equal(roadmap.milestones.length, 5);
+  assert.match(roadmap.startDate, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(roadmap.endDate, /^\d{4}-\d{2}-\d{2}$/);
+
+  const dev = roadmap.plans.find((plan: any) => plan.planKind === "dev");
+  assert.equal(dev.content.modules.some((module: any) => module.name === "src"), true);
+  assert.equal(dev.content.modules.some((module: any) => module.name === "test"), true);
+  assert.equal(dev.content.workBreakdown.some((item: string) => item.includes("src")), true);
+  assert.equal(dev.content.risks.some((risk: string) => risk.includes("LICENSE")), true);
+
+  const testPlan = roadmap.plans.find((plan: any) => plan.planKind === "test");
+  assert.equal(testPlan.content.testFiles.includes("test/app.test.js"), true);
+  assert.equal(testPlan.content.focusAreas.includes("src"), true);
+  assert.equal(testPlan.content.caseDetails.length, 3);
+  assert.equal(testPlan.content.suggestedCases.some((item: any) => item.title.includes("src")), true);
+
+  const deployPlan = roadmap.plans.find((plan: any) => plan.planKind === "deploy");
+  assert.equal(deployPlan.content.runtime.docker, "Dockerfile");
+  assert.equal(deployPlan.content.steps[0].includes("镜像"), true);
+
+  // 计划内容同时出现在 /plans 接口（兼容旧消费方）
+  const plans = await call("GET", `/api/v1/admin/projects/${projectId}/plans`);
+  const devRow = plans.json.data.items.find((item: any) => item.plan_kind === "dev");
+  assert.equal(devRow.content.modules.some((module: any) => module.name === "src"), true);
+});
+
+test("TC-AUTO-015 归档/恢复：只改标记，列表按 active/archived/all 过滤", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "归档项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+
+  const archived = await call("POST", `/api/v1/admin/projects/${projectId}/archive`, { reason: "验收归档" });
+  assert.equal(archived.status, 200);
+  assert.notEqual(archived.json.data.archivedAt, null);
+  assert.equal(archived.json.data.archiveReason, "验收归档");
+
+  const activeList = await call("GET", "/api/v1/admin/autopilot/projects?archived=active");
+  assert.equal(activeList.json.data.items.some((item: any) => String(item.id) === String(projectId)), false);
+  assert.equal(activeList.json.data.counts.archived >= 1, true);
+
+  const archivedList = await call("GET", "/api/v1/admin/autopilot/projects?archived=archived");
+  const archivedItem = archivedList.json.data.items.find((item: any) => String(item.id) === String(projectId));
+  assert.equal(archivedItem.status, "archived");
+  assert.equal(archivedItem.statusLabel, "已归档");
+  assert.equal(archivedItem.archiveReason, "验收归档");
+
+  const allList = await call("GET", "/api/v1/admin/autopilot/projects?archived=all");
+  assert.equal(allList.json.data.items.some((item: any) => String(item.id) === String(projectId)), true);
+
+  // 归档不删执行记录与计划
+  const runs = await pool.query("SELECT id FROM stat.project_autopilot_run WHERE project_id = $1", [projectId]);
+  assert.equal(runs.rows.length, 1);
+  const plans = await pool.query("SELECT id FROM stat.project_plan WHERE project_id = $1", [projectId]);
+  assert.equal(plans.rows.length, 3);
+
+  const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  assert.equal(summary.json.data.status, "archived");
+
+  const restored = await call("POST", `/api/v1/admin/projects/${projectId}/unarchive`);
+  assert.equal(restored.status, 200);
+  assert.equal(restored.json.data.archivedAt, null);
+  const restoredList = await call("GET", "/api/v1/admin/autopilot/projects?archived=active");
+  assert.equal(restoredList.json.data.items.some((item: any) => String(item.id) === String(projectId)), true);
+});
+
+test("TC-AUTO-016 同项目并发执行被拒：已有 running 记录时返回 409", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", { name: "并发项目", stage: "planning" });
+  const projectId = created.json.data.id;
+  await pool.query(
+    "INSERT INTO stat.project_autopilot_run (project_id, trigger, status, stage, stage_label, steps) VALUES ($1,'manual','running','checkout','检出','[]'::jsonb)",
+    [projectId],
+  );
+  const ran = await call("POST", `/api/v1/admin/projects/${projectId}/autopilot`, {
+    repository: { url: `file://${fixtureRepo}` },
+    options: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  assert.equal(ran.status, 409);
+  assert.equal(ran.json.errorCode, "ERR-AUTO-001");
+  assert.match(ran.json.message, /正在执行/);
+  await pool.query("UPDATE stat.project_autopilot_run SET status = 'failed' WHERE project_id = $1", [projectId]);
+});
+
