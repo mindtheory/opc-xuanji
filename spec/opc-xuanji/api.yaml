@@ -60,6 +60,7 @@ errorCodes:
   - ERR-OPS-002
   - ERR-IDEA-001
   - ERR-IDEA-002
+  - ERR-WECHAT-001
   - ERR-SYS-001
 
 paths:
@@ -1823,6 +1824,42 @@ paths:
       summary: 项目创意记录（原文、解析结果、来源与状态）
       parameters:
         - { name: projectId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/wechat/status:
+    get:
+      operationId: getWechatStatus
+      tags: [admin]
+      summary: 微信推送状态（是否已配置 botId/targetId、待投递/失败/近24h已发、最近错误）
+      responses:
+        '200': { description: OK }
+        '503': { description: ERR-WECHAT-001 未装配服务 }
+
+  /api/v1/admin/wechat/outbox:
+    get:
+      operationId: listWechatOutbox
+      tags: [admin]
+      summary: 微信推送队列（裁决/简报/通知）
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/wechat/push:
+    post:
+      operationId: pushWechatText
+      tags: [admin]
+      summary: 立即向已绑定微信 bot 发一条文本（未配置时只入队，不丢消息）
+      responses:
+        '200': { description: OK }
+        '400': { description: ERR-WECHAT-001 文本为空 }
+
+  /api/v1/admin/wechat/sync:
+    post:
+      operationId: syncWechatOutbox
+      tags: [admin]
+      summary: 立即投递到期微信消息（后台任务每分钟也会执行）
       responses:
         '200': { description: OK }
 

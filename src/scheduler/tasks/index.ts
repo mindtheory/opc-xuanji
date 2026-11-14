@@ -14,6 +14,7 @@ import { RadarService } from "../../web/services.ts";
 import { IntelPipelineService, type RawIntelItem } from "../../domains/intel/daily.ts";
 import type { PluginCandidate } from "../../web/plugin-score.ts";
 import { IssueReporter, UsageService } from "../../ops/feedback.ts";
+import { WechatPushService } from "../../notify/wechat.ts";
 
 function monthPath(now: Date): string {
   const year = now.getUTCFullYear();
@@ -23,6 +24,15 @@ function monthPath(now: Date): string {
 
 export function defaultTasks(): TaskDefinition[] {
   return [
+    {
+      id: "wechat_push",
+      name: "微信推送（每分钟投递到期裁决/简报）",
+      defaults: { cron: "*/1 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const wechat = new WechatPushService(ctx.pool, ctx.audit);
+        return wechat.deliverPending(20);
+      },
+    },
     {
       id: "issue_autofile",
       name: "运行错误自动开 Issue（每 30 分钟）",
@@ -81,6 +91,14 @@ export function defaultTasks(): TaskDefinition[] {
           contractAlerts: contracts.rows.length,
           conflicts: conflicts.rows.length,
         });
+        // 简报同步推微信（未绑定只入队，不阻塞晨报）
+        const wechat = new WechatPushService(ctx.pool, ctx.audit);
+        const briefLines = [
+          `今日待办：税务预警 ${tax.rows.length} 条、合同到期 ${contracts.rows.length} 条、待裁决冲突 ${conflicts.rows.length} 条`,
+          ...tax.rows.slice(0, 5).map((row) => `· 税务：${String((row as Record<string, unknown>).tax_type ?? "")} ${String((row as Record<string, unknown>).period ?? "")} 截止 ${String((row as Record<string, unknown>).deadline ?? "")}`),
+          ...contracts.rows.slice(0, 5).map((row) => `· 合同：${String((row as Record<string, unknown>).counterparty ?? "")} 到期 ${String((row as Record<string, unknown>).end_date ?? "")}`),
+        ];
+        await wechat.enqueueBrief("每日晨报", briefLines.join("\n"), `brief:daily_report:${ctx.now.toISOString().slice(0, 10)}`).catch(() => undefined);
         return { reportDate: ctx.now.toISOString().slice(0, 10), taxAlerts: tax.rows.length, contractAlerts: contracts.rows.length, conflicts: conflicts.rows.length };
       },
     },

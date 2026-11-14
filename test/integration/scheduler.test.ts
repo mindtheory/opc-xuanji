@@ -58,6 +58,7 @@ test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲
     "plugin_radar_scan",
     "tax_reminder",
     "usage_insight",
+    "wechat_push",
   ]);
   const report = tasks.find((task) => task.taskId === "daily_report");
   assert.equal(report?.cron, "30 8 * * 1-5");

@@ -21,9 +21,9 @@ beforeEach(async () => {
   await hub.scheduler.seedDefaults();
 });
 
-test("工具清单：40 个 opc_* 工具且参数 schema 完整", () => {
+test("工具清单：42 个 opc_* 工具且参数 schema 完整", () => {
   const names = hub.tools.map((tool) => tool.name).sort();
-  assert.equal(names.length, 40);
+  assert.equal(names.length, 42);
   assert.ok(names.includes("opc_health"));
   assert.ok(names.includes("opc_workflow_register"));
   assert.ok(names.includes("opc_task_upsert"));
@@ -36,6 +36,8 @@ test("工具清单：40 个 opc_* 工具且参数 schema 完整", () => {
   assert.ok(names.includes("opc_ops_usage_summary"));
   assert.ok(names.includes("opc_ops_issues_sync"));
   assert.ok(names.includes("opc_project_from_idea"));
+  assert.ok(names.includes("opc_wechat_status"));
+  assert.ok(names.includes("opc_wechat_push"));
   for (const tool of hub.tools) {
     assert.equal(tool.parameters.type, "object", tool.name);
     assert.ok(tool.description.length > 5, tool.name);
@@ -49,7 +51,7 @@ test("opc_health：可执行并返回 PG/pgvector/任务信息", async () => {
   const data = JSON.parse(result.text);
   assert.equal(data.pg, true);
   assert.equal(data.pgvector, true);
-  assert.equal(data.registeredTasks.length, 17);
+  assert.equal(data.registeredTasks.length, 18);
 });
 
 test("opc_task_list / opc_task_upsert：配置驱动可增改", async () => {

@@ -56,7 +56,7 @@ updated: 2026-11-14
 | 主文档功能需求 | 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7） | SRS §4 |
 | 员工需求 | 158 条（11 份分册，v2.20 项目监理 +1） | `docs/员工需求/` |
 | 非功能需求 | 26 条（NFR-001..022 + NFR-WEB-001..004） | SRS §10 |
-| 用例 | 30 条（UC-001..030） | `usecases.yaml` |
+| 用例 | 31 条（UC-001..031） | `usecases.yaml` |
 | HTTP operation | 62 个 | `api.yaml` |
 | DSH 工具 | 31 个 | `src/plugin/index.ts` |
 | 实体 | 76 个 | `entities.yaml` / `migrations/` |
@@ -136,6 +136,7 @@ updated: 2026-11-14
 | REQ-OPS-003 | 反馈投递治理 | UC-027、028 | TC-OPS-003 | syncIssues | `ops/feedback.ts` | `ops.test.ts` |
 | REQ-PRJ-034 | 已建项目接入自动驾驶与重复执行幂等 | UC-029 | TC-AUTO-008、009 | bootstrapProjectAutopilot / getProjectAutopilot | `domains/project/autopilot.ts`、`client.js` | `autopilot.test.ts` |
 | REQ-PRJ-035 | 创意转项目并进入自动驾驶 | UC-030 | TC-IDEA-001..005 | analyzeIdea / createProjectFromIdea | `domains/project/idea.ts`、`platform/documents.ts`、`client.js` | `idea.test.ts` |
+| REQ-OPS-004 | 裁决与简报微信推送 | UC-031 | TC-WECHAT-001..005 | getWechatStatus / pushWechatText / syncWechatOutbox | `notify/wechat.ts` | `wechat.test.ts` |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list | `employees/catalog.ts` | `employees.test.ts`、`unit/employees.test.ts` |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle | `employees/index.ts` | `employees.test.ts` |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 | `employees/catalog.ts`、`plugin/index.ts` | `employees.test.ts` |
@@ -230,6 +231,7 @@ updated: 2026-11-14
 | UC-028 | 运行错误自动开 GitHub Issue | REQ-OPS-001 | TC-OPS-002、003、005 | `test/integration/ops.test.ts` |
 | UC-029 | 已建项目接入自动驾驶与重复执行幂等 | REQ-PRJ-034 | TC-AUTO-008、009 | `test/integration/autopilot.test.ts` |
 | UC-030 | 创意（文本/文档）转项目并进入自动驾驶 | REQ-PRJ-035 | TC-IDEA-001..005 | `test/integration/idea.test.ts` |
+| UC-031 | 裁决与简报推送到微信 | REQ-OPS-004 | TC-WECHAT-001..005 | `test/integration/wechat.test.ts` |
 
 ## 7. 缺口与处置
 

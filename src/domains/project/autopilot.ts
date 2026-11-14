@@ -15,6 +15,7 @@ import { dirname, extname, join } from "node:path";
 import type { Pool } from "../../db/pool.ts";
 import type { AuditService } from "../../audit/audit.ts";
 import { OpcError, ERR } from "../../platform/errors.ts";
+import type { WechatPushService } from "../../notify/wechat.ts";
 
 type Row = Record<string, unknown>;
 
@@ -82,10 +83,12 @@ function clamp(value: number, min: number, max: number): number {
 export class ProjectAutopilotService {
   private readonly pool: Pool;
   private readonly audit: AuditService;
+  private readonly wechat: WechatPushService | undefined;
 
-  constructor(pool: Pool, audit: AuditService) {
+  constructor(pool: Pool, audit: AuditService, wechat?: WechatPushService) {
     this.pool = pool;
     this.audit = audit;
+    this.wechat = wechat;
   }
 
   private async record(action: string, projectId: number, payload: unknown): Promise<void> {
@@ -475,7 +478,9 @@ export class ProjectAutopilotService {
          VALUES ($1,$2,$3,$4::jsonb,$5,'pending',$6::jsonb) RETURNING id, topic, question, risk_level, status`,
         [projectId, item.topic, item.question, JSON.stringify(item.options), item.riskLevel, JSON.stringify({ repository: repo.url, scan: { manifests, hasTests, hasCi } })],
       );
-      created.push(result.rows[0] as Row);
+      const decisionRow = result.rows[0] as Row;
+      created.push(decisionRow);
+      if (this.wechat !== undefined) await this.wechat.enqueueDecision(projectId, decisionRow).catch(() => undefined);
     }
     if (created.length > 0) await this.record("project.autopilot.decisions", projectId, { count: created.length, topics: created.map((item) => item.topic) });
     return created;
@@ -757,7 +762,9 @@ export class ProjectAutopilotService {
       [projectId, input.topic.slice(0, 32), input.question.slice(0, 1000), JSON.stringify(input.options ?? []), input.riskLevel ?? "medium", JSON.stringify(input.payload ?? {})],
     );
     await this.record("project.decision.record", projectId, { topic: input.topic, riskLevel: input.riskLevel ?? "medium" });
-    return result.rows[0] as Row;
+    const row = result.rows[0] as Row;
+    if (this.wechat !== undefined) await this.wechat.enqueueDecision(projectId, row).catch(() => undefined);
+    return row;
   }
 
   async listPlans(projectId: number): Promise<Row[]> {

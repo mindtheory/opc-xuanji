@@ -96,9 +96,10 @@ updated: 2026-11-14
 | ERR-OPS-002 | 502 | GitHub 投递失败（网络/鉴权/限流） | syncIssues |
 | ERR-IDEA-001 | 400 | 创意为空/过长/文档字段非法 | analyzeIdea、createProjectFromIdea |
 | ERR-IDEA-002 | 413 / 415 / 422 | 文档过大、格式不支持或解析不出文本 | analyzeIdea、createProjectFromIdea |
+| ERR-WECHAT-001 | 400 / 503 | 微信推送参数非法或服务未装配 | getWechatStatus、pushWechatText、syncWechatOutbox |
 | ERR-SYS-001 | 500 / 503 | 未分类系统错误；依赖不可用 | 全部接口（兜底） |
 
-错误码以 `api.yaml` 的 `errorCodes`（当前 34 个）为唯一事实来源，本表登记平台与基础资源主要码；项目/情报/员工码见 §7.5、§7.6 与 §9.1。新增错误码必须先登记 `api.yaml` 再实现。
+错误码以 `api.yaml` 的 `errorCodes`（当前 35 个）为唯一事实来源，本表登记平台与基础资源主要码；项目/情报/员工码见 §7.5、§7.6 与 §9.1。新增错误码必须先登记 `api.yaml` 再实现。
 
 ### 1.3 调用方与鉴权约定
 
@@ -155,9 +156,9 @@ updated: 2026-11-14
 - 新增/修改接口、字段、枚举、错误码，必须先改 `api.yaml`，再改本文，再改实现，同一需求同一提交序列（不允许先改代码后补 spec）。
 - 破坏性变更（删字段、改语义、收紧必填）须在本文"与其他文档的关系"记录变更点并升 `version`。
 
-## 2. 接口清单（110 个 /api/v1 operation）
+## 2. 接口清单（114 个 /api/v1 operation）
 
-> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P97 管理面（项目/情报 Web 控制台、公司基础资源、项目自动驾驶与自动化生产、运维反馈、创意转项目）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P101 管理面（项目/情报 Web 控制台、公司基础资源、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -838,7 +839,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
-### 7.6 管理面接口（P50–P97，Web 控制台）
+### 7.6 管理面接口（P50–P101，Web 控制台）
 
 管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
 
@@ -855,6 +856,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 自动化生产 | `POST /admin/projects/{projectId}/deploy-test` | 自动发布测试环境：建发布单 → 执行 `OPC_TEST_DEPLOY_CMD` 或显式命令 → 健康检查；无命令 202 转裁决，执行失败 502 `ERR-AUTO-005` |
 | 运维反馈 | `GET /admin/usage/summary`、`POST /admin/usage/insight`、`GET /admin/issues`、`POST /admin/issues/sync` | 用量回顾（动作/状态/耗时聚合）、AI/规则审视产出体验需求草稿、Issue 草稿列表与投递（去重 + 单轮5/单日20 限额；未配置 token 保留草稿） |
 | 创意转项目 | `POST /admin/ideas/analyze`、`POST /admin/projects/from-idea`、`GET /admin/projects/{projectId}/ideas` | 文本/文档创意（txt/md/docx/xlsx/pdf，多文件）经 AI/规则解析后自动建项目并进自动驾驶；无仓库转 repository 裁决；不支持格式 415 `ERR-IDEA-002` |
+| 微信推送 | `GET /admin/wechat/status`、`GET /admin/wechat/outbox`、`POST /admin/wechat/push`、`POST /admin/wechat/sync` | 裁决/简报 → 微信（BotHarness 主动投递）；未绑定只排队；失败退避 5 次；正文脱敏 |
 
 **失败语义**：项目侧复用 `ERR-PRJ-001..003`；情报侧新增 `ERR-INT-001`（参数/状态非法）与 `ERR-INT-002`（资源不存在）；基础资源侧 `ERR-RES-001`（参数/类型非法）、`ERR-RES-002`（凭据非引用）、`ERR-RES-003`（资源/绑定不存在）、`ERR-RES-004`（仍被项目绑定）。所有写操作记录 `actor=boss` 审计；不返回明文凭据。
 
@@ -1077,6 +1079,10 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P95 analyzeIdea |  |  |  |  |
 | P96 createProjectFromIdea |  |  |  |  |
 | P97 listProjectIdeas |  |  |  |  |
+| P98 getWechatStatus |  |  |  |  |
+| P99 listWechatOutbox |  |  |  |  |
+| P100 pushWechatText |  |  |  |  |
+| P101 syncWechatOutbox |  |  |  |  |
 
 ### 9.2 失败语义三原则
 
@@ -1162,6 +1168,10 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P95 | REQ-PRJ-035 | UC-030 | TC-IDEA-001、002、005 | 文本/多格式文档解析；非法格式 415 `ERR-IDEA-002` |
 | P96 | REQ-PRJ-035 | UC-030 | TC-IDEA-003、004 | 建项目 + 默认资源绑定；有仓库进自动驾驶，无仓库转裁决 |
 | P97 | REQ-PRJ-035 | UC-030 | TC-IDEA-003 | 返回创意原文/解析/来源/状态 |
+| P98 | REQ-OPS-004 | UC-031 | TC-WECHAT-001、005 | 返回配置状态、待投递/失败/近24h已发 |
+| P99 | REQ-OPS-004 | UC-031 | TC-WECHAT-005 | 队列列表（含最近错误与下次重试） |
+| P100 | REQ-OPS-004 | UC-031 | TC-WECHAT-002 | 未配置只入队；配置后投递 |
+| P101 | REQ-OPS-004 | UC-031 | TC-WECHAT-003 | 到期投递，失败退避 |
 
 ### 10.2 G2 契约门禁验收命令
 
@@ -1194,14 +1204,14 @@ node "scripts/check-spec.mjs" --dir /path/to/opc-xuanji/spec/opc-xuanji
 
 - [ ] frontmatter 九字段齐全，`doc_id` 为 `OPC-IRS-001` 且与 SRS 不重号，`updated` 为 2026-11-06。
 - [ ] 首段写明"解决什么问题/谁何时用"，`## 目录` 覆盖 9 章且锚点可跳转。
-- [ ] 110 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
+- [ ] 114 个 operation 与 `api.yaml` 的 paths 数量、方法、路径、operationId 逐一对应，无增无减。
 - [ ] 每个接口六项齐全：用途、调用方、入参、出参、错误码、幂等与重试 + 审计。
 - [ ] Result 口径写死为"成功 `code=0`；失败 `code=<http 状态>` + `errorCode` + `message` + `details`"，并有成功/失败两个可复制示例。
-- [ ] 34 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应（含 ERR-RES、ERR-AUTO、ERR-OPS、ERR-IDEA）。
+- [ ] 35 个错误码全部登记并与 `api.yaml` 的 `errorCodes` 一一对应（含 ERR-RES、ERR-AUTO、ERR-OPS、ERR-IDEA、ERR-WECHAT）。
 - [ ] 工具契约表含工具名、用途、必填参数、返回结构、失败语义五列，覆盖 `hub` + 十一族共 31 个实现工具（含员工目录/员工包）。
 - [ ] TI-1..TI-8 八条"工具即接口"约定齐备，且明确与 Java/TS 实现语言无关。
 - [ ] §8.1 矩阵中每个接口的 ✓ 与 §3~§6 各接口错误码表述一致。
-- [ ] §10.1 映射覆盖 UC-001..030 全部三十个用例与 110 个接口（管理面 48 个见 §7.6）。
+- [ ] §10.1 映射覆盖 UC-001..031 全部三十一个用例与 114 个接口（管理面 52 个见 §7.6）。
 - [ ] 全文无未决占位标记，无 `api.yaml` 与设计文档之外的新增数值或字段。
 - [ ] 文末两节齐备，`## 与其他文档的关系` 位于全文最后。
 

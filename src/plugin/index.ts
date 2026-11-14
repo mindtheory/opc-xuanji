@@ -30,6 +30,7 @@ import { EmployeePackageService } from "../employees/package.ts";
 import { ProjectSoftwareService } from "../domains/project/software.ts";
 import { ProjectAutopilotService } from "../domains/project/autopilot.ts";
 import { IssueReporter, UsageService } from "../ops/feedback.ts";
+import { WechatPushService } from "../notify/wechat.ts";
 import { IntelPipelineService } from "../domains/intel/daily.ts";
 import { AdminService } from "../domains/admin/service.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
@@ -73,6 +74,7 @@ export interface Hub {
   employees: EmployeePackageService;
   software: ProjectSoftwareService;
   autopilot: ProjectAutopilotService;
+  wechat: WechatPushService;
   usage: UsageService;
   issues: IssueReporter;
   admin: AdminService;
@@ -127,11 +129,12 @@ export function createHub(options: HubConfig = {}): Hub {
   };
   const employees = new EmployeePackageService(pool, audit, { hubVersion: options.version ?? "0.2.1" });
   const software = new ProjectSoftwareService(pool, audit);
-  const autopilot = new ProjectAutopilotService(pool, audit);
+  const wechat = new WechatPushService(pool, audit);
+  const autopilot = new ProjectAutopilotService(pool, audit, wechat);
   const usage = new UsageService(pool);
   const issues = new IssueReporter(pool, audit);
   const intelPipeline = new IntelPipelineService(pool);
-  const admin = new AdminService(pool, audit, software, intelPipeline, autopilot);
+  const admin = new AdminService(pool, audit, software, intelPipeline, autopilot, wechat);
   const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
   const agents = new SuperAgentService(bridge, audit, { archiveDir });
   const hindsight = new HindsightBridge({
@@ -673,6 +676,22 @@ export function createHub(options: HubConfig = {}): Hub {
       },
     }),
     tool({
+      name: "opc_wechat_status",
+      description: "微信推送状态：是否已配置 botId/targetId、待投递/失败/近 24h 已发数量与最近错误。",
+      parameters: OBJECT({}),
+      async execute() {
+        return jsonText(await admin.wechatStatus());
+      },
+    }),
+    tool({
+      name: "opc_wechat_push",
+      description: "立即向已绑定的微信 bot 发一条文本通知（未配置时只入队，不丢消息）。",
+      parameters: OBJECT({ text: { type: "string" } }, ["text"]),
+      async execute(args) {
+        return jsonText(await admin.wechatPushText({ text: String(args.text) }));
+      },
+    }),
+    tool({
       name: "opc_ops_usage_summary",
       description: "用量回顾：近 N 天接口/页签调用、错误率与慢操作聚合（只含动作与状态，不含业务内容）。",
       parameters: OBJECT({ days: { type: "integer" } }),
@@ -749,6 +768,7 @@ export function createHub(options: HubConfig = {}): Hub {
     employees,
     software,
     autopilot,
+    wechat,
     admin,
     agents,
     memorySync,

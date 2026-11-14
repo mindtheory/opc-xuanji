@@ -6,6 +6,7 @@ import type { IntelPipelineService } from "../intel/daily.ts";
 import type { ProjectAutopilotService } from "../project/autopilot.ts";
 import { IdeaService } from "../project/idea.ts";
 import { extractDocuments, type ExtractedDocument } from "../../platform/documents.ts";
+import type { WechatPushService } from "../../notify/wechat.ts";
 
 type Row = Record<string, unknown>;
 type Domain = "project" | "intel" | "admin";
@@ -500,6 +501,7 @@ export class AdminService {
 
   private readonly autopilot: ProjectAutopilotService | undefined;
   private readonly ideas: IdeaService;
+  private readonly wechat: WechatPushService | undefined;
 
   constructor(
     pool: Pool,
@@ -507,6 +509,7 @@ export class AdminService {
     software: ProjectSoftwareService,
     intel: IntelPipelineService,
     autopilot?: ProjectAutopilotService,
+    wechat?: WechatPushService,
   ) {
     this.pool = pool;
     this.audit = audit;
@@ -514,6 +517,7 @@ export class AdminService {
     this.intel = intel;
     this.autopilot = autopilot;
     this.ideas = new IdeaService(pool, audit);
+    this.wechat = wechat;
   }
 
   private async record(action: string, object: string, objectId: number | string, payload: unknown): Promise<void> {
@@ -916,6 +920,31 @@ export class AdminService {
 
   async listProjectIdeas(projectId: number): Promise<Row[]> {
     return this.ideas.list(projectId);
+  }
+
+  // ---------------- 微信推送 ----------------
+
+  private requireWechat(): WechatPushService {
+    if (this.wechat === undefined) throw new OpcError(ERR.WECHAT, "未装配微信推送服务", 503);
+    return this.wechat;
+  }
+
+  async wechatStatus(): Promise<Row> {
+    return this.requireWechat().status();
+  }
+
+  async wechatOutbox(limit?: number): Promise<Row[]> {
+    return this.requireWechat().list(limit ?? 30);
+  }
+
+  async wechatPushText(input: Row): Promise<Row> {
+    const text = typeof input.text === "string" ? input.text.trim() : "";
+    if (text === "") throw new OpcError(ERR.WECHAT, "text 不能为空", 400);
+    return this.requireWechat().sendNow(text);
+  }
+
+  async wechatSync(): Promise<Row> {
+    return this.requireWechat().deliverPending(20);
   }
 
   async autopilotSummary(projectId: number): Promise<Row> {

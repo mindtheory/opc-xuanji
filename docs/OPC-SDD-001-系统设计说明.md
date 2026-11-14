@@ -725,7 +725,8 @@ curl -s -X PUT http://127.0.0.1:3082/api/v1/tasks/invoice_backlog -H 'content-ty
 - 运维反馈（v2.18）：`UsageService` 在 HTTP 入口记录动作/状态/耗时（不记请求体），按天聚合后由规则 + 可选 AI（OpenAI 兼容端点，只发聚合统计）产出 [体验]/[需求]/[流程] 草稿；`IssueReporter` 对 5xx 运行错误按指纹去重，草稿经 GitHub API 投递（单轮 5 / 单日 20，正文脱敏，未配置 token 标 skipped）。定时任务 `issue_autofile`（每 30 分钟）与 `usage_insight`（每周一 09:00）驱动。
 - 已建项目接入（v2.19）：`POST /admin/projects/{projectId}/autopilot` 对已有项目同样可用；重复执行时复用同 URL 版本库、测试环境，里程碑/测试计划用例/裁决按去重规则跳过，计划按 `(project_id, plan_kind)` 版本递增。管理面「自动驾驶」页签增加「对已选项目执行」区块并自动预填已登记仓库。
 - 创意转项目（v2.20）：`IdeaService`（`src/domains/project/idea.ts`）把文本/文档创意解析为项目档案（DeepSeek/OpenAI 兼容端点，失败降级规则）；`src/platform/documents.ts` 用 Node 内置 zlib 解析 docx/xlsx OOXML 与 PDF 文本层，不引入第三方依赖；`AdminService.createProjectFromIdea` 建项目、绑定默认资源，有仓库则串自动驾驶，无仓库则写 `repository` 裁决并落 `stat.project_idea`。管理面「自动驾驶」页签新增「从创意新建项目」卡片（多文件上传）。
-- HTTP 管理面统一挂 `/api/v1/admin`，共 48 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
+- 微信推送（v2.21）：`WechatPushService`（`src/notify/wechat.ts`）把裁决与每日简报写入 `stat.wechat_push` 队列，经 dsh-im（BotHarness）主动投递端点 `POST /api/dsh-im/delivery/messages`（`{botId,targetId,text}`）发送；后台任务 `wechat_push` 每分钟投递，失败按 2s→300s 退避 5 次；未绑定只排队不阻塞。老板在微信里对话即进入 DSH 会话，可直接使用全部 `opc_*` 工具查询与操作。
+- HTTP 管理面统一挂 `/api/v1/admin`，共 52 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
 - 删除保护：被发布单引用的环境、被批次引用的计划/套件、被结果引用的用例、仍被绑定的来源、已有条目的情报空间，删除返回 409。
 
 ## 6. 失败与降级路径

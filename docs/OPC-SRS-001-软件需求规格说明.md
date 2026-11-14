@@ -714,7 +714,18 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 追溯：UC-011、UC-012 / TC-WEB-002、TC-WEB-003
 
 
-### 8.5 运维反馈功能需求（OPS，v2.18 新增）
+### 8.5 运维反馈功能需求（OPS，v2.18 新增；v2.21 增补微信推送）
+
+#### REQ-OPS-004 裁决与简报微信推送
+
+**验收标准**：
+
+- **AC-1** 待裁决事项与每日简报自动写入微信推送队列；同一 `dedupeKey` 只入队一次，避免刷屏。
+- **AC-2** 通过 dsh-im（BotHarness）主动投递端点 `POST /api/dsh-im/delivery/messages`（`{botId,targetId,text}`）投递；后台任务每分钟执行，失败按 2s→300s 退避重试 5 次，超限标 failed 并留错误。
+- **AC-3** 未绑定微信（缺 `OPC_WECHAT_BOT_ID`/`OPC_WECHAT_TARGET_ID`）时只排队、不报错、不阻塞裁决与晨报；绑定后自动补发。
+- **AC-4** 正文脱敏后入队；老板在微信里对话即进入 DSH 会话，可直接调用全部 `opc_*` 工具查询与操作（健康、裁决、任务、项目、创意等）。
+
+
 
 #### REQ-OPS-001 运行错误自动登记并开 Issue
 
@@ -1074,6 +1085,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-OPS-001 | 运行错误自动登记并开 Issue | UC-028 | TC-OPS-002、003、005 | syncIssues / listIssues |
 | REQ-OPS-002 | 用量遥测与使用习惯审视 | UC-027 | TC-OPS-001、004 | getUsageSummary / generateUsageInsight |
 | REQ-OPS-003 | 反馈投递治理（去重/限额/脱敏） | UC-027、028 | TC-OPS-003 | syncIssues |
+| REQ-OPS-004 | 裁决与简报微信推送 | UC-031 | TC-WECHAT-001..005 | getWechatStatus / pushWechatText / syncWechatOutbox |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 |
@@ -1084,7 +1096,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：30 个 UC 全部在被映射的 REQ 中出现（UC-001..030 逐条可见）；主文档 42 条功能需求 + 11 份员工分册 158 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：31 个 UC 全部在被映射的 REQ 中出现（UC-001..031 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 158 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 

@@ -774,3 +774,32 @@ usecases:
       - AI 解析出项目名、类型、范围、目标、技术栈提示、风险、待确认问题与工期；AI 不可用时规则兜底
       - 自动建项目并绑定公司默认基础资源；有仓库则执行自动驾驶（检出/扫描/计划），无仓库则生成 repository 裁决
       - 解析原文与结果写入 stat.project_idea；无 AI 或解析失败降级不阻塞建项目
+
+  - id: UC-031
+    title: 裁决与简报推送到微信，老板在微信里查用
+    requirement: REQ-OPS-004
+    actors:
+      - 老板
+      - 中枢
+    goal: 待裁决事项与每日简报自动推到微信；未绑定只排队；老板在微信里可直接查用全部 OPC 能力
+    entities:
+      - WechatPush
+      - ProjectDecision
+      - AuditLog
+    api:
+      - getWechatStatus
+      - listWechatOutbox
+      - pushWechatText
+      - syncWechatOutbox
+    tests:
+      - TC-WECHAT-001
+      - TC-WECHAT-002
+      - TC-WECHAT-003
+      - TC-WECHAT-004
+      - TC-WECHAT-005
+    preconditions: dsh-im（BotHarness）已安装；已绑定微信 bot 且配置 OPC_WECHAT_BOT_ID / OPC_WECHAT_TARGET_ID
+    steps:
+      - 裁决创建与晨报生成时写入 stat.wechat_push 队列（同 dedupeKey 去重）
+      - 后台任务每分钟经 /api/dsh-im/delivery/messages 投递到期消息，失败按 2s→300s 退避重试 5 次
+      - 未绑定微信时只排队不报错，绑定后自动补发
+      - 老板在微信里对话即进入 DSH 会话，可直接调用全部 opc_* 工具（查健康/裁决/任务/项目/创意等）

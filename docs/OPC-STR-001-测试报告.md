@@ -261,6 +261,18 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：创意转项目在文档解析、AI 解析、建项目、接入自动驾驶/裁决与降级五个层面均已验证。
 
+## 17. v2.21 微信推送增量验证（2026-11-14）
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0013_wechat_push.sql` | 业务库 applied 1 / 测试库 applied 1 | exit 0 |
+| 新增用例（`wechat.test.ts`） | **5/5 pass** | 投递端点本地 mock；覆盖未绑定/投递/退避/去重/裁决入队 |
+| 全量测试（`npm test`） | **127/127 pass** | v2.20 基线 122 + v2.21 增量 5 |
+| 类型检查 / 规格 / 文档 | 全绿 | typecheck exit 0；spec 91/31/21；docs 28 份 |
+| 绑定探测 | `/api/dsh-im/delivery/messages` 在线但 `unknown-bot` | BotHarness 已装、未绑定微信渠道；绑定后配置 botId/targetId 即可推送 |
+
+**结论**：OPC 侧推送链路（入队/投递/退避/去重/状态）已验证；真实微信投递需先在 GUI 绑定微信 bot。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写

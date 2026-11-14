@@ -689,6 +689,20 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.20 增量，基线核算（5.1）只统计基线 68 例。
 
+### 4.31 TC-WECHAT-001 … TC-WECHAT-005 · 微信推送（v2.21 增量）
+
+**追溯**：REQ-OPS-004；`test/integration/wechat.test.ts`；实体 WechatPush。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-WECHAT-001 | 未绑定只排队 | 未配置 → `sent=0`、`skipped=1`、mock 未收到请求；队列 `pending` 且错误含配置项名 |
+| TC-WECHAT-002 | 裁决+简报投递 | 配置后 2 条 → `sent=2`；mock 请求体 `{botId,targetId,text}` 正确，text 含「待裁决/简报」；均 `sent` |
+| TC-WECHAT-003 | 失败退避 | mock 503 → `failed=1`；立即重投 `sent+failed=0`（退避未到期）；attempts=1 且 `next_attempt_at` 在未来 |
+| TC-WECHAT-004 | 去重 | 同 `dedupeKey` 两次入队 → 队列 1 条 |
+| TC-WECHAT-005 | 裁决自动入队 + 状态接口 | 裁决创建后队列有 decision 行；`/admin/wechat/status` 返回 `botIdConfigured=false`、pending≥1 |
+
+**结论口径**：本章为 v2.21 增量，基线核算（5.1）只统计基线 68 例。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -741,6 +755,11 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-IDEA-003 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 建项目并进自动驾驶 |
 | TC-IDEA-004 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 无仓库转裁决 |
 | TC-IDEA-005 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 非法格式/空创意拒绝 |
+| TC-WECHAT-001 | UC-031 / REQ-OPS-004 | `test/integration/wechat.test.ts` | 未绑定只排队不丢 |
+| TC-WECHAT-002 | UC-031 / REQ-OPS-004 | `test/integration/wechat.test.ts` | 裁决+简报投递微信 |
+| TC-WECHAT-003 | UC-031 / REQ-OPS-004 | `test/integration/wechat.test.ts` | 失败退避重试 |
+| TC-WECHAT-004 | UC-031 / REQ-OPS-004 | `test/integration/wechat.test.ts` | 同键去重 |
+| TC-WECHAT-005 | UC-031 / REQ-OPS-004 | `test/integration/wechat.test.ts` | 裁决自动入队 + 状态接口 |
 
 ### 5.1 覆盖核算（60 + 8 = 68）
 

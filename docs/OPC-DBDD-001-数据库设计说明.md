@@ -132,7 +132,7 @@ flowchart LR
 
 跨 schema 的引用只存 id、不建 FK 的三处代表：`audit.audit_log.workflow_instance_id`（审计在实例删除后仍需可读）、`biz.conflict_queue.frozen_unit_id`（多态冻结单元：ledger/contract/stock_txn/vehicle_log 四选一）、`biz.ledger.project_id`（业务弱引用，避免跨域锁）。
 
-### 2.3 90 张表清单总览
+### 2.3 91 张表清单总览
 
 基线列数合计 272（37 表）；v2.10 Web 层新增 8 表另计。下表是第 3 章的索引页：先看清单定位，再进 3.x 看列级定义。
 
@@ -228,11 +228,12 @@ flowchart LR
 | 88 | `stat.runtime_error` | 运行错误指纹 | 11 | `fingerprint` 唯一；`index(last_seen)` |
 | 89 | `stat.issue_filing` | Issue 草稿与投递 | 14 | `fingerprint` 唯一；`source/status/severity` CHECK；`index(status,created_at)` |
 | 90 | `stat.project_idea` | 项目创意记录 | 8 | `source/status` CHECK；`index(project_id,created_at)` |
+| 91 | `stat.wechat_push` | 微信推送队列 | 12 | `kind/status` CHECK；`dedupe_key` 唯一；`index(status,next_attempt_at)` |
 
-清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，v2.18 运维闭环 3 表，v2.20 创意转项目 1 表，明细见 3.6–3.14）：
+清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，v2.18 运维闭环 3 表，v2.20 创意转项目 1 表，v2.21 微信推送 1 表，明细见 3.6–3.15）：
 
 ```sql
--- 按 schema 统计表与列（v2.20 后：biz 44、ref 15、audit 6、stat 24、vec 1；列数随增量表变化）
+-- 按 schema 统计表与列（v2.21 后：biz 44、ref 15、audit 6、stat 25、vec 1；列数随增量表变化）
 SELECT table_schema AS schema,
        count(DISTINCT table_name) AS tables,
        count(*)                   AS columns
@@ -241,7 +242,7 @@ WHERE table_schema IN ('biz','ref','audit','stat','vec')
 GROUP BY table_schema ORDER BY table_schema;
 ```
 
-## 3. 表结构（90 张）
+## 3. 表结构（91 张）
 
 本章按 schema 分节。每张表给出列级定义（列名 / 类型 / 可空 / 默认 / 说明）与索引约束，字段口径见 1.2。所有表主键均为 `id bigint GENERATED ALWAYS AS IDENTITY`，为避免重复，下文不再逐行标注主键列，只在“索引与约束”里写明主键名。
 
@@ -924,9 +925,19 @@ GROUP BY table_schema ORDER BY table_schema;
 
 **口径**：文档原文不入库，只存抽取后的创意文本（≤4000 字）与解析摘要；文档内容不落敏感字段。
 
+### 3.15 微信推送（v2.21 新增 1 张）
+
+> 迁移：`migrations/0013_wechat_push.sql`；实体：`WechatPush`。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `stat.wechat_push` | `kind, title, body, dedupe_key, status, attempts, next_attempt_at, last_error, provider, created_at, sent_at` | `kind` CHECK（decision/brief/text）；`status` CHECK（pending/sent/failed/skipped）；`dedupe_key` 唯一；`index(status,next_attempt_at)` | 裁决/简报/通知出站队列；失败退避重试 5 次，未绑定只排队 |
+
+**通道口径**：投递复用 dsh-im（BotHarness）主动投递端点 `POST /api/dsh-im/delivery/messages`，body `{botId,targetId,text}`；未配置目标时不发、不丢、不阻塞主流程。
+
 ## 4. 关键索引设计
 
-基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）；v2.17 自动化生产另增 3 个主键与 3 个显式索引（明细见 3.12）；v2.18 运维闭环另增 3 个主键、3 个唯一与 5 个显式索引（明细见 3.13）；v2.20 创意转项目另增 1 个主键与 1 个显式索引（明细见 3.14）。
+基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）；v2.17 自动化生产另增 3 个主键与 3 个显式索引（明细见 3.12）；v2.18 运维闭环另增 3 个主键、3 个唯一与 5 个显式索引（明细见 3.13）；v2.20 创意转项目另增 1 个主键与 1 个显式索引（明细见 3.14）；v2.21 微信推送另增 1 个主键、1 个唯一与 1 个显式索引（明细见 3.15）。
 
 ### 4.1 audit_log 复合主键与分区预留
 

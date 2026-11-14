@@ -2971,6 +2971,48 @@ entities:
       - name: created_at
         type: timestamptz
         nullable: true
+  - name: WechatPush
+    table: stat.wechat_push
+    module: platform
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: kind
+        type: varchar(16)
+        nullable: false
+      - name: title
+        type: varchar(200)
+        nullable: false
+      - name: body
+        type: text
+        nullable: false
+      - name: dedupe_key
+        type: varchar(200)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: attempts
+        type: integer
+        nullable: false
+      - name: next_attempt_at
+        type: timestamptz
+        nullable: true
+      - name: last_error
+        type: text
+        nullable: true
+      - name: provider
+        type: jsonb
+        nullable: true
+      - name: created_at
+        type: timestamptz
+        nullable: true
+      - name: sent_at
+        type: timestamptz
+        nullable: true
   - name: SharedResource
     table: ref.shared_resource
     module: platform

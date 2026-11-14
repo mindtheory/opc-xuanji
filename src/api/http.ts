@@ -1052,6 +1052,39 @@ export const ROUTES: Route[] = [
       return { status: 200, data: { items: await requireAdmin(ctx).listProjectIdeas(requireId(params, "projectId")) } };
     },
   },
+  // ---------------- 微信推送（裁决/简报 → 微信） ----------------
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/wechat\/status$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await requireAdmin(ctx).wechatStatus() };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/wechat\/outbox$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: { items: await requireAdmin(ctx).wechatOutbox(Number(query.get("limit") ?? 30)) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/wechat\/push$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 200, data: await requireAdmin(ctx).wechatPushText(body as Record<string, unknown>) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/wechat\/sync$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await requireAdmin(ctx).wechatSync() };
+    },
+  },
   // ---------------- 运维闭环（用量遥测 / Issue 自动投递） ----------------
   {
     method: "GET",
