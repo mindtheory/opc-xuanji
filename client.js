@@ -312,6 +312,43 @@ window.__ModuleLoader__.load({
       ".ocDescBlock{font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;border-left:3px solid var(--oc-border-strong);padding-left:10px}",
       ".ocRunDetail{display:flex;flex-direction:column;gap:8px;margin-top:8px}",
       "@media (max-width:640px){.ocTimeline{flex-direction:column}.ocTlItem{flex:1 1 auto}.ocOpsStack .ocField{min-width:120px}}",
+      // employee directory
+      ".ocEmpToolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}",
+      ".ocSearch{display:flex;align-items:center;gap:7px;border:1px solid var(--oc-border-strong);border-radius:9px;padding:0 10px;background:var(--oc-surface);flex:1 1 220px;max-width:340px;min-width:180px;transition:border-color .15s ease}",
+      ".ocSearch:focus-within{border-color:var(--oc-accent)}",
+      ".ocSearch input{border:0;background:transparent;color:inherit;font:inherit;font-size:12.5px;padding:7px 0;flex:1;min-width:0;outline:none}",
+      ".ocSearchIcon{opacity:.45;display:grid;place-items:center;flex:0 0 auto}",
+      ".ocEmpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:12px}",
+      ".ocEmpCard{border:1px solid var(--oc-border);border-radius:var(--oc-radius-lg);padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--oc-surface);min-width:0;transition:border-color .15s ease,background-color .15s ease,box-shadow .15s ease}",
+      ".ocEmpCard:hover{border-color:var(--oc-border-strong);background:var(--oc-surface-2);box-shadow:var(--oc-shadow)}",
+      ".ocEmpCard.is-off{background:transparent}",
+      ".ocEmpHead{display:flex;align-items:flex-start;gap:10px;min-width:0}",
+      ".ocEmpHead>.ocBadge{flex:0 0 auto}",
+      ".ocEmpAvatar{width:42px;height:42px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;font-weight:700;font-size:12.5px;letter-spacing:.04em;font-family:var(--oc-mono);background:var(--oc-accent-weak);color:var(--oc-accent);border:1px solid var(--oc-border)}",
+      ".ocEmpAvatar.is-off{background:var(--oc-surface-2);color:inherit;opacity:.6}",
+      ".ocEmpIdent{min-width:0;flex:1 1 auto}",
+      ".ocEmpName{font-size:14px;font-weight:650;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      ".ocEmpSub{font-family:var(--oc-mono);font-size:10.5px;opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}",
+      ".ocEmpStats{display:flex;flex-wrap:wrap;gap:6px}",
+      ".ocEmpStat{display:inline-flex;align-items:baseline;gap:4px;border:1px solid var(--oc-border);border-radius:7px;padding:3px 7px;font-size:10.5px;background:var(--oc-surface);white-space:nowrap}",
+      ".ocEmpStat b{font-variant-numeric:tabular-nums;font-size:12px}",
+      ".ocEmpStat span{opacity:.58}",
+      ".ocEmpTags{display:flex;flex-wrap:wrap;gap:4px;min-height:10px}",
+      ".ocEmpTags .ocTag{opacity:.9}",
+      ".ocEmpDeps{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px}",
+      ".ocEmpFoot{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:10px;border-top:1px solid var(--oc-border)}",
+      ".ocEmpFoot .ocBtn{flex:1 1 auto;padding-left:8px;padding-right:8px}",
+      ".ocDispatch{display:grid;grid-template-columns:minmax(140px,200px) minmax(0,1fr) auto;gap:8px;align-items:end}",
+      ".ocDispatch .ocBtn{min-height:32px}",
+      ".ocDisclosure{border:1px solid var(--oc-border);border-radius:var(--oc-radius);background:var(--oc-surface);overflow:hidden;flex:0 0 auto}",
+      ".ocDisclosure>summary{cursor:pointer;padding:10px 12px;font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:8px;list-style:none;user-select:none}",
+      ".ocDisclosure>summary::-webkit-details-marker{display:none}",
+      ".ocDisclosure>summary:hover{background:var(--oc-hover)}",
+      ".ocDisclosure[open]>summary{border-bottom:1px solid var(--oc-border)}",
+      ".ocChev{display:inline-grid;place-items:center;transition:transform .15s ease;opacity:.7}",
+      ".ocDisclosure[open] .ocChev{transform:rotate(90deg)}",
+      ".ocDisclosureBody{padding:12px;display:flex;flex-direction:column;gap:8px}",
+      "@media (max-width:720px){.ocDispatch{grid-template-columns:1fr}.ocEmpGrid{grid-template-columns:1fr}}",
       "@media (max-width:1100px){.ocSplit{grid-template-columns:minmax(0,1fr) 300px}}",
       "@media (max-width:860px){.ocSplit{grid-template-columns:1fr}.ocSplitSide{position:static;max-height:none;overflow:visible}}",
       // motion / responsive
@@ -343,6 +380,8 @@ window.__ModuleLoader__.load({
       back: [h("path", { key: "a", d: "M19 12H5" }), h("path", { key: "b", d: "m11 18-6-6 6-6" })],
       x: [h("path", { key: "a", d: "M6 6l12 12" }), h("path", { key: "b", d: "M18 6 6 18" })],
       check: [h("path", { key: "a", d: "m5 12.5 4.5 4.5L19 7.5" })],
+      search: [h("circle", { key: "a", cx: 11, cy: 11, r: 6.5 }), h("path", { key: "b", d: "m16 16 4 4" })],
+      chevron: [h("path", { key: "a", d: "m9 6 6 6-6 6" })],
       dot: [h("circle", { key: "a", cx: 12, cy: 12, r: 3 })],
     };
     function Icon(props) {
@@ -518,6 +557,15 @@ window.__ModuleLoader__.load({
     }
 
     // ================= 员工矩阵 =================
+    var EMP_FILTERS = [
+      { id: "all", label: "全部" },
+      { id: "enabled", label: "已启用" },
+      { id: "disabled", label: "已停用" },
+      { id: "uninstalled", label: "未安装" },
+    ];
+    function empStat(label, value) {
+      return h("span", { className: "ocEmpStat" }, h("b", null, String(value)), h("span", null, label));
+    }
     function EmployeesTab(props) {
       var empS = useLoad(function () { return apiGet("/employees"); }, []);
       var runsS = useLoad(function () { return apiGet("/agents/runs"); }, []);
@@ -528,9 +576,14 @@ window.__ModuleLoader__.load({
       var imp = importS[0], setImp = importS[1];
       var busyS = react.useState(false);
       var busy = busyS[0], setBusy = busyS[1];
+      var qS = react.useState("");
+      var q = qS[0], setQ = qS[1];
+      var filterS = react.useState("all");
+      var filter = filterS[0], setFilter = filterS[1];
+      function refreshAll() { empS[1](); runsS[1](); healthS[1](); }
       function run(promise, okMsg) {
         setBusy(true);
-        promise.then(function () { props.flash(okMsg || "OK", true); empS[1](); runsS[1](); healthS[1](); })
+        promise.then(function () { props.flash(okMsg || "OK", true); refreshAll(); })
           .catch(function (e) { props.flash(String((e && e.message) || e), false); })
           .then(function () { setBusy(false); });
       }
@@ -542,59 +595,138 @@ window.__ModuleLoader__.load({
       var runs = (runsS[0].data && runsS[0].data.items) || [];
       var agents = healthS[0].data || {};
 
-      var cols = [
-        { key: "name", label: "员工", render: function (r) { return h("span", null, h("b", null, r.displayName), h("span", { className: "ocMono" }, " " + r.employeeCode)); } },
-        { key: "pluginId", label: "插件", render: function (r) { return h("span", { className: "ocMono" }, r.pluginId); } },
-        { key: "version", label: "版本", render: function (r) { return h("span", { className: "ocMono" }, r.version); } },
-        { key: "counts", label: "视图/工具/写目标", render: function (r) { return h("span", { className: "ocMono" }, r.requiredViews.length + " / " + r.tools.length + " / " + r.writeTargets.length); } },
-        { key: "singleWorkflows", label: "单员工流程", render: function (r) { return h("span", { className: "ocMono" }, r.singleWorkflows.join(", ") || "-"); } },
-        { key: "status", label: "状态", render: function (r) { var it = installedMap[r.pluginId]; return it ? h(Badge, { tone: it.enabled ? "ok" : "warn" }, it.enabled ? t("panel.enabled") : t("panel.disabled")) : h(Badge, { tone: "mute" }, "未安装"); } },
-        { key: "ops", label: "操作", render: function (r) {
-            var it = installedMap[r.pluginId];
-            var buttons = [
-              h(Btn, { key: "install", onClick: function () { run(apiPost("/employees", { manifest: r, enabled: true }), "已安装 " + r.displayName); } }, it ? "重装" : t("panel.install")),
-              h(Btn, { key: "deploy", onClick: function () { run(apiPost("/agents/deploy", { pluginId: r.pluginId }), "已部署角色卡 " + r.displayName); } }, t("panel.deploy")),
-            ];
-            if (it) {
-              buttons.push(
-                h(Btn, { key: "toggle", onClick: function () { run(apiPost("/employees/" + encodeURIComponent(r.pluginId) + "/toggle", { enabled: !it.enabled, reason: "面板操作" }), it.enabled ? "已停用" : "已启用"); } }, it.enabled ? t("panel.disabled") : t("panel.enabled")),
-                h(Btn, { key: "export", onClick: function () { run(apiPost("/employees/" + encodeURIComponent(r.pluginId) + "/export", { actor: "boss" }), "已导出员工包"); } }, t("panel.exportPkg")));
-            }
-            return h("div", { className: "ocRow" }, buttons);
-          } },
-      ];
+      var enabledCount = 0;
+      installed.forEach(function (it) { if (it.enabled) enabledCount += 1; });
+      var disabledCount = installed.length - enabledCount;
+      var uninstalledCount = Math.max(catalog.length - installed.length, 0);
+
+      var needle = q.trim().toLowerCase();
+      var filtered = catalog.filter(function (r) {
+        var it = installedMap[r.pluginId];
+        if (filter === "enabled" && !(it && it.enabled)) return false;
+        if (filter === "disabled" && !(it && !it.enabled)) return false;
+        if (filter === "uninstalled" && it) return false;
+        if (!needle) return true;
+        var hay = [r.displayName, r.employeeCode, r.pluginId, (r.singleWorkflows || []).join(" "), (r.dependencies || []).join(" ")].join(" ").toLowerCase();
+        return hay.indexOf(needle) >= 0;
+      });
+      var filterCount = { all: catalog.length, enabled: enabledCount, disabled: disabledCount, uninstalled: uninstalledCount };
+
       var runCols = [
         { key: "id", label: "runId", render: function (r) { return h("span", { className: "ocMono" }, r.id); } },
         { key: "agentName", label: "员工", render: function (r) { return h("span", null, r.agentName || r.agentId); } },
         { key: "kind", label: "触发", render: function (r) { return h("span", { className: "ocMono" }, r.kind || "-"); } },
-        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "done" ? "ok" : r.status === "failed" || r.status === "timeout" ? "bad" : "mute" }, r.status); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "done" ? "ok" : r.status === "failed" || r.status === "timeout" ? "bad" : "warn" }, r.status); } },
         { key: "createdAt", label: "开始", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.createdAt)); } },
         { key: "taskText", label: "任务", render: function (r) { return h("span", { className: "ocEllip", title: r.taskText || "" }, short(r.taskText, 60)); } },
       ];
+      function cardActions(r, it) {
+        if (!it) {
+          return [
+            h(Btn, { key: "install", kind: "primary", disabled: busy, onClick: function () { run(apiPost("/employees", { manifest: r, enabled: true }), "已安装 " + r.displayName); } }, t("panel.install")),
+            h(Btn, { key: "deploy", disabled: busy, onClick: function () { run(apiPost("/agents/deploy", { pluginId: r.pluginId }), "已部署角色卡 " + r.displayName); } }, t("panel.deploy")),
+          ];
+        }
+        return [
+          h(Btn, { key: "deploy", kind: "primary", disabled: busy, onClick: function () { run(apiPost("/agents/deploy", { pluginId: r.pluginId }), "已部署角色卡 " + r.displayName); } }, t("panel.deploy")),
+          h(Btn, { key: "toggle", disabled: busy, title: it.disabledReason || "", onClick: function () { run(apiPost("/employees/" + encodeURIComponent(r.pluginId) + "/toggle", { enabled: !it.enabled, reason: "面板操作" }), it.enabled ? "已停用" : "已启用"); } }, it.enabled ? t("panel.disabled") : t("panel.enabled")),
+          h(Btn, { key: "export", disabled: busy, onClick: function () { run(apiPost("/employees/" + encodeURIComponent(r.pluginId) + "/export", { actor: "boss" }), "已导出员工包"); } }, t("panel.exportPkg")),
+          h(Btn, { key: "install", disabled: busy, onClick: function () { run(apiPost("/employees", { manifest: r, enabled: it.enabled }), "已重装 " + r.displayName); } }, "重装"),
+        ];
+      }
+
+      var directory = empS[0].loading && !catalog.length
+        ? h("div", { className: "ocEmpGrid", role: "status", "aria-busy": "true", "aria-label": t("panel.loading") },
+            [0, 1, 2, 3, 4, 5].map(function (i) {
+              return h("div", { className: "ocEmpCard", key: i },
+                h("div", { className: "ocEmpHead" },
+                  h("span", { className: "ocSkel", style: { width: 42, height: 42, borderRadius: 12, flex: "0 0 auto" } }),
+                  h("div", { style: { flex: 1 } },
+                    h("span", { className: "ocSkel", style: { width: "58%", display: "block" } }),
+                    h("span", { className: "ocSkel", style: { width: "78%", display: "block", marginTop: 6 } }))),
+                h("span", { className: "ocSkel", style: { width: "100%", height: 24, display: "block" } }),
+                h("span", { className: "ocSkel", style: { width: "68%", display: "block" } }),
+                h("span", { className: "ocSkel", style: { width: "100%", height: 30, display: "block", marginTop: 6 } }));
+            }))
+        : !catalog.length
+          ? h(EmptyState, { title: "暂无员工目录", hint: "导入员工包后，员工会在这里出现。", icon: "users" })
+          : !filtered.length
+            ? h(EmptyState, { title: "没有匹配的员工", hint: "调整搜索词或筛选条件后重试。", icon: "search" })
+            : h("div", { className: "ocEmpGrid" }, filtered.map(function (r) {
+                var it = installedMap[r.pluginId];
+                var on = it && it.enabled;
+                var workflows = r.singleWorkflows || [];
+                var shown = workflows.slice(0, 3);
+                return h("div", { className: "ocEmpCard" + (it && !it.enabled ? " is-off" : ""), key: r.pluginId },
+                  h("div", { className: "ocEmpHead" },
+                    h("div", { className: "ocEmpAvatar" + (on ? "" : " is-off"), "aria-hidden": "true" }, r.employeeCode),
+                    h("div", { className: "ocEmpIdent" },
+                      h("div", { className: "ocEmpName", title: r.displayName }, r.displayName),
+                      h("div", { className: "ocEmpSub", title: r.pluginId + " · v" + r.version }, r.pluginId + " · v" + r.version)),
+                    h(Badge, { tone: it ? (it.enabled ? "ok" : "warn") : "mute" }, it ? (it.enabled ? t("panel.enabled") : t("panel.disabled")) : "未安装")),
+                  h("div", { className: "ocEmpStats" },
+                    empStat("视图", (r.requiredViews || []).length),
+                    empStat("工具", (r.tools || []).length),
+                    empStat("写目标", (r.writeTargets || []).length),
+                    empStat("流程", workflows.length)),
+                  shown.length
+                    ? h("div", { className: "ocEmpTags" },
+                        shown.map(function (w) { return h("span", { className: "ocTag", key: w, title: w }, w); }),
+                        workflows.length > shown.length ? h("span", { className: "ocTag", title: workflows.slice(shown.length).join(", ") }, "+" + (workflows.length - shown.length)) : null)
+                    : h("div", { className: "ocMuted" }, "无单员工流程"),
+                  (r.dependencies && r.dependencies.length)
+                    ? h("div", { className: "ocEmpDeps" },
+                        h("span", { className: "ocMuted" }, "依赖"),
+                        r.dependencies.map(function (d) { return h("span", { className: "ocTag", key: d, title: d }, d); }))
+                    : null,
+                  h("div", { className: "ocEmpFoot" }, cardActions(r, it)));
+              }));
+
       return h(Fragment, null,
-        h(PageHeader, { title: "员工矩阵", subtitle: "共 " + catalog.length + " 个员工 · 已安装 " + installed.length },
+        h(PageHeader, { title: "员工矩阵", subtitle: "共 " + catalog.length + " 个员工 · 已安装 " + installed.length + " · 已启用 " + enabledCount },
           h(Badge, { tone: agents.reachable ? (agents.paused ? "warn" : "ok") : "bad" }, "智能体 " + (agents.reachable ? (agents.paused ? "已暂停" : "可达") : "不可达")),
-          h(Btn, { onClick: function () { empS[1](); runsS[1](); healthS[1](); } }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
-        h(ErrLine, { error: empS[0].error || runsS[0].error, onRetry: function () { empS[1](); runsS[1](); healthS[1](); } }),
+          h(Btn, { onClick: refreshAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
+        h(ErrLine, { error: empS[0].error || runsS[0].error, onRetry: refreshAll }),
+        h(KpiGrid, { items: [
+          { label: "员工目录", value: catalog.length },
+          { label: "已安装", value: installed.length },
+          { label: "已启用", value: enabledCount, tone: enabledCount > 0 ? "ok" : "" },
+          { label: "已停用", value: disabledCount, tone: disabledCount > 0 ? "warn" : "" },
+          { label: "未安装", value: uninstalledCount },
+          { label: "运行记录", value: runs.length },
+        ] }),
         h(Card, null,
-          h("div", { className: "ocH" }, "员工目录", h("span", { className: "ocCount" }, String(catalog.length))),
-          h(Table, { columns: cols, rows: catalog, loading: empS[0].loading, empty: "暂无员工目录", emptyHint: "导入员工包后，员工会在这里出现。", emptyIcon: "users" })),
-        h("div", { className: "ocSection" },
-          h("div", { className: "ocH" }, t("panel.dispatch")),
-          h("div", { className: "ocFormRow" },
+          h("div", { className: "ocH" }, "员工目录", h("span", { className: "ocCount" }, "显示 " + filtered.length + " / 共 " + catalog.length)),
+          h("div", { className: "ocEmpToolbar" },
+            h("label", { className: "ocSearch" },
+              h("span", { className: "ocSearchIcon", "aria-hidden": "true" }, h(Icon, { name: "search", size: 14 })),
+              h("input", { type: "search", value: q, placeholder: "搜索员工、员工码、插件或流程", onChange: function (e) { setQ(e.target.value); }, "aria-label": "搜索员工" })),
+            h("div", { className: "ocSeg", role: "group", "aria-label": "员工状态筛选" },
+              EMP_FILTERS.map(function (f) {
+                var on = f.id === filter;
+                return h("button", { key: f.id, type: "button", className: "ocSegItem" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", onClick: function () { setFilter(f.id); } }, f.label + " " + filterCount[f.id]);
+              }))),
+          directory),
+        h(Card, null,
+          h("div", { className: "ocH" }, "快捷派活"),
+          h("div", { className: "ocDispatch" },
             h(Select, { label: t("panel.dispatchFor"), value: dispatch.pluginId, options: [{ value: "", label: "选择员工" }].concat(catalog.map(function (r) { return { value: r.pluginId, label: r.displayName }; })), onChange: function (v) { setDispatch({ pluginId: v, prompt: dispatch.prompt }); } }),
-            h("div", { style: { flex: 3 } }, h(Field, { label: "任务", value: dispatch.prompt, placeholder: t("panel.taskPlaceholder"), onChange: function (v) { setDispatch({ pluginId: dispatch.pluginId, prompt: v }); } })),
+            h(Field, { label: "任务", value: dispatch.prompt, placeholder: t("panel.taskPlaceholder"), onChange: function (v) { setDispatch({ pluginId: dispatch.pluginId, prompt: v }); } }),
             h(Btn, { kind: "primary", disabled: busy || !dispatch.pluginId || !dispatch.prompt.trim(), onClick: function () { run(apiPost("/agents/dispatch", { pluginId: dispatch.pluginId, prompt: dispatch.prompt }), "已派活"); setDispatch({ pluginId: dispatch.pluginId, prompt: "" }); } }, t("panel.dispatch"))),
-          h("div", { className: "ocMuted" }, "认知任务在员工超级智能体会话中执行，产物文件回传运行记录；需先部署角色卡。")),
+          h("div", { className: "ocHint" }, "认知任务在员工超级智能体会话中执行，产物文件回传运行记录；需先部署角色卡。")),
         h(Card, null,
           h("div", { className: "ocH" }, t("panel.runs"), h("span", { className: "ocCount" }, String(runs.length))),
           h(Table, { columns: runCols, rows: runs, loading: runsS[0].loading, empty: "暂无运行记录", emptyHint: "派活或调度任务触发后会在这里留下运行记录。", emptyIcon: "clock" })),
-        h("div", { className: "ocSection" },
-          h("div", { className: "ocH" }, t("panel.import")),
-          h(Area, { label: "员工包 JSON（先预检再导入）", value: imp.text, onChange: function (v) { setImp({ text: v }); } }),
-          h("div", { className: "ocRow" },
-            h(Btn, { disabled: busy || !imp.text.trim(), onClick: function () { run(apiPost("/employees/import", { package: parseJson(imp.text, {}), dryRun: true }), "预检完成"); } }, "预检"),
-            h(Btn, { kind: "primary", disabled: busy || !imp.text.trim(), onClick: function () { run(apiPost("/employees/import", { package: parseJson(imp.text, {}), dryRun: false, confirm: true }), "导入完成（默认停用）"); } }, "确认导入"))));
+        h("details", { className: "ocDisclosure" },
+          h("summary", null,
+            h("span", { className: "ocChev", "aria-hidden": "true" }, h(Icon, { name: "chevron", size: 14 })),
+            t("panel.import"),
+            h("span", { className: "ocCount" }, "高级")),
+          h("div", { className: "ocDisclosureBody" },
+            h(Area, { label: "员工包 JSON（先预检再导入）", value: imp.text, onChange: function (v) { setImp({ text: v }); } }),
+            h("div", { className: "ocRow" },
+              h(Btn, { disabled: busy || !imp.text.trim(), onClick: function () { run(apiPost("/employees/import", { package: parseJson(imp.text, {}), dryRun: true }), "预检完成"); } }, "预检"),
+              h(Btn, { kind: "primary", disabled: busy || !imp.text.trim(), onClick: function () { run(apiPost("/employees/import", { package: parseJson(imp.text, {}), dryRun: false, confirm: true }), "导入完成（默认停用）"); } }, "确认导入")))));
     }
 
     // ================= 业务域 =================
