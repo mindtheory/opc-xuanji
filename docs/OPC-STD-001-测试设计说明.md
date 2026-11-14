@@ -650,6 +650,20 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.17 增量，基线核算（5.1）只统计基线 68 例；自动化生产用例在 `OPC-STR-001` §13 登记。
 
+### 4.28 TC-OPS-001 … TC-OPS-005 · 运维反馈闭环（v2.18 增量）
+
+**追溯**：REQ-OPS-001..003；`test/integration/ops.test.ts`；实体 UsageEvent、RuntimeError、IssueFiling。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-OPS-001 | 接口调用自动记用量 | 调 health/tasks 后汇总 `total>=2`、`byAction` 含 health、`errorRate>=0` |
+| TC-OPS-002 | 错误去重 + 自动开 Issue | 同指纹两次 → 1 行 `occurrences=2`；sync 后 mock GitHub 收到 1 条 `[运行错误]`，正文含消息；再次 sync 不重复 |
+| TC-OPS-003 | 未配置 token 降级 | 无 token → `filed=0`、`skipped>=1`，草稿标 skipped 且错误含 OPC_GITHUB_TOKEN |
+| TC-OPS-004 | 用量审视产草稿并投递 | 3/6 失败 + 1 条慢调用 + 12 次页签访问 → 产出 [体验] 与 [需求] 草稿；sync 后 GitHub 收到 [体验] issue |
+| TC-OPS-005 | Issue 列表与投递结果 | `status=filed` 返回 1 条含 number/url；`status=pending` 为空 |
+
+**结论口径**：本章为 v2.18 增量，基线核算（5.1）只统计基线 68 例；运维闭环用例在 `OPC-STR-001` §14 登记。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -690,6 +704,11 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-AUTO-005 | UC-026 / REQ-PRJ-031 | `test/integration/autopilot.test.ts` | 骨架只补缺失并提交本地分支 |
 | TC-AUTO-006 | UC-026 / REQ-PRJ-032 | `test/integration/autopilot.test.ts` | 流水线逐阶段 ok，含 test 阶段 exit 0 |
 | TC-AUTO-007 | UC-026 / REQ-PRJ-033 | `test/integration/autopilot.test.ts` | 有命令则发布 ok；无命令 pending + 裁决 |
+| TC-OPS-001 | UC-027 / REQ-OPS-002 | `test/integration/ops.test.ts` | 用量落库与聚合 |
+| TC-OPS-002 | UC-028 / REQ-OPS-001 | `test/integration/ops.test.ts` | 指纹去重 + GitHub issue 投递 |
+| TC-OPS-003 | UC-028 / REQ-OPS-003 | `test/integration/ops.test.ts` | 无 token 降级 skipped |
+| TC-OPS-004 | UC-027 / REQ-OPS-002 | `test/integration/ops.test.ts` | 审视产出体验/需求草稿并投递 |
+| TC-OPS-005 | UC-028 / REQ-OPS-001 | `test/integration/ops.test.ts` | Issue 列表按状态过滤 |
 
 ### 5.1 覆盖核算（60 + 8 = 68）
 

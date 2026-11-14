@@ -217,6 +217,23 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：自动化生产在迁移、接口、骨架、流水线、测试环境发布与门禁六个层面均已验证；生产发布仍只走人工审批。
 
+## 14. v2.18 运维反馈增量验证（2026-11-14）
+
+本节追加记录运维闭环（REQ-OPS-001..003）的验证结果，不覆盖第 1–13 节。
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0011_ops_feedback.sql` | 业务库 applied 1 / 测试库 applied 1 | `npm run migrate`、`npm run migrate:test` 均 exit 0 |
+| 新增用例（`ops.test.ts`） | **5/5 pass** | TC-OPS-001..005；GitHub 用本地 mock，AI 用规则路径 |
+| 全量测试（`npm test`） | **115/115 pass** | v2.17 基线 110 + v2.18 增量 5 |
+| 类型检查 | exit 0 | `npm run typecheck` 无输出 |
+| 规格门禁 | PASS（89 实体 / 28 用例 / 21 模块；107 operation / 32 errorCodes） | `npm run spec:check` |
+| 文档门禁 | PASS（28 份文档） | `npm run docs:check` |
+| 隐私项 | 遥测无请求体、Issue 正文脱敏 | 长 token 与 `token=/password=` 模式替换为 *** |
+| 降级项 | 未配置 token 不失败 | 草稿标 skipped 并保留，主流程不受影响 |
+
+**结论**：运维闭环在迁移、接口、遥测、去重、投递与降级六个层面均已验证；真实 GitHub 投递需在部署机配置 token 后由定时任务执行。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写

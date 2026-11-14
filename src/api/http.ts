@@ -28,6 +28,7 @@ import type { SuperAgentService } from "../agents/service.ts";
 import type { HindsightSyncService } from "../memory/sync.ts";
 import type { ProjectSoftwareService } from "../domains/project/software.ts";
 import type { AdminService } from "../domains/admin/service.ts";
+import type { IssueReporter, UsageService } from "../ops/feedback.ts";
 
 export interface WebServices {
   ingest: IngestService;
@@ -51,6 +52,8 @@ export interface ApiContext {
   employees: EmployeePackageService;
   software: ProjectSoftwareService;
   admin?: AdminService;
+  usage?: UsageService;
+  issues?: IssueReporter;
   agents?: SuperAgentService;
   memorySync?: HindsightSyncService;
   archiveDir: string;
@@ -1024,6 +1027,43 @@ export const ROUTES: Route[] = [
       return { status: 200, data: await requireAdmin(ctx).removeIntelResource(params.resource, optionalId(query.get("projectId"), "projectId"), requireId(params, "resourceId")) };
     },
   },
+  // ---------------- 运维闭环（用量遥测 / Issue 自动投递） ----------------
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/usage\/summary$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      if (ctx.usage === undefined) throw new OpcError(ERR.OPS_INVALID, "未装配用量服务", 503);
+      return { status: 200, data: await ctx.usage.summary(Number(query.get("days") ?? 7)) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/issues$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      if (ctx.issues === undefined) throw new OpcError(ERR.OPS_INVALID, "未装配 Issue 投递服务", 503);
+      return { status: 200, data: { items: await ctx.issues.listIssues(query.get("status"), Number(query.get("limit") ?? 50)) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/issues\/sync$/,
+    keys: [],
+    async handler(ctx) {
+      if (ctx.issues === undefined) throw new OpcError(ERR.OPS_INVALID, "未装配 Issue 投递服务", 503);
+      return { status: 200, data: await ctx.issues.sync() };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/usage\/insight$/,
+    keys: [],
+    async handler(ctx) {
+      if (ctx.usage === undefined) throw new OpcError(ERR.OPS_INVALID, "未装配用量服务", 503);
+      return { status: 201, data: { items: await ctx.usage.insightDrafts(7) } };
+    },
+  },
   // ---------------- 公司基础资源（跨项目共享） ----------------
   {
     method: "GET",
@@ -1194,9 +1234,14 @@ export const ROUTES: Route[] = [
 
 export function createApiHandler(ctx: ApiContext): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
+    const startedAt = Date.now();
+    let statusCode = 200;
+    let errorCode: string | null = null;
+    let action = `${req.method ?? "GET"} /`;
     void (async () => {
       try {
         const url = new URL(req.url ?? "/", "http://localhost");
+        action = `${req.method ?? "GET"} ${url.pathname.replace(/\/[0-9a-f-]{8,}/gi, "/:id").replace(/\/\d+/g, "/:id")}`;
         for (const route of ROUTES) {
           if (route.method !== req.method) continue;
           const match = route.pattern.exec(url.pathname);
@@ -1207,13 +1252,26 @@ export function createApiHandler(ctx: ApiContext): (req: IncomingMessage, res: S
           });
           const body = await readBody(req);
           const result = await route.handler(ctx, params, body, url.searchParams);
+          statusCode = result.status;
           json(res, result.status, { code: 0, data: result.data });
           return;
         }
+        statusCode = 404;
+        errorCode = ERR.SYS;
         json(res, 404, { code: 404, errorCode: ERR.SYS, message: `未知路由：${req.method} ${url.pathname}` });
       } catch (error) {
         const opc = asOpcError(error);
+        statusCode = opc.status;
+        errorCode = opc.errorCode;
         json(res, opc.status, { code: opc.status, errorCode: opc.errorCode, message: opc.message, details: opc.details ?? null });
+        if (opc.status >= 500 && ctx.issues !== undefined) {
+          const url = new URL(req.url ?? "/", "http://localhost");
+          await ctx.issues.recordRuntimeError({ method: req.method, route: url.pathname, statusCode: opc.status, errorCode: opc.errorCode, message: `${opc.message}` }).catch(() => undefined);
+        }
+      } finally {
+        if (ctx.usage !== undefined) {
+          await ctx.usage.record({ action, statusCode, durationMs: Date.now() - startedAt, errorCode, channel: "api" }).catch(() => undefined);
+        }
       }
     })();
   };

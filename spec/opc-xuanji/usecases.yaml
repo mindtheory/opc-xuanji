@@ -665,3 +665,52 @@ usecases:
       - 识别 lint/build/test 脚本并逐个执行（300s 超时、最小环境、安装默认跳过，可显式开启且 --ignore-scripts）
       - 发布测试环境：建发布单 → 有 OPC_TEST_DEPLOY_CMD 则执行并健康检查 → 无配置则 pending 转裁决
       - 骨架合并、流水线失败、发布失败均进入裁决队列，等待老板拍板
+
+  - id: UC-027
+    title: 用量遥测与使用习惯审视
+    requirement: REQ-OPS-002
+    actors:
+      - 老板
+      - 中枢
+    goal: 只记录动作与状态，聚合出高频失败、慢操作与未使用页签，产出体验/需求/流程建议
+    entities:
+      - UsageEvent
+      - IssueFiling
+      - AuditLog
+    api:
+      - getUsageSummary
+      - generateUsageInsight
+    tests:
+      - TC-OPS-001
+      - TC-OPS-004
+    preconditions: 迁移 0011 已应用；可选配置 AI（OPC_AI_API_KEY / DEEPSEEK_API_KEY）
+    steps:
+      - HTTP 层自动记录动作、状态码、耗时与错误码（不记请求体与业务内容）
+      - 按天聚合：调用量、错误率、慢操作、页签使用分布
+      - 规则审视 + 可选 AI 审视，生成 [体验]/[需求]/[流程] 三类草稿
+      - 草稿去重后进入 Issue 队列，等待投递
+
+  - id: UC-028
+    title: 运行错误自动开 GitHub Issue
+    requirement: REQ-OPS-001
+    actors:
+      - 老板
+      - 中枢
+    goal: 5xx/运行错误自动去重登记并开 Issue，未配置凭据时只攒草稿
+    entities:
+      - RuntimeError
+      - IssueFiling
+      - AuditLog
+    api:
+      - listIssues
+      - syncIssues
+    tests:
+      - TC-OPS-002
+      - TC-OPS-003
+      - TC-OPS-005
+    preconditions: 可选配置 OPC_GITHUB_TOKEN / OPC_GITHUB_REPO / OPC_GITHUB_API_BASE
+    steps:
+      - API 5xx 走 catch 分支时按指纹去重累加次数（同指纹只留一条）
+      - 定时任务把未上报错误转成 Issue 草稿（含接口、错误码、次数、脱敏消息）
+      - sync 按单轮 5 条 / 单日 20 条限额投递 GitHub，记录 number/url
+      - 未配置 token → 草稿标 skipped 并保留，不影响主流程

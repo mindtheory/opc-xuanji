@@ -52,10 +52,12 @@ test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲
     "intel_push",
     "intel_source_collect",
     "invoice_backlog",
+    "issue_autofile",
     "keyword_radar_scan",
     "monthly_archive",
     "plugin_radar_scan",
     "tax_reminder",
+    "usage_insight",
   ]);
   const report = tasks.find((task) => task.taskId === "daily_report");
   assert.equal(report?.cron, "30 8 * * 1-5");

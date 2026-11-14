@@ -56,6 +56,8 @@ errorCodes:
   - ERR-AUTO-003
   - ERR-AUTO-004
   - ERR-AUTO-005
+  - ERR-OPS-001
+  - ERR-OPS-002
   - ERR-SYS-001
 
 paths:
@@ -1752,6 +1754,44 @@ paths:
         '202': { description: Accepted }
         '400': { description: ERR-AUTO-001 缺少测试环境 }
         '502': { description: ERR-AUTO-005 执行失败 }
+
+  /api/v1/admin/usage/summary:
+    get:
+      operationId: getUsageSummary
+      tags: [admin]
+      summary: 用量回顾（近 N 天接口/页签调用、错误率、慢操作聚合；只含动作与状态）
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/usage/insight:
+    post:
+      operationId: generateUsageInsight
+      tags: [admin]
+      summary: AI/规则审视使用习惯，产出体验、需求、工作流三类 Issue 草稿
+      responses:
+        '201': { description: Created }
+
+  /api/v1/admin/issues:
+    get:
+      operationId: listIssues
+      tags: [admin]
+      summary: Issue 草稿与投递结果列表（可按 status 过滤）
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/issues/sync:
+    post:
+      operationId: syncIssues
+      tags: [admin]
+      summary: '运行错误与用量审视草稿投递到 GitHub Issue（去重 + 限额；未配置 token 时保留草稿）'
+      responses:
+        '200': { description: OK }
+        '503': { description: ERR-OPS-001 未装配服务 }
 
 components:
   schemas:

@@ -212,6 +212,13 @@ const ENTITIES = [
     [S("project_id", "bigint", false), S("checkout_id", "bigint"), S("stage", "varchar(16)", false), S("command", "text", false), S("exit_code", "integer"), S("status", "varchar(16)", false), S("log_tail", "text"), S("duration_ms", "integer"), S("created_at", "timestamptz")], []],
   ["ProjectDeployRun", "stat.project_deploy_run", "project", "entity",
     [S("project_id", "bigint", false), S("release_id", "bigint"), S("environment_id", "bigint"), S("command", "text"), S("health_url", "text"), S("exit_code", "integer"), S("status", "varchar(16)", false), S("log_tail", "text"), S("started_at", "timestamptz"), S("ended_at", "timestamptz"), S("created_at", "timestamptz")], []],
+  // ---------------- 运维闭环（v2.18） ----------------
+  ["UsageEvent", "stat.usage_event", "platform", "event",
+    [S("channel", "varchar(16)", false), S("action", "varchar(160)", false), S("status_code", "integer"), S("duration_ms", "integer"), S("error_code", "varchar(32)"), S("session_ref", "varchar(64)"), S("meta", "jsonb"), S("occurred_at", "timestamptz")], []],
+  ["RuntimeError", "stat.runtime_error", "platform", "entity",
+    [S("fingerprint", "varchar(64)", false), S("method", "varchar(8)"), S("route", "varchar(200)"), S("status_code", "integer"), S("error_code", "varchar(32)"), S("message", "text"), S("occurrences", "integer", false), S("first_seen", "timestamptz"), S("last_seen", "timestamptz"), S("filed_issue_id", "bigint")], []],
+  ["IssueFiling", "stat.issue_filing", "platform", "entity",
+    [S("fingerprint", "varchar(64)", false), S("source", "varchar(16)", false), S("title", "varchar(256)", false), S("body", "text", false), S("severity", "varchar(8)", false), S("status", "varchar(16)", false), S("github_number", "integer"), S("github_url", "text"), S("error", "text"), S("attempts", "integer", false), S("created_at", "timestamptz"), S("filed_at", "timestamptz")], []],
   // ---------------- 基础资源配置（v2.14 公司共享资产） ----------------
   ["SharedResource", "ref.shared_resource", "platform", "entity",
     [S("kind", "varchar(24)", false), S("code", "varchar(64)"), S("name", "varchar(128)", false), S("endpoint", "text"), S("access_method", "varchar(24)", false), S("default_account", "varchar(64)"), S("credential_ref", "varchar(128)"), S("os", "varchar(64)"), S("location", "varchar(128)"), S("capacity", "varchar(128)"), S("specs", "jsonb"), S("tags", "jsonb"), S("is_default", "boolean", false), S("status", "varchar(16)", false), S("notes", "text"), S("created_at", "timestamptz"), S("updated_at", "timestamptz")], []],

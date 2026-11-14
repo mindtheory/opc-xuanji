@@ -722,7 +722,8 @@ curl -s -X PUT http://127.0.0.1:3082/api/v1/tasks/invoice_backlog -H 'content-ty
 - 公司基础资源（v2.15）：`AdminService` 新增 `SHARED_DEF` 资源定义与 `sharedDefaults` / `listSharedResources` / `createSharedResource` / `updateSharedResource` / `removeSharedResource` / `listProjectSharedResources` / `bindProjectSharedResources` / `unbindProjectSharedResource` 方法；六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记在 `ref.shared_resource`，公司默认口径（debian / ssh / canetwork / 凭据引用）存 `ref.shared_setting`，项目绑定存 `ref.project_shared_resource`；`createProject` 默认按 `is_default + active` 选型绑定，`resourceIds` 可显式覆盖。口令只以 `env:/secret:/vault:/ssh-agent:` 引用登记，实际口令由部署环境注入。
 - 项目自动驾驶（v2.16）：`ProjectAutopilotService`（`src/domains/project/autopilot.ts`）串联「登记版本库 → 浅克隆（`git clone --depth 1`，超时 120s，env: 凭据经临时 askpass）→ 静态扫描（只读文件，上限 2000 文件，跳过 `.git/node_modules/dist`）→ 回填 `tech_stack/software_profile` → 生成三份计划（dev 里程碑 + test 计划与基线用例 + deploy 复用公司默认测试服务器）→ 裁决项入队」。检出/扫描/计划/裁决分别落 `ref.project_checkout`、`stat.project_scan`、`stat.project_plan`、`stat.project_decision`；检出失败返回 502 且不伪造档案。
 - 自动化生产（v2.17）：在自动驾驶基础上追加三步——`generateScaffold`（仅补缺失骨架并提交本地分支 `opc/autopilot-*`，不推远端）、`runPipeline`（识别 lint/build/test 脚本，300s 超时 + 最小环境 + 默认不装依赖，逐阶段落 `stat.project_pipeline_run`）、`deployTestEnvironment`（建测试环境发布单，执行 `OPC_TEST_DEPLOY_CMD` 或显式命令并做健康检查，无命令转裁决）。三者失败均生成 high 风险裁决，不伪造成功。
-- HTTP 管理面统一挂 `/api/v1/admin`，共 41 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
+- 运维反馈（v2.18）：`UsageService` 在 HTTP 入口记录动作/状态/耗时（不记请求体），按天聚合后由规则 + 可选 AI（OpenAI 兼容端点，只发聚合统计）产出 [体验]/[需求]/[流程] 草稿；`IssueReporter` 对 5xx 运行错误按指纹去重，草稿经 GitHub API 投递（单轮 5 / 单日 20，正文脱敏，未配置 token 标 skipped）。定时任务 `issue_autofile`（每 30 分钟）与 `usage_insight`（每周一 09:00）驱动。
+- HTTP 管理面统一挂 `/api/v1/admin`，共 45 个 operation；Web 控制台 `client.js` 新增「项目管理」「情报管理」两个页签，驾驶舱新增项目研发与情报指标组。
 - 删除保护：被发布单引用的环境、被批次引用的计划/套件、被结果引用的用例、仍被绑定的来源、已有条目的情报空间，删除返回 409。
 
 ## 6. 失败与降级路径

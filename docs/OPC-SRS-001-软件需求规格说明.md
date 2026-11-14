@@ -713,6 +713,33 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 
 追溯：UC-011、UC-012 / TC-WEB-002、TC-WEB-003
 
+
+### 8.5 运维反馈功能需求（OPS，v2.18 新增）
+
+#### REQ-OPS-001 运行错误自动登记并开 Issue
+
+**验收标准**：
+
+- **AC-1** API 5xx（含未捕获异常兜底）按「方法+路由+错误码+消息摘要」指纹去重登记，同指纹累加次数，不重复建行。
+- **AC-2** 定时任务把未上报错误转成 Issue 草稿（含接口、HTTP 状态/错误码、累计次数、首末时间、脱敏消息）。
+- **AC-3** 草稿经 GitHub API 投递后记录 issue number/url；失败标 `failed` 并留错误，可重试。
+
+#### REQ-OPS-002 用量遥测与使用习惯审视
+
+**验收标准**：
+
+- **AC-1** HTTP 层自动记录动作、状态码、耗时、错误码与渠道；**不记录请求体、业务内容与敏感值**。
+- **AC-2** 支持按天聚合：调用量、错误率、慢操作、页签使用分布。
+- **AC-3** 规则审视产出「高频失败/慢操作/未使用页签」三类草稿；配置 AI 端点时追加体验、需求缺口、工作流便捷化建议（只发送聚合统计，不发送业务内容）。
+
+#### REQ-OPS-003 反馈投递治理
+
+**验收标准**：
+
+- **AC-1** Issue 按指纹去重；单轮最多 5 条、单日最多 20 条；可按 `OPC_GITHUB_LABELS` 指定已存在的标签。
+- **AC-2** 未配置 `OPC_GITHUB_TOKEN` 时草稿标 `skipped` 并保留，不失败、不阻塞主流程。
+- **AC-3** 正文脱敏（口令/token/长随机串替换为 ***）；Issue 与投递动作写审计。
+
 ## 9. 员工线与员工插件（十一线，拆分文档索引）
 
 员工线详细需求已拆分为一人一份独立文档，见 `docs/员工需求/OPC-SRS-101..111`；本章只保留**跨员工**的可插拔、插件包导入导出、派工隔离与停用边界。员工分册不再复制平台级约束（视图授权、令牌、冲突冻结、审计、Workflow/Verifier）。
@@ -1042,6 +1069,9 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-PRJ-031 | 自动生成代码骨架 | UC-026 | TC-AUTO-005 | bootstrapProjectAutopilot |
 | REQ-PRJ-032 | 自动跑测试流水线 | UC-026 | TC-AUTO-006 | bootstrapProjectAutopilot |
 | REQ-PRJ-033 | 自动发布测试环境 | UC-026 | TC-AUTO-007 | deployProjectTest |
+| REQ-OPS-001 | 运行错误自动登记并开 Issue | UC-028 | TC-OPS-002、003、005 | syncIssues / listIssues |
+| REQ-OPS-002 | 用量遥测与使用习惯审视 | UC-027 | TC-OPS-001、004 | getUsageSummary / generateUsageInsight |
+| REQ-OPS-003 | 反馈投递治理（去重/限额/脱敏） | UC-027、028 | TC-OPS-003 | syncIssues |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 |
@@ -1052,7 +1082,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：26 个 UC 全部在被映射的 REQ 中出现（UC-001..026 逐条可见）；主文档 39 条功能需求 + 11 份员工分册 156 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：28 个 UC 全部在被映射的 REQ 中出现（UC-001..028 逐条可见）；主文档 42 条功能需求 + 11 份员工分册 156 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 

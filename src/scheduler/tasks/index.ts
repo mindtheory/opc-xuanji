@@ -13,6 +13,7 @@ import { DashboardService } from "../../web/dashboard.ts";
 import { RadarService } from "../../web/services.ts";
 import { IntelPipelineService, type RawIntelItem } from "../../domains/intel/daily.ts";
 import type { PluginCandidate } from "../../web/plugin-score.ts";
+import { IssueReporter, UsageService } from "../../ops/feedback.ts";
 
 function monthPath(now: Date): string {
   const year = now.getUTCFullYear();
@@ -22,6 +23,27 @@ function monthPath(now: Date): string {
 
 export function defaultTasks(): TaskDefinition[] {
   return [
+    {
+      id: "issue_autofile",
+      name: "运行错误自动开 Issue（每 30 分钟）",
+      defaults: { cron: "*/30 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const issues = new IssueReporter(ctx.pool, ctx.audit);
+        return issues.sync();
+      },
+    },
+    {
+      id: "usage_insight",
+      name: "AI 审视使用习惯（每周一 09:00）",
+      defaults: { cron: "0 9 * * 1", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const usage = new UsageService(ctx.pool);
+        const issues = new IssueReporter(ctx.pool, ctx.audit);
+        const drafts = await usage.insightDrafts(7);
+        const sync = await issues.sync();
+        return { drafts: drafts.length, ...sync };
+      },
+    },
     {
       id: "daily_report",
       name: "每日晨报（工作日 08:30）",

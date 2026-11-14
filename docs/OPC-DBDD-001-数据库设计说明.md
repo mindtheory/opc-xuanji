@@ -132,7 +132,7 @@ flowchart LR
 
 跨 schema 的引用只存 id、不建 FK 的三处代表：`audit.audit_log.workflow_instance_id`（审计在实例删除后仍需可读）、`biz.conflict_queue.frozen_unit_id`（多态冻结单元：ledger/contract/stock_txn/vehicle_log 四选一）、`biz.ledger.project_id`（业务弱引用，避免跨域锁）。
 
-### 2.3 86 张表清单总览
+### 2.3 89 张表清单总览
 
 基线列数合计 272（37 表）；v2.10 Web 层新增 8 表另计。下表是第 3 章的索引页：先看清单定位，再进 3.x 看列级定义。
 
@@ -224,11 +224,14 @@ flowchart LR
 | 84 | `stat.project_scaffold` | 代码骨架记录 | 7 | `status` CHECK；`index(project_id,created_at DESC)` |
 | 85 | `stat.project_pipeline_run` | 测试流水线阶段 | 9 | `stage/status` CHECK；`index(project_id,created_at DESC)` |
 | 86 | `stat.project_deploy_run` | 测试环境发布记录 | 11 | `status` CHECK；`index(project_id,created_at DESC)` |
+| 87 | `stat.usage_event` | 用量事件 | 9 | `channel` CHECK；`index(occurred_at)`、`index(action,occurred_at)` |
+| 88 | `stat.runtime_error` | 运行错误指纹 | 11 | `fingerprint` 唯一；`index(last_seen)` |
+| 89 | `stat.issue_filing` | Issue 草稿与投递 | 14 | `fingerprint` 唯一；`source/status/severity` CHECK；`index(status,created_at)` |
 
-清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，明细见 3.6–3.12）：
+清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，v2.18 运维闭环 3 表，明细见 3.6–3.13）：
 
 ```sql
--- 按 schema 统计表与列（v2.17 后：biz 44、ref 15、audit 6、stat 20、vec 1；列数随增量表变化）
+-- 按 schema 统计表与列（v2.18 后：biz 44、ref 15、audit 6、stat 23、vec 1；列数随增量表变化）
 SELECT table_schema AS schema,
        count(DISTINCT table_name) AS tables,
        count(*)                   AS columns
@@ -237,7 +240,7 @@ WHERE table_schema IN ('biz','ref','audit','stat','vec')
 GROUP BY table_schema ORDER BY table_schema;
 ```
 
-## 3. 表结构（86 张）
+## 3. 表结构（89 张）
 
 本章按 schema 分节。每张表给出列级定义（列名 / 类型 / 可空 / 默认 / 说明）与索引约束，字段口径见 1.2。所有表主键均为 `id bigint GENERATED ALWAYS AS IDENTITY`，为避免重复，下文不再逐行标注主键列，只在“索引与约束”里写明主键名。
 
@@ -898,9 +901,21 @@ GROUP BY table_schema ORDER BY table_schema;
 
 **自动化生产口径**：骨架只补缺失文件并提交本地分支；流水线默认不装依赖（显式 `install=true` 才 `npm install --ignore-scripts`）；测试环境发布需 `OPC_TEST_DEPLOY_CMD` 或显式命令，生产仍走人工审批。
 
+### 3.13 运维闭环（v2.18 新增 3 张）
+
+> 迁移：`migrations/0011_ops_feedback.sql`；实体：`UsageEvent`、`RuntimeError`、`IssueFiling`。
+
+| 表 | 主要列 | 约束/索引 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `stat.usage_event` | `channel, action, status_code, duration_ms, error_code, session_ref, meta, occurred_at` | `channel` CHECK（api/ui/task/tool）；`index(occurred_at)`、`index(action,occurred_at)` | 用量遥测：只记动作/状态/耗时，不记请求体与业务内容 |
+| `stat.runtime_error` | `fingerprint, method, route, status_code, error_code, message, occurrences, first_seen, last_seen, filed_issue_id` | `fingerprint` 唯一；`index(last_seen)` | 5xx 运行错误按指纹去重累加，消息脱敏后存储 |
+| `stat.issue_filing` | `fingerprint, source, title, body, severity, status, github_number, github_url, error, attempts, created_at, filed_at` | `fingerprint` 唯一；`source/status/severity` CHECK；`index(status,created_at)` | Issue 草稿与投递结果；未配置 token 标 skipped 保留 |
+
+**治理口径**：Issue 单轮 ≤5、单日 ≤20；正文脱敏；GitHub 未配置时不影响主流程。
+
 ## 4. 关键索引设计
 
-基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）；v2.17 自动化生产另增 3 个主键与 3 个显式索引（明细见 3.12）。
+基线索引 58 个（37 主键 + 13 唯一 + 8 显式，其中 1 个 HNSW）；v2.10 Web 层另增 8 个主键索引、6 个唯一约束索引与 7 个显式索引（明细见 3.6）；v2.15 基础资源另增 3 个主键、2 个唯一与 3 个显式索引（明细见 3.10）；v2.16 自动驾驶另增 4 个主键、1 个唯一与 3 个显式索引（明细见 3.11）；v2.17 自动化生产另增 3 个主键与 3 个显式索引（明细见 3.12）；v2.18 运维闭环另增 3 个主键、3 个唯一与 5 个显式索引（明细见 3.13）。
 
 ### 4.1 audit_log 复合主键与分区预留
 

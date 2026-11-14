@@ -29,6 +29,7 @@ import type { ExtractedFields } from "../web/classifier.ts";
 import { EmployeePackageService } from "../employees/package.ts";
 import { ProjectSoftwareService } from "../domains/project/software.ts";
 import { ProjectAutopilotService } from "../domains/project/autopilot.ts";
+import { IssueReporter, UsageService } from "../ops/feedback.ts";
 import { IntelPipelineService } from "../domains/intel/daily.ts";
 import { AdminService } from "../domains/admin/service.ts";
 import type { EmployeeManifest } from "../employees/catalog.ts";
@@ -71,6 +72,9 @@ export interface Hub {
   };
   employees: EmployeePackageService;
   software: ProjectSoftwareService;
+  autopilot: ProjectAutopilotService;
+  usage: UsageService;
+  issues: IssueReporter;
   admin: AdminService;
   agents: SuperAgentService;
   memorySync: HindsightSyncService;
@@ -124,6 +128,8 @@ export function createHub(options: HubConfig = {}): Hub {
   const employees = new EmployeePackageService(pool, audit, { hubVersion: options.version ?? "0.2.1" });
   const software = new ProjectSoftwareService(pool, audit);
   const autopilot = new ProjectAutopilotService(pool, audit);
+  const usage = new UsageService(pool);
+  const issues = new IssueReporter(pool, audit);
   const intelPipeline = new IntelPipelineService(pool);
   const admin = new AdminService(pool, audit, software, intelPipeline, autopilot);
   const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
@@ -136,6 +142,8 @@ export function createHub(options: HubConfig = {}): Hub {
 
   const api: ApiContext = {
     pool,
+    usage,
+    issues,
     audit,
     views,
     tokens,
@@ -647,6 +655,22 @@ export function createHub(options: HubConfig = {}): Hub {
       },
     }),
     tool({
+      name: "opc_ops_usage_summary",
+      description: "用量回顾：近 N 天接口/页签调用、错误率与慢操作聚合（只含动作与状态，不含业务内容）。",
+      parameters: OBJECT({ days: { type: "integer" } }),
+      async execute(args) {
+        return jsonText(await usage.summary(Number(args.days ?? 7)));
+      },
+    }),
+    tool({
+      name: "opc_ops_issues_sync",
+      description: "把运行错误与用量审视草稿投递到 GitHub Issue（未配置 OPC_GITHUB_TOKEN 时保留草稿、不失败）。",
+      parameters: OBJECT({}),
+      async execute() {
+        return jsonText(await issues.sync());
+      },
+    }),
+    tool({
       name: "opc_agent_deploy",
       description: "把员工部署为超级智能体角色卡（dsh-super-agents）：幂等，重复部署更新同一张卡。",
       parameters: OBJECT({ pluginId: { type: "string" } }, ["pluginId"]),
@@ -706,9 +730,12 @@ export function createHub(options: HubConfig = {}): Hub {
     web,
     employees,
     software,
+    autopilot,
     admin,
     agents,
     memorySync,
+    usage,
+    issues,
     api,
     config,
     tools,

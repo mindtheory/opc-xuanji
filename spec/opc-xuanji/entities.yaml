@@ -2821,6 +2821,123 @@ entities:
       - name: created_at
         type: timestamptz
         nullable: true
+  - name: UsageEvent
+    table: stat.usage_event
+    module: platform
+    kind: event
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: channel
+        type: varchar(16)
+        nullable: false
+      - name: action
+        type: varchar(160)
+        nullable: false
+      - name: status_code
+        type: integer
+        nullable: true
+      - name: duration_ms
+        type: integer
+        nullable: true
+      - name: error_code
+        type: varchar(32)
+        nullable: true
+      - name: session_ref
+        type: varchar(64)
+        nullable: true
+      - name: meta
+        type: jsonb
+        nullable: true
+      - name: occurred_at
+        type: timestamptz
+        nullable: true
+  - name: RuntimeError
+    table: stat.runtime_error
+    module: platform
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: fingerprint
+        type: varchar(64)
+        nullable: false
+      - name: method
+        type: varchar(8)
+        nullable: true
+      - name: route
+        type: varchar(200)
+        nullable: true
+      - name: status_code
+        type: integer
+        nullable: true
+      - name: error_code
+        type: varchar(32)
+        nullable: true
+      - name: message
+        type: text
+        nullable: true
+      - name: occurrences
+        type: integer
+        nullable: false
+      - name: first_seen
+        type: timestamptz
+        nullable: true
+      - name: last_seen
+        type: timestamptz
+        nullable: true
+      - name: filed_issue_id
+        type: bigint
+        nullable: true
+  - name: IssueFiling
+    table: stat.issue_filing
+    module: platform
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: fingerprint
+        type: varchar(64)
+        nullable: false
+      - name: source
+        type: varchar(16)
+        nullable: false
+      - name: title
+        type: varchar(256)
+        nullable: false
+      - name: body
+        type: text
+        nullable: false
+      - name: severity
+        type: varchar(8)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: github_number
+        type: integer
+        nullable: true
+      - name: github_url
+        type: text
+        nullable: true
+      - name: error
+        type: text
+        nullable: true
+      - name: attempts
+        type: integer
+        nullable: false
+      - name: created_at
+        type: timestamptz
+        nullable: true
+      - name: filed_at
+        type: timestamptz
+        nullable: true
   - name: SharedResource
     table: ref.shared_resource
     module: platform
