@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **自动驾驶页白屏（v2.23 回归）**：`client.js` 新增展示兜底函数 `textOf`。此前自动驾驶页签的 `ProjectInfoCard`/`RoadmapCard` 等组件引用了未定义的 `textOf`，进入页签即抛 `ReferenceError`，导致整块主面板白屏；已用假 React 渲染器复现（`textOf is not defined`）并在修复后逐一渲染项目总览/详情/当前执行/路线图/执行记录与已加载/已归档两种页面状态验证通过。
+
 ### Added
 
 - **自动驾驶控制台（v2.23）**：`OPC-SRS-105` 新增 REQ-PRJ-037（自动驾驶控制台：项目状态/当前执行/执行记录/计划路线图/归档）、REQ-PRJ-038（项目描述从版本库抽取，人工优先）、REQ-PRJ-039（基于项目内容的计划生成），项目监理需求 36→39；新增迁移 `0015_autopilot_console.sql`：`biz.project` 增 `description text`/`archived_at timestamptz`/`archive_reason varchar(200)`（16→19 列），新增 `stat.project_autopilot_run`（13 列，`trigger` CHECK manual/idea/api、`status` CHECK running/ok/failed、`steps` jsonb）与 `project_autopilot_run_project_idx(project_id,id DESC)`、`project_autopilot_run_running_idx(project_id) WHERE status='running'`（表数 91→92、实体 91→92）；每次 `bootstrap` 追加一行执行记录、10 阶段 `steps` 留痕（成功 `status=ok,stage=done`，失败保留失败阶段与 `error`，未执行记 `skipped`），同项目已有 running 时返回 409 `ERR-AUTO-001`；summary 增 `status`/`statusLabel`（6 态，优先级 archived > running > failed > waiting_decision > ready > not_started：失败比待裁决更紧急，故 failed 先于 waiting_decision）、`description`/`descriptionSource`、`currentRun`、`runs`（≤10 最新在前）、`roadmap`（阶段优先、里程碑兜底）与带 `content` 的三份计划；描述只读检出目录按 README 首段抽取（去徽章/图片/代码块/链接，≤200 字），无描述回退 `package.json`/`pom.xml`/`pyproject.toml`/`Cargo.toml`/`setup.py`，且只填空描述、人工编辑不覆盖；dev/test/deploy 计划 `content` 按模块/测试/CI/Docker/构建脚本生成，缺内容降级写 `assumptions`/`risks`，三份计划仍 draft；新增 3 个 operation（P102 listAutopilotProjects、P103 archiveProject、P104 unarchiveProject，契约 114→117），归档/恢复只改标记不删检出/计划/执行记录/裁决并写审计 `project.autopilot.archive`/`project.autopilot.unarchive`，`PUT /admin/projects/{id}` 接受 `description`，无新增错误码；管理面「自动驾驶」页签展示状态、当前执行、执行记录、计划路线图与项目描述，支持归档/恢复与 `archived=active|archived|all` 过滤；测试新增 TC-AUTO-012..016（`autopilot.test.ts` 11→16，全量 129→134，本轮实测全量 134/134）；文档同步 SRS/DBDD/IRS/RTM/STD/STP/STR/SDD/spec/index + `PA-OPC-032`。

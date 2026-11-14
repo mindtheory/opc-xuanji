@@ -107,6 +107,11 @@ window.__ModuleLoader__.load({
       if (typeof v === "object") return JSON.stringify(v);
       return String(v);
     }
+    // 展示用文本兜底：空值显示 fallback（默认 "-"），避免把 null/undefined 拼进界面
+    function textOf(v, fallback) {
+      if (v === null || v === undefined || v === "") return fallback === undefined ? "-" : fallback;
+      return String(v);
+    }
     function fmtDate(v) {
       if (!v) return "-";
       var s = String(v);
