@@ -81,7 +81,8 @@ function repoKind(repo: RepositoryInput): VcsKind {
 function repoUrl(value: unknown, kind: VcsKind): string {
   const url = str(value, "repositoryUrl") as string;
   if (kind === "svn") {
-    const ok = /^(https?|svn|svn\+ssh|file):\/\/\S+$/i.test(url) || /^\/[^\s]+$/.test(url);
+    // 公司 SVN 路径常含空格与中文（如 `产品设计/天元数智/OPC-玄机 · 一人公司中枢`）：URL 作为单个 argv 传给 svn，允许空格
+    const ok = /^(https?|svn|svn\+ssh|file):\/\/[^\n\r]+$/i.test(url) || /^\/[^\n\r]+$/.test(url);
     if (!ok) throw new OpcError(ERR.AUTO_INVALID, `SVN 版本库地址非法（支持 svn://、svn+ssh://、http(s)://、file://、本地路径）：${url.slice(0, 120)}`, 400);
     return url;
   }
@@ -106,6 +107,16 @@ function svnCheckoutUrl(url: string, branch: string | null): string {
   const value = branch.trim();
   if (/^(https?|svn|svn\+ssh|file):\/\//i.test(value)) return value;
   return `${url.replace(/\/+$/, "")}/${value.replace(/^\/+/, "")}`;
+}
+
+/** 从版本库地址取主机名（svn://、svn+ssh://、http(s):// 均可；本地路径/file:// 无主机）。 */
+function svnHost(url: string): string | null {
+  try {
+    const host = new URL(url).hostname;
+    return host === "" ? null : host.toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 function ciDate(daysFromNow: number): string {
@@ -301,10 +312,11 @@ export class ProjectAutopilotService {
     const args = ["checkout", "--non-interactive", "--no-auth-cache"];
     if (revision !== "HEAD") args.push("--revision", revision);
     let stdin: string | undefined;
-    if (repo.authRef !== undefined) {
-      if (!repo.authRef.startsWith("env:")) throw new OpcError(ERR.AUTO_CRED, "自动检出暂只支持 env: 凭据引用", 400);
-      const token = process.env[repo.authRef.slice("env:".length)];
-      if (!token) throw new OpcError(ERR.AUTO_CRED, `凭据环境变量未设置：${repo.authRef}`, 400);
+    const authRef = this.svnAuthRef(repo, checkoutUrl);
+    if (authRef !== undefined) {
+      if (!authRef.startsWith("env:")) throw new OpcError(ERR.AUTO_CRED, "自动检出暂只支持 env: 凭据引用", 400);
+      const token = process.env[authRef.slice("env:".length)];
+      if (!token) throw new OpcError(ERR.AUTO_CRED, `凭据环境变量未设置：${authRef}`, 400);
       const username = process.env.OPC_SVN_USERNAME?.trim() || "opc";
       args.push("--username", username, "--password-from-stdin");
       stdin = token;
@@ -314,6 +326,22 @@ export class ProjectAutopilotService {
     const info = await exec("svn", ["info", "--non-interactive", "--show-item", "revision", dir], { env, timeout: 15_000 });
     const actual = info.stdout.trim();
     return { url: checkoutUrl, revision: /^\d+$/.test(actual) ? actual : revision };
+  }
+
+  /**
+   * SVN 凭据引用：显式 authRef 优先；未填时若服务环境设置了 OPC_SVN_PASSWORD 且目标主机在
+   * OPC_SVN_TRUSTED_HOSTS 白名单内，则自动使用 env:OPC_SVN_PASSWORD，避免口令被送往白名单之外的 URL。
+   */
+  private svnAuthRef(repo: RepositoryInput, checkoutUrl: string): string | undefined {
+    if (repo.authRef !== undefined && repo.authRef !== "") return repo.authRef;
+    if (!process.env.OPC_SVN_PASSWORD) return undefined;
+    const host = svnHost(checkoutUrl);
+    if (host === null) return undefined;
+    const trusted = (process.env.OPC_SVN_TRUSTED_HOSTS ?? "")
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item !== "");
+    return trusted.includes(host) ? "env:OPC_SVN_PASSWORD" : undefined;
   }
 
   private async measure(dir: string): Promise<{ files: number; bytes: number }> {

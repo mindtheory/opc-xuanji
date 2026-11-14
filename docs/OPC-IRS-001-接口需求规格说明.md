@@ -865,13 +865,14 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 项 | 内容 |
 | :--- | :--- |
 | 入参 | `repository:{url, kind?, branch?, revision?, authRef?, name?}`（`url` 必填，不从已登记版本库隐式回填）；工具 `opc_project_bootstrap` 的平铺参数 `repositoryKind`、`revision` 与 `repository.kind`、`repository.revision` 语义相同 |
+| 凭据 | `authRef` 显式优先；未填时若服务环境 `OPC_SVN_PASSWORD` 已配置且目标主机在 `OPC_SVN_TRUSTED_HOSTS` 白名单内，自动按 `env:OPC_SVN_PASSWORD` 使用服务环境凭据（白名单外主机不送口令）；口令经 stdin，不落库、不进日志 |
 | 版本库类型 | `kind ∈ {git,svn}`；显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git |
 | Git 语义 | `branch`=分支；检出提交落 `commit_sha` |
 | SVN 语义 | `branch`=主干/分支路径（相对 URI，如 `trunk`、`branches/release-1.0`，也接受绝对 URL）；`revision`=`HEAD`\|数字\|`r数字`，默认 `HEAD`；检出修订号落 `revision` |
 | 出参 | `bootstrap.repository.kind`（git/svn）；`bootstrap.checkout.vcs`（git/svn）与 `revision`（git 为 null、svn 为实际修订号）；svn 时 `commit=null` |
 | 失败 | 参数/凭据非法 400 `ERR-AUTO-001/003`；检出失败或缺少 svn 客户端 502 `ERR-AUTO-002`（后者登记 `topic=svn_client` 裁决） |
 
-**SVN 检出与客户端口径**：SVN 检出走本机 CLI（subversion ≥1.10），认证密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库、不进日志；svn 客户端缺失时返回 502 `ERR-AUTO-002` 并登记 `topic=svn_client` 裁决，不伪造工作副本、档案与计划；扫描跳过 `.git/.svn/.hg/node_modules/dist`；SVN 骨架只落工作副本（`status=generated`）、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号取 `coalesce(commit_sha, revision)`。
+**SVN 检出与客户端口径**：SVN 检出走本机 CLI（subversion ≥1.10），认证密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库、不进日志；SVN 地址允许空格与中文（公司路径可直接填）；未填 `authRef` 时仅对 `OPC_SVN_TRUSTED_HOSTS` 白名单主机自动使用服务环境凭据，白名单外主机不送口令；svn 客户端缺失时返回 502 `ERR-AUTO-002` 并登记 `topic=svn_client` 裁决，不伪造工作副本、档案与计划；扫描跳过 `.git/.svn/.hg/node_modules/dist`；SVN 骨架只落工作副本（`status=generated`）、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号取 `coalesce(commit_sha, revision)`。
 
 ## 8. DSH 工具契约（工具即接口）
 

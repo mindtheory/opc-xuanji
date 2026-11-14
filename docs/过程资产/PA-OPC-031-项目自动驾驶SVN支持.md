@@ -16,7 +16,7 @@
 - 入参：`repository:{url, kind?:'git'|'svn', branch?, revision?, authRef?, name?}`；工具 `opc_project_bootstrap` 新增平铺参数 `repositoryKind`、`revision`；`kind` 显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git。
 - SVN 语义：`branch`=主干/分支路径（相对 URI，如 `trunk`、`branches/release-1.0`；也接受绝对 URL）；`revision`=`HEAD`|数字|`r数字`，默认 `HEAD`。Git 仍 `branch`=分支、`commit_sha` 落库。
 - 迁移 `migrations/0014_autopilot_svn.sql`：`ref.project_checkout` 新增 `vcs_kind varchar(8) NOT NULL DEFAULT 'git'` CHECK（git/svn）与 `revision varchar(32)`；表数不变（仍 91），该表列数 13→15。
-- 检出实现：SVN 走本机 CLI（subversion ≥1.10），密码经 stdin，凭据仅接受 `env:` 引用，不落库不落日志；svn 客户端缺失返回 502 `ERR-AUTO-002` 并登记裁决 `topic=svn_client`。
+- 检出实现：SVN 走本机 CLI（subversion ≥1.10），密码经 stdin，凭据仅接受 `env:` 引用，不落库不落日志；SVN 客户端缺失返回 502 `ERR-AUTO-002` 并登记裁决 `topic=svn_client`；SVN 地址允许空格与中文（公司路径 `产品设计/天元数智/OPC-玄机 · 一人公司中枢` 可直接填）。未填 `authRef` 时，若服务环境配置 `OPC_SVN_PASSWORD` 且目标主机在 `OPC_SVN_TRUSTED_HOSTS` 白名单内，自动按 `env:OPC_SVN_PASSWORD` 使用服务环境凭据（白名单外主机不送口令）。
 - 扫描/档案：跳过目录新增 `.svn`/`.hg`；`software_profile` 增加 `vcs`（git/svn）与 `revision`（git 为 null）。
 - 骨架/发布：SVN 骨架只落工作副本、`status=generated`、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号=`coalesce(commit_sha, revision)`。
 - 响应：`bootstrap.repository` 增加 `kind`；`bootstrap.checkout` 增加 `vcs`、`revision`（git revision=null、svn commit=null）。

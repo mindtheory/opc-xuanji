@@ -533,9 +533,9 @@ updated: 2026-11-14
 
 **验收标准**：
 
-- **AC-1** 入参支持 `repository:{url,kind?,branch?,revision?,authRef?,name?}` 与工具平铺参数 `repositoryKind`、`revision`；`kind` 显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git。
+- **AC-1** 入参支持 `repository:{url,kind?,branch?,revision?,authRef?,name?}` 与工具平铺参数 `repositoryKind`、`revision`；`kind` 显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git；SVN 地址允许空格与中文（公司路径如 `产品设计/天元数智/…`）。
 - **AC-2** SVN 语义：`branch`=主干/分支路径（相对 URI，如 `trunk`、`branches/release-1.0`；也接受绝对 URL），`revision`=`HEAD`|数字|`r数字`，默认 `HEAD`；检出事实写 `ref.project_checkout`（迁移 `0014_autopilot_svn.sql` 新增 `vcs_kind varchar(8) NOT NULL DEFAULT 'git'` CHECK（git/svn）与 `revision varchar(32)`，表数仍 91、该表列数 13→15）；Git 仍 `branch`=分支、`commit_sha` 落库。
-- **AC-3** 检出走 CLI（subversion ≥1.10）；svn 客户端缺失时返回 502（`ERR-AUTO-002`）并登记裁决 `topic=svn_client`，不伪造检出与档案；密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库不落日志。
+- **AC-3** 检出走 CLI（subversion ≥1.10）；svn 客户端缺失时返回 502（`ERR-AUTO-002`）并登记裁决 `topic=svn_client`，不伪造检出与档案；密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库不落日志；未填 `authRef` 时，若服务环境已配置 `OPC_SVN_PASSWORD` 且目标主机在 `OPC_SVN_TRUSTED_HOSTS` 白名单内，自动按 `env:OPC_SVN_PASSWORD` 使用服务环境凭据（白名单外主机不送口令）。
 - **AC-4** 扫描跳过目录新增 `.svn`/`.hg`；`software_profile` 增加 `vcs`（git/svn）与 `revision`（git 为 null）；SVN 骨架只落工作副本、`status=generated`、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号=`coalesce(commit_sha, revision)`；响应 `bootstrap.repository` 增加 `kind`、`bootstrap.checkout` 增加 `vcs`/`revision`（git revision=null、svn commit=null）。
 
 追溯：AC 直验 / `UC-024` / `TC-AUTO-010`、`TC-AUTO-011`

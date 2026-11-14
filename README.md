@@ -90,7 +90,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | :--- | :--- | :--- |
 | 中枢（Service） | `src/platform`、`src/workflow` | 视图级授权（8 个视图）、一次性令牌（≤5 分钟、单次）、冲突冻结与裁决、审计哈希链、Registry 六项准入守卫、风险硬规则、Verifier 封装、诊断 |
 | 员工（Subagent / 函数） | `ref.employee_plugin` + 工具注册 | 员工不直连库：读经视图、写经中枢、审计统一入口；`write_targets` 决定风险等级 |
-| 项目自动驾驶 | `src/domains/project/autopilot.ts` | 建项目填版本库 → 检出（Git 浅克隆 / SVN checkout）→ 只读静态扫描（跳 `.svn`/`.hg`）→ 回填 `tech_stack/software_profile`（含 vcs/revision）→ 生成开发/测试/部署计划 → 仅裁决项入队；Git/SVN 双协议：`svn://`、`svn+ssh://` 自动识别、`branch` 支持主干/分支路径、`revision` 支持 HEAD|数字，svn 客户端缺失降级 502 + 裁决；检出上限 2000 文件、不执行仓库代码、生产仍需人工审批 |
+| 项目自动驾驶 | `src/domains/project/autopilot.ts` | 建项目填版本库 → 检出（Git 浅克隆 / SVN checkout）→ 只读静态扫描（跳 `.svn`/`.hg`）→ 回填 `tech_stack/software_profile`（含 vcs/revision）→ 生成开发/测试/部署计划 → 仅裁决项入队；Git/SVN 双协议：`svn://`、`svn+ssh://` 自动识别、`branch` 支持主干/分支路径、`revision` 支持 HEAD|数字、SVN URL 允许空格/中文，svn 客户端缺失降级 502 + 裁决；未填凭据引用时仅对 `OPC_SVN_TRUSTED_HOSTS` 白名单主机自动使用服务环境 `OPC_SVN_PASSWORD`；检出上限 2000 文件、不执行仓库代码、生产仍需人工审批 |
 | 自动化生产 | `src/domains/project/autopilot.ts` + `client.js` | 只补缺失骨架并提交本地分支（不推远端）、识别并执行 lint/build/test（300s 超时、默认不装依赖）、自动发测试环境（无命令转裁决）；管理面「自动驾驶」页签一键触发与就地裁决；**已建项目**可在同一页签选中执行，重复执行只递增计划版本、复用资源 |
 | 运维反馈 | `src/ops/feedback.ts` | 5xx 运行错误按指纹去重并自动开 GitHub Issue；HTTP 埋点只记动作/状态/耗时，按天聚合后规则 + 可选 AI 产出体验/需求/流程 Issue 草稿（单轮5/单日20、正文脱敏、未配置 token 只攒草稿） |
 | 创意转项目 | `src/domains/project/idea.ts` + `src/platform/documents.ts` | 创意文本或多文档（txt/md/docx/xlsx/pdf，多文件）→ AI 解析项目档案（失败规则兜底）→ 自动建项目并进自动驾驶；无仓库转 repository 裁决 |

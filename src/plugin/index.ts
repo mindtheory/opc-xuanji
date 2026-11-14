@@ -648,11 +648,11 @@ export function createHub(options: HubConfig = {}): Hub {
       parameters: OBJECT(
         {
           projectId: { type: "integer" },
-          repositoryUrl: { type: "string", description: "版本库地址：Git 支持 https/ssh/git@/file:///本地路径；SVN 支持 svn://、svn+ssh://、http(s)://、file:///本地路径" },
+          repositoryUrl: { type: "string", description: "版本库地址：Git 支持 https/ssh/git@/file:///本地路径；SVN 支持 svn://、svn+ssh://、http(s)://、file:///本地路径（允许空格与中文）" },
           repositoryKind: { type: "string", enum: ["git", "svn"], description: "版本库类型；缺省按地址推断（svn://、svn+ssh:// → svn），其余默认 git" },
           branch: { type: "string", description: "Git 为分支；SVN 为主干/分支路径（如 trunk、branches/release-1.0）或绝对 URL" },
           revision: { type: "string", description: "仅 SVN：HEAD 或数字修订号（如 12345 / r12345），缺省 HEAD" },
-          authRef: { type: "string", description: "凭据引用，只接受 env:/secret:/vault:/ssh-agent:；SVN 口令经 stdin 传入，用户名取 OPC_SVN_USERNAME（默认 opc）" },
+          authRef: { type: "string", description: "凭据引用，只接受 env:/secret:/vault:/ssh-agent:；未填且目标主机在 OPC_SVN_TRUSTED_HOSTS 白名单内时，自动使用服务环境 OPC_SVN_PASSWORD；SVN 口令经 stdin 传入，用户名取 OPC_SVN_USERNAME（默认 opc）" },
         },
         ["projectId", "repositoryUrl"],
       ),

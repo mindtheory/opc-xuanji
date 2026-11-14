@@ -7,7 +7,7 @@ import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, mkdtemp, writeFile, chmod } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, chmod, readFile, rm } from "node:fs/promises";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -355,15 +355,17 @@ test("TC-AUTO-009 重复执行幂等：不重复建版本库/里程碑/测试计
   assert.equal(new Set(topics).size, topics.length);
 });
 
-/** SVN 桩：模拟自动化用到的 svn --version / checkout / info，避免真实 SVN 服务依赖（真实环境需 subversion ≥1.10）。 */
-async function makeSvnStub(fixture: string, revision: string): Promise<string> {
+/** SVN 桩：模拟自动化用到的 svn --version / checkout / info，记录 argv/stdin 供凭据断言（真实环境需 subversion ≥1.10）。 */
+async function makeSvnStub(fixture: string, revision: string, argsFile: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "opc-svn-stub-"));
   const file = join(dir, "svn");
   const script = [
     "#!/bin/sh",
-    "# 测试桩：只实现本服务用到的 --version / checkout / info --show-item",
+    "# 测试桩：只实现本服务用到的 --version / checkout / info --show-item；记录 checkout 的 argv 与 stdin",
     'if [ "$1" = "--version" ]; then echo "1.14.24"; exit 0; fi',
     'if [ "$1" = "checkout" ]; then',
+    `  echo "$@" > "${argsFile}"`,
+    `  cat > "${argsFile}.stdin"`,
     "  for last; do :; done",
     `  cp -R "${fixture}/." "$last"`,
     '  mkdir -p "$last/.svn"',
@@ -391,9 +393,17 @@ test("TC-AUTO-010 SVN 版本库检出：修订号落库、扫描跳过 .svn、�
   await writeFile(join(svnFixture, "src/index.js"), "const express = require('express');\nmodule.exports = express;\n");
   await writeFile(join(svnFixture, "test/app.test.js"), "import assert from 'node:assert';\nassert.ok(true);\n");
   await writeFile(join(svnFixture, "README.md"), "# svn-app\n\nSVN 检出夹具。\n");
-  const stubDir = await makeSvnStub(svnFixture, "12345");
+  const argsDir = await mkdtemp(join(tmpdir(), "opc-svn-args-"));
+  const argsFile = join(argsDir, "checkout.args");
+  const stubDir = await makeSvnStub(svnFixture, "12345", argsFile);
   const originalPath = process.env.PATH;
+  const originalSvnUser = process.env.OPC_SVN_USERNAME;
+  const originalSvnPassword = process.env.OPC_SVN_PASSWORD;
+  const originalSvnTrusted = process.env.OPC_SVN_TRUSTED_HOSTS;
   process.env.PATH = `${stubDir}:${originalPath ?? ""}`;
+  process.env.OPC_SVN_USERNAME = "svnuser";
+  process.env.OPC_SVN_PASSWORD = "svn-test-secret";
+  process.env.OPC_SVN_TRUSTED_HOSTS = "svn.internal";
   try {
     const created = await call("POST", "/api/v1/admin/projects", {
       name: "SVN 检出项目",
@@ -434,9 +444,36 @@ test("TC-AUTO-010 SVN 版本库检出：修订号落库、扫描跳过 .svn、�
     assert.equal(release.rows[0].version, "12345");
     assert.equal(release.rows[0].status, "approved");
     assert.equal(autopilot.deploy.status, "pending");
+
+    // 服务环境凭据：未填 authRef 时，仅对 OPC_SVN_TRUSTED_HOSTS 白名单主机自动使用 OPC_SVN_PASSWORD
+    const svnArgs = await readFile(argsFile, "utf8");
+    assert.match(svnArgs, /--username svnuser/);
+    assert.match(svnArgs, /--password-from-stdin/);
+    assert.match(svnArgs, /--revision 12345/);
+    assert.equal((await readFile(`${argsFile}.stdin`, "utf8")).trim(), "svn-test-secret");
+
+    // 白名单外主机（含任意 svn URL）不自动送出口令
+    const untrusted = await call("POST", "/api/v1/admin/projects", {
+      name: "SVN 非受信主机",
+      stage: "planning",
+      repository: { url: "svn://untrusted.example/company/repo", kind: "svn" },
+      autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+    });
+    assert.equal(untrusted.status, 201);
+    const untrustedArgs = await readFile(argsFile, "utf8");
+    assert.equal(untrustedArgs.includes("--username"), false);
+    assert.equal(untrustedArgs.includes("--password-from-stdin"), false);
   } finally {
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
+    if (originalSvnUser === undefined) delete process.env.OPC_SVN_USERNAME;
+    else process.env.OPC_SVN_USERNAME = originalSvnUser;
+    if (originalSvnPassword === undefined) delete process.env.OPC_SVN_PASSWORD;
+    else process.env.OPC_SVN_PASSWORD = originalSvnPassword;
+    if (originalSvnTrusted === undefined) delete process.env.OPC_SVN_TRUSTED_HOSTS;
+    else process.env.OPC_SVN_TRUSTED_HOSTS = originalSvnTrusted;
+    await rm(argsFile, { force: true });
+    await rm(`${argsFile}.stdin`, { force: true });
   }
 });
 

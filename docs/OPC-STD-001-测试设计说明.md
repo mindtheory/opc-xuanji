@@ -709,7 +709,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 | TC | 场景 | 断言要点 |
 | :--- | :--- | :--- |
-| TC-AUTO-010 | SVN 检出与修订号 | 本地 SVN 夹具、`branch=trunk`、`revision=r1`：`checkout.status=ok`、`checkout.vcs=svn`、`revision` 与请求一致；`vcs_kind='svn'` 落 `ref.project_checkout`；扫描跳过 `.svn` 且识别 javascript；`software_profile.vcs=svn`、`revision` 非空；测试环境发布版本号取 `coalesce(commit_sha, revision)`（SVN 取 revision）；SVN 骨架 `status=generated`、不建分支不提交、无 `scaffold_review` 裁决 |
+| TC-AUTO-010 | SVN 检出与修订号 | 本地 SVN 夹具、`branch=trunk`、`revision=r1`：`checkout.status=ok`、`checkout.vcs=svn`、`revision` 与请求一致；`vcs_kind='svn'` 落 `ref.project_checkout`；扫描跳过 `.svn` 且识别 javascript；`software_profile.vcs=svn`、`revision` 非空；测试环境发布版本号取 `coalesce(commit_sha, revision)`（SVN 取 revision）；SVN 骨架 `status=generated`、不建分支不提交、无 `scaffold_review` 裁决；服务环境凭据：未填 authRef 且主机在 `OPC_SVN_TRUSTED_HOSTS` 内时 svn argv 含 `--username`/`--password-from-stdin` 且 stdin 为 `OPC_SVN_PASSWORD`，白名单外主机不带凭据参数 |
 | TC-AUTO-011 | svn 客户端缺失降级 | 隔离 PATH（无 `svn`）→ 502 `ERR-AUTO-002`；`stat.project_decision` 出现 `topic=svn_client`（pending）；`ref.project_checkout` 留 `failed` 记录；不伪造档案与计划 |
 
 **结论口径**：本章为 v2.22 增量，基线核算（5.1）只统计基线 68 例。
@@ -761,7 +761,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-OPS-005 | UC-028 / REQ-OPS-001 | `test/integration/ops.test.ts` | Issue 列表按状态过滤 |
 | TC-AUTO-008 | UC-029 / REQ-PRJ-034 | `test/integration/autopilot.test.ts` | 已建项目接入：检出/扫描/档案/3 计划 |
 | TC-AUTO-009 | UC-029 / REQ-PRJ-034 | `test/integration/autopilot.test.ts` | 重复执行：复用资源、计划版本递增、裁决去重 |
-| TC-AUTO-010 | UC-024 / REQ-PRJ-036 | `test/integration/autopilot.test.ts` | SVN 检出：修订号落库、跳过 `.svn`、档案回填、发布版本号 |
+| TC-AUTO-010 | UC-024 / REQ-PRJ-036 | `test/integration/autopilot.test.ts` | SVN 检出：修订号落库、跳过 `.svn`、档案回填、发布版本号；服务环境凭据仅对白名单主机自动使用 |
 | TC-AUTO-011 | UC-024 / REQ-PRJ-036 | `test/integration/autopilot.test.ts` | svn 客户端缺失：502 `ERR-AUTO-002` + `svn_client` 裁决 |
 | TC-IDEA-001 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 文本创意 AI 解析 |
 | TC-IDEA-002 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | txt/docx/xlsx/pdf 多文件解析 |
