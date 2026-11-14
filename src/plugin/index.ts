@@ -166,12 +166,18 @@ export function createHub(options: HubConfig = {}): Hub {
   };
 
   // 工具边界统一错误口径：DSH 只看到一条可读错误，前缀带 OPC 错误码，便于模型与审计对账
-  // output 契约（DSH ≥0.2.1）：execute 已返回 {type:"text",text} 块，render 直接透传
+  // output 契约（DSH ≥0.2.1）：render 必须返回 ContentBlock[]。此前返回单个 {type:"text"} 对象，
+  // 运行时在 result.content.some(...) 处抛 "content.some is not a function"，导致全部 OPC 工具齐挂。
   const TEXT_OUTPUT = {
     schema: { type: "object" },
     render(_args: unknown, value: unknown): unknown {
-      if (typeof value === "string") return { type: "text", text: value };
-      return value;
+      if (typeof value === "string") return [{ type: "text", text: value }];
+      const block = value as { type?: unknown; text?: unknown } | null;
+      if (block !== null && typeof block === "object" && block.type === "text" && typeof block.text === "string") {
+        return [block];
+      }
+      const text = JSON.stringify(value, null, 2);
+      return [{ type: "text", text: typeof text === "string" ? text : String(value) }];
     },
   };
   const tool = (def: ToolDefinition): ToolDefinition => ({
