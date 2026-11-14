@@ -293,12 +293,12 @@ node scripts/check-spec.mjs --dir spec
 | :--- | :--- | :--- |
 | 迁移 `0015_autopilot_console.sql` | 测试库已应用（applied 1） | 表数 91→92，`biz.project` 16→19 列；新增 `stat.project_autopilot_run` 与两个索引 |
 | 新增用例（`autopilot.test.ts`） | **16/16 pass**（已实测） | TC-AUTO-012..016 描述抽取/执行记录/路线图/归档/并发 409；TC-AUTO-001..011 无回归 |
-| 全量测试（`npm test`） | **134/134 pass**（2026-11-14 实测，单元 42 + 集成 92） | 自动化用例 129→134（+5）；与 §18 基线串行执行结果一致 |
+| 全量测试（`npm test`） | **136/136 pass**（2026-11-14 实测，单元 44 + 集成 92） | 自动化用例 129→136（+7：自动驾驶 5 + 渲染冒烟 2）；与 §18 基线串行执行结果一致 |
 | 类型检查 / 规格 / 文档 | PASS | `tsc --noEmit` 0 错误；`spec:check` 92 实体 / 31 用例 / 21 模块；`docs:check` 28 份（门禁统计不含 `docs/过程资产/`，新增 PA-OPC-032） |
 | 口径项 | 6 态状态优先级 `archived > running > failed > waiting_decision > ready > not_started`（失败比待裁决更紧急）、`currentRun` 仅 running 非空、10 步执行记录、归档只改标记、同项目并发 409 | TC-AUTO-013/015/016 断言 |
 | 描述优先 | 人工 `description` 不被检出覆盖；`software_profile` 保留抽取证据 | TC-AUTO-012 断言 |
 
-**结论**：v2.23 的自动驾驶控制台、描述抽取与内容化计划已验证（`autopilot.test.ts` 16/16、全量 `npm test` 134/134、`typecheck` / `spec:check` / `docs:check` 均通过）。
+**结论**：v2.23 的自动驾驶控制台、描述抽取与内容化计划已验证（`autopilot.test.ts` 16/16、全量 `npm test` 136/136、`typecheck` / `spec:check` / `docs:check` 均通过）。
 
 ## 自检清单
 

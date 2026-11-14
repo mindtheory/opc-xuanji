@@ -34,7 +34,7 @@ opc-xuanji/
 │   ├── plugin/      # DSH cordis 插件入口（42 个工具）
 │   └── db/          # 连接池与迁移执行器
 ├── scripts/         # gen-spec / migrate / serve
-├── test/            # 单元 42 + 集成 92（共 134 例；新增 Web/员工用例需测试库）
+├── test/            # 单元 44 + 集成 92（共 136 例；新增 Web/员工用例需测试库）
 ├── docs/员工需求/   # 11 个员工需求分册（一人一份）
 ├── docs/            # 软件工程文档（SRS/IRS/SDD/DBDD/SDP/SCMP/SQAP/RMP/RTM/SVD/STP/STD/STR + UML + PA）
 ├── AGENTS.md        # 主会话 Agent 运行章程（幕僚长/COO 行为约定）
@@ -165,7 +165,7 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 ## 测试与门禁
 
 ```bash
-npm test          # 134 用例：单元 42 + 集成 92（本地需 OPC_TEST_DSN；CI 已全绿）
+npm test          # 136 用例：单元 44 + 集成 92（本地需 OPC_TEST_DSN；CI 已全绿）
 npm run typecheck # tsc --noEmit，0 错误
 npm run spec:check# check-spec：PASS（ERROR 0）
 npm run docs:check# check-docs：frontmatter/文末两节/编号

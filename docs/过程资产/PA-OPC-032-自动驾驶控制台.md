@@ -20,7 +20,7 @@
 - 新增接口（契约 114→117，编号 P102–P104）：`GET /admin/autopilot/projects?archived=active|archived|all`（默认 `active`，返回 `items` 与 `counts{total,active,archived,running,waitingDecision,ready,failed,notStarted}`）；`POST /admin/projects/{id}/archive`（body `{reason?}`，≤200 字）；`POST /admin/projects/{id}/unarchive`。归档/恢复只改标记，不删检出/计划/执行记录/裁决，分别写审计 `project.autopilot.archive` / `project.autopilot.unarchive`。`PUT /admin/projects/{id}` 的 `PROJECT_FIELDS` 增 `description`。
 - 描述抽取：只读检出目录，按 `README.md/README/readme.md/README.markdown/README.txt/readme.txt` 取首个标题与首段正文（去徽章/图片/代码块/链接/HTML，≤200 字，`readmeExcerpt` ≤600 字）；README 无描述时回退 `package.json.description`、`pom.xml <description>`、`pyproject.toml`/`Cargo.toml`/`setup.py` 的 description；仅当 `biz.project.description` 为空时写入（`COALESCE(NULLIF(description,''), $new)`），人工编辑不被覆盖；`software_profile` 写 `description`/`descriptionSource`/`readmeTitle`/`readmeExcerpt`/`modules[{name,files,loc}]`/`scripts`/`docs`/`docker`/`license`/`envExample`。
 - 内容化计划：dev `content` = weeks/description/phases（5 阶段，含 startDate/endDate/owner/status/deliverables）/milestones/workBreakdown（按顶层模块）/modules/scripts/docs/assumptions/risks/generatedFrom；test `content` = planId/cases（TC-AUTO-001..003 基线）/caseDetails（含 focus）/suggestedCases（TC-MOD-001..，按模块）/testTypes/testFiles/ci/focusAreas/entryCriteria/exitCriteria/docs/risks；deploy `content` = environmentId/environmentSource/runtime{docker,ci,scripts}/targets/steps/rollback/artifacts/secrets/assumptions/description（有 Dockerfile 时首步构建镜像、`targets.strategy=docker`，否则 ssh）。
-- 测试：新增 `TC-AUTO-012`（描述抽取与人工优先）、`TC-AUTO-013`（执行记录/状态/currentRun 空）、`TC-AUTO-014`（路线图与内容化计划）、`TC-AUTO-015`（归档/恢复与列表过滤）、`TC-AUTO-016`（并发 409）；`autopilot.test.ts` 11→16，全量 129→134。
+- 测试：新增 `TC-AUTO-012`（描述抽取与人工优先）、`TC-AUTO-013`（执行记录/状态/currentRun 空）、`TC-AUTO-014`（路线图与内容化计划）、`TC-AUTO-015`（归档/恢复与列表过滤）、`TC-AUTO-016`（并发 409）；`autopilot.test.ts` 11→16；另新增 `client-render.test.ts` 渲染冒烟 2 例（防自动驾驶页白屏回归），全量 129→136。
 - 文档/规格同步：`OPC-SRS-001`、`OPC-SRS-105`、`OPC-IRS-001`、`OPC-DBDD-001`、`OPC-RTM-001`、`OPC-STD-001`、`OPC-STP-001`、`OPC-STR-001`、`OPC-SDD-001`、`spec/opc-xuanji/api.yaml`/`usecases.yaml`/`entities.yaml`、`scripts/gen-spec.mjs`、`docs/index.md`、`pa-index.md`、`CHANGELOG.md`、`README.md`。
 
 ## 3. 关键边界
@@ -55,7 +55,7 @@ node --test test/integration/spec.test.ts   # 4/4 pass（api.yaml operation 117 
 ```bash
 npm run migrate && npm run migrate:test   # 0015 各 applied 1
 node --test test/integration/autopilot.test.ts   # 16/16 pass（已实测）
-npm test                                  # 全量 134/134 pass（2026-11-14 实测）
+npm test                                  # 全量 136/136 pass（2026-11-14 实测）
 ```
 
 TC 断言要点：README 夹具 → `description` 取首段、`descriptionSource='README.md'`、人工描述不被覆盖；一次执行 → `runs.length=1`、10 步完整、`currentRun=null`、`status=waiting_decision`；路线图 → 5 阶段/3 计划/5 里程碑且三份 `content` 命中检出模块与 Dockerfile；归档 → active 列表隐藏、archived/all 可见、执行记录与计划不删；预置 running 行 → 409 `ERR-AUTO-001`。
