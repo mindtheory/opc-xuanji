@@ -273,6 +273,20 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：OPC 侧推送链路（入队/投递/退避/去重/状态）已验证；真实微信投递需先在 GUI 绑定微信 bot。
 
+## 18. v2.22 SVN 版本库检出增量验证（2026-11-14）
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0014_autopilot_svn.sql` | 业务库 applied 1 / 测试库 applied 1 | exit 0；表数仍 91，`ref.project_checkout` 13→15 列 |
+| 新增用例（`autopilot.test.ts`） | **2/2 pass** | TC-AUTO-010（SVN 检出/修订号/扫描/档案/发布版本号）、TC-AUTO-011（svn 缺失 502 + `svn_client` 裁决） |
+| 自动驾驶用例（`autopilot.test.ts`） | **11/11 pass** | 9→11 增量，其余 9 例无回归 |
+| 全量测试（`npm test`） | **129/129 pass** | v2.21 基线 127 + v2.22 增量 2 |
+| 类型检查 / 规格 / 文档 | 全绿 | typecheck exit 0；spec 91/31/21；docs 28 份 |
+| 安全项 | 密码经 stdin、凭据仅 `env:` 引用 | 检出进程不落明文、不写日志；svn 缺失不伪造工作副本与档案 |
+| 口径项 | `vcs_kind`/`revision` 落库；扫描跳过 `.svn`/`.hg`；发布版本号 `coalesce(commit_sha, revision)` | TC-AUTO-010 断言 `checkout.vcs=svn`、`software_profile.vcs=svn` |
+
+**结论**：SVN 与 Git 双协议检出在迁移、检出、扫描、档案回填、发布版本号与降级六个层面均已验证；SVN 骨架只落工作副本、不提交，生产发布仍需人工审批。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写

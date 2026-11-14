@@ -644,9 +644,16 @@ export function createHub(options: HubConfig = {}): Hub {
     }),
     tool({
       name: "opc_project_bootstrap",
-      description: "新建项目后填写版本库并自动生产：浅克隆 → 静态扫描 → 回填项目档案 → 生成开发/测试/部署计划 → 待裁决项入队。不执行仓库代码。",
+      description: "新建项目后填写版本库并自动生产：检出（Git 浅克隆 / SVN checkout）→ 静态扫描 → 回填项目档案 → 生成开发/测试/部署计划 → 待裁决项入队。不执行仓库代码。",
       parameters: OBJECT(
-        { projectId: { type: "integer" }, repositoryUrl: { type: "string" }, branch: { type: "string" }, authRef: { type: "string" } },
+        {
+          projectId: { type: "integer" },
+          repositoryUrl: { type: "string", description: "版本库地址：Git 支持 https/ssh/git@/file:///本地路径；SVN 支持 svn://、svn+ssh://、http(s)://、file:///本地路径" },
+          repositoryKind: { type: "string", enum: ["git", "svn"], description: "版本库类型；缺省按地址推断（svn://、svn+ssh:// → svn），其余默认 git" },
+          branch: { type: "string", description: "Git 为分支；SVN 为主干/分支路径（如 trunk、branches/release-1.0）或绝对 URL" },
+          revision: { type: "string", description: "仅 SVN：HEAD 或数字修订号（如 12345 / r12345），缺省 HEAD" },
+          authRef: { type: "string", description: "凭据引用，只接受 env:/secret:/vault:/ssh-agent:；SVN 口令经 stdin 传入，用户名取 OPC_SVN_USERNAME（默认 opc）" },
+        },
         ["projectId", "repositoryUrl"],
       ),
       async execute(args) {
@@ -654,6 +661,8 @@ export function createHub(options: HubConfig = {}): Hub {
           url: String(args.repositoryUrl),
           branch: args.branch === undefined ? undefined : String(args.branch),
           authRef: args.authRef === undefined ? undefined : String(args.authRef),
+          kind: args.repositoryKind === undefined ? undefined : String(args.repositoryKind),
+          revision: args.revision === undefined ? undefined : String(args.revision),
         }));
       },
     }),
@@ -665,14 +674,23 @@ export function createHub(options: HubConfig = {}): Hub {
           idea: { type: "string" },
           files: { type: "array", items: { type: "object", properties: { name: { type: "string" }, contentBase64: { type: "string" } }, required: ["name", "contentBase64"] } },
           name: { type: "string" },
-          repositoryUrl: { type: "string" },
-          branch: { type: "string" },
-          authRef: { type: "string" },
+          repositoryUrl: { type: "string", description: "版本库地址（可选，留空则转裁决等仓库）" },
+          branch: { type: "string", description: "Git 分支或 SVN 主干/分支路径" },
+          authRef: { type: "string", description: "凭据引用，只接受 env:/secret:/vault:/ssh-agent:" },
+          repositoryKind: { type: "string", enum: ["git", "svn"], description: "版本库类型；缺省按地址推断" },
+          revision: { type: "string", description: "仅 SVN：HEAD 或数字修订号，缺省 HEAD" },
         },
         [],
       ),
       async execute(args) {
-        return jsonText(await admin.createProjectFromIdea(args as Record<string, unknown>));
+        const input = { ...(args as Record<string, unknown>) };
+        if (args.repositoryKind !== undefined || args.revision !== undefined) {
+          input.repository = {
+            kind: args.repositoryKind === undefined ? undefined : String(args.repositoryKind),
+            revision: args.revision === undefined ? undefined : String(args.revision),
+          };
+        }
+        return jsonText(await admin.createProjectFromIdea(input));
       },
     }),
     tool({

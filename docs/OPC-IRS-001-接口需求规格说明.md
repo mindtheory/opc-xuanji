@@ -88,7 +88,7 @@ updated: 2026-11-14
 | ERR-RES-003 | 404 | 基础资源或项目绑定不存在 | updateSharedResource、deleteSharedResource、unbindProjectSharedResource |
 | ERR-RES-004 | 409 | 基础资源仍被项目绑定，不能删除 | deleteSharedResource |
 | ERR-AUTO-001 | 400 | 自动驾驶参数非法（仓库地址/项目不存在/未装配服务） | createAdminProject、bootstrapProjectAutopilot |
-| ERR-AUTO-002 | 502 | 版本库检出失败（地址不可达/非仓库/超时） | bootstrapProjectAutopilot |
+| ERR-AUTO-002 | 502 | 版本库检出失败（地址不可达/非仓库/超时/缺少 svn 客户端） | bootstrapProjectAutopilot |
 | ERR-AUTO-003 | 400 | 检出凭据不是可用的 env: 引用 | bootstrapProjectAutopilot |
 | ERR-AUTO-004 | 404 | 裁决项不存在或已处理 | decideProjectDecision |
 | ERR-AUTO-005 | 502 | 测试环境发布执行失败（命令/健康检查） | deployProjectTest |
@@ -852,13 +852,26 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 情报资源 | `GET/POST/PUT/DELETE /admin/intel/{resource}` | `resource ∈ {scopes,sources,bindings,topics,tags}`；项目隔离由 `projectId` 强制 |
 | 情报条目/日报/流水线 | `GET /admin/intel/items`、`PUT /admin/intel/items/{itemId}`、`GET /admin/intel/briefs[/{briefId}]`、`GET /admin/intel/runs`、`POST /admin/intel/run/{stage}`、`GET /admin/intel/summary` | 条目状态、日报详情、运行记录、手动触发 analyze/aggregate/brief/push 与 KPI |
 | 公司基础资源 | `GET/POST /admin/shared-resources`、`GET /admin/shared-resources/defaults`、`PUT/DELETE /admin/shared-resources/{resourceId}`、`GET/POST /admin/projects/{projectId}/shared-resources`、`DELETE /admin/projects/{projectId}/shared-resources/{resourceId}` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记与默认口径（debian/ssh/canetwork）；新建项目默认选型绑定；明文凭据 400 `ERR-RES-002`，被绑定删除 409 `ERR-RES-004` |
-| 项目自动驾驶 | `POST/GET /admin/projects/{projectId}/autopilot`、`GET /admin/projects/{projectId}/plans`、`GET /admin/projects/{projectId}/decisions`、`POST /admin/projects/{projectId}/decisions/{decisionId}/decide` | 建项目填版本库即浅克隆 → 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 仅裁决项入队；检出失败 502 `ERR-AUTO-002`，裁决重复 404 `ERR-AUTO-004` |
+| 项目自动驾驶 | `POST/GET /admin/projects/{projectId}/autopilot`、`GET /admin/projects/{projectId}/plans`、`GET /admin/projects/{projectId}/decisions`、`POST /admin/projects/{projectId}/decisions/{decisionId}/decide` | 建项目填版本库即检出（Git 浅克隆 / SVN checkout）→ 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 仅裁决项入队；svn 客户端缺失或检出失败 502 `ERR-AUTO-002`，裁决重复 404 `ERR-AUTO-004` |
 | 自动化生产 | `POST /admin/projects/{projectId}/deploy-test` | 自动发布测试环境：建发布单 → 执行 `OPC_TEST_DEPLOY_CMD` 或显式命令 → 健康检查；无命令 202 转裁决，执行失败 502 `ERR-AUTO-005` |
 | 运维反馈 | `GET /admin/usage/summary`、`POST /admin/usage/insight`、`GET /admin/issues`、`POST /admin/issues/sync` | 用量回顾（动作/状态/耗时聚合）、AI/规则审视产出体验需求草稿、Issue 草稿列表与投递（去重 + 单轮5/单日20 限额；未配置 token 保留草稿） |
 | 创意转项目 | `POST /admin/ideas/analyze`、`POST /admin/projects/from-idea`、`GET /admin/projects/{projectId}/ideas` | 文本/文档创意（txt/md/docx/xlsx/pdf，多文件）经 AI/规则解析后自动建项目并进自动驾驶；无仓库转 repository 裁决；不支持格式 415 `ERR-IDEA-002` |
 | 微信推送 | `GET /admin/wechat/status`、`GET /admin/wechat/outbox`、`POST /admin/wechat/push`、`POST /admin/wechat/sync` | 裁决/简报 → 微信（BotHarness 主动投递）；未绑定只排队；失败退避 5 次；正文脱敏 |
 
 **失败语义**：项目侧复用 `ERR-PRJ-001..003`；情报侧新增 `ERR-INT-001`（参数/状态非法）与 `ERR-INT-002`（资源不存在）；基础资源侧 `ERR-RES-001`（参数/类型非法）、`ERR-RES-002`（凭据非引用）、`ERR-RES-003`（资源/绑定不存在）、`ERR-RES-004`（仍被项目绑定）。所有写操作记录 `actor=boss` 审计；不返回明文凭据。
+
+**P85 `POST /admin/projects/{projectId}/autopilot` 契约细节（v2.22 增补）**：
+
+| 项 | 内容 |
+| :--- | :--- |
+| 入参 | `repository:{url, kind?, branch?, revision?, authRef?, name?}`（`url` 必填，不从已登记版本库隐式回填）；工具 `opc_project_bootstrap` 的平铺参数 `repositoryKind`、`revision` 与 `repository.kind`、`repository.revision` 语义相同 |
+| 版本库类型 | `kind ∈ {git,svn}`；显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git |
+| Git 语义 | `branch`=分支；检出提交落 `commit_sha` |
+| SVN 语义 | `branch`=主干/分支路径（相对 URI，如 `trunk`、`branches/release-1.0`，也接受绝对 URL）；`revision`=`HEAD`\|数字\|`r数字`，默认 `HEAD`；检出修订号落 `revision` |
+| 出参 | `bootstrap.repository.kind`（git/svn）；`bootstrap.checkout.vcs`（git/svn）与 `revision`（git 为 null、svn 为实际修订号）；svn 时 `commit=null` |
+| 失败 | 参数/凭据非法 400 `ERR-AUTO-001/003`；检出失败或缺少 svn 客户端 502 `ERR-AUTO-002`（后者登记 `topic=svn_client` 裁决） |
+
+**SVN 检出与客户端口径**：SVN 检出走本机 CLI（subversion ≥1.10），认证密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库、不进日志；svn 客户端缺失时返回 502 `ERR-AUTO-002` 并登记 `topic=svn_client` 裁决，不伪造工作副本、档案与计划；扫描跳过 `.git/.svn/.hg/node_modules/dist`；SVN 骨架只落工作副本（`status=generated`）、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号取 `coalesce(commit_sha, revision)`。
 
 ## 8. DSH 工具契约（工具即接口）
 
@@ -1155,7 +1168,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P82 | REQ-PRJ-026 | UC-023 | TC-RES-002、003 | 返回绑定含 appliedByDefault 来源标记 |
 | P83 | REQ-PRJ-025 | UC-023 | TC-RES-003 | 显式选型覆盖默认；非法资源 400 `ERR-RES-001` |
 | P84 | REQ-PRJ-026 | UC-023 | TC-RES-005 | 未绑定 404 `ERR-RES-003`；解绑写审计 |
-| P85 | REQ-PRJ-027..029 | UC-024、025 | TC-AUTO-001..003 | 检出失败 502 `ERR-AUTO-002`；只读扫描；三计划 draft |
+| P85 | REQ-PRJ-027..029、036 | UC-024、025 | TC-AUTO-001..003、010、011 | Git/SVN 双协议检出；svn 修订号落库；svn 客户端缺失 502 `ERR-AUTO-002` + `svn_client` 裁决；只读扫描；三计划 draft |
 | P86 | REQ-PRJ-027、028 | UC-024 | TC-AUTO-001 | 返回最近检出/扫描/计划/裁决与回填档案 |
 | P87 | REQ-PRJ-029 | UC-025 | TC-AUTO-002 | 返回 dev/test/deploy 三份计划 |
 | P88 | REQ-PRJ-030 | UC-025 | TC-AUTO-003 | 默认全部；`status=pending` 仅待裁决 |

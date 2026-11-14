@@ -197,9 +197,9 @@ const ENTITIES = [
     [S("range_key", "varchar(16)", false), S("as_of", "timestamptz", false), S("stale", "boolean", false), S("payload", "jsonb", false), S("warnings", "jsonb", false), S("generated_at", "timestamptz")], []],
   ["BriefItem", "stat.brief_item", "web", "entity",
     [S("brief_date", "date", false), S("brief_type", "varchar(16)", false), S("title", "varchar(128)", false), S("summary", "text", false), S("source_refs", "jsonb", false), S("priority", "varchar(8)", false), S("status", "varchar(16)", false), S("created_at", "timestamptz")], []],
-  // ---------------- 项目自动驾驶（v2.16） ----------------
+  // ---------------- 项目自动驾驶（v2.16；v2.22 增 SVN 检出列） ----------------
   ["ProjectCheckout", "ref.project_checkout", "project", "entity",
-    [S("project_id", "bigint", false), S("repository_id", "bigint"), S("url", "text", false), S("branch", "varchar(128)"), S("commit_sha", "varchar(64)"), S("workspace_path", "text"), S("file_count", "integer"), S("size_bytes", "bigint"), S("status", "varchar(16)", false), S("error", "text"), S("checked_out_at", "timestamptz"), S("created_at", "timestamptz")], []],
+    [S("project_id", "bigint", false), S("repository_id", "bigint"), S("url", "text", false), S("branch", "varchar(128)"), S("vcs_kind", "varchar(8)", false), S("commit_sha", "varchar(64)"), S("revision", "varchar(32)"), S("workspace_path", "text"), S("file_count", "integer"), S("size_bytes", "bigint"), S("status", "varchar(16)", false), S("error", "text"), S("checked_out_at", "timestamptz"), S("created_at", "timestamptz")], []],
   ["ProjectScan", "stat.project_scan", "project", "entity",
     [S("project_id", "bigint", false), S("checkout_id", "bigint"), S("scanner_version", "varchar(16)", false), S("languages", "jsonb"), S("manifests", "jsonb"), S("structure", "jsonb"), S("tests", "jsonb"), S("ci", "jsonb"), S("findings", "jsonb"), S("status", "varchar(16)", false), S("created_at", "timestamptz")], []],
   ["ProjectPlan", "stat.project_plan", "project", "entity",

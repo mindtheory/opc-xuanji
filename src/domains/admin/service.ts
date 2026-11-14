@@ -815,6 +815,7 @@ export class AdminService {
       branch: repository.branch === undefined ? undefined : String(repository.branch),
       authRef: repository.authRef === undefined ? undefined : String(repository.authRef),
       kind: repository.kind === undefined ? undefined : String(repository.kind),
+      revision: repository.revision === undefined ? undefined : String(repository.revision),
       name: repository.name === undefined ? undefined : String(repository.name),
     }, options);
   }
@@ -885,6 +886,8 @@ export class AdminService {
           url: repositoryUrl,
           branch: repositoryInput?.branch,
           authRef: repositoryInput?.authRef,
+          kind: repositoryInput?.kind,
+          revision: repositoryInput?.revision,
         }, (input.options as Row) ?? {});
         status = "autopilot";
       } catch (caught) {

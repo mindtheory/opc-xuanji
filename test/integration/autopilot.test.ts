@@ -7,7 +7,7 @@ import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, chmod } from "node:fs/promises";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -353,4 +353,123 @@ test("TC-AUTO-009 重复执行幂等：不重复建版本库/里程碑/测试计
   const decisions = await pool.query<{ topic: string }>("SELECT topic FROM stat.project_decision WHERE project_id = $1", [projectId]);
   const topics = decisions.rows.map((row) => row.topic);
   assert.equal(new Set(topics).size, topics.length);
+});
+
+/** SVN 桩：模拟自动化用到的 svn --version / checkout / info，避免真实 SVN 服务依赖（真实环境需 subversion ≥1.10）。 */
+async function makeSvnStub(fixture: string, revision: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "opc-svn-stub-"));
+  const file = join(dir, "svn");
+  const script = [
+    "#!/bin/sh",
+    "# 测试桩：只实现本服务用到的 --version / checkout / info --show-item",
+    'if [ "$1" = "--version" ]; then echo "1.14.24"; exit 0; fi',
+    'if [ "$1" = "checkout" ]; then',
+    "  for last; do :; done",
+    `  cp -R "${fixture}/." "$last"`,
+    '  mkdir -p "$last/.svn"',
+    '  echo "12" > "$last/.svn/entries"',
+    "  exit 0",
+    "fi",
+    'if [ "$1" = "info" ]; then',
+    '  case "$*" in',
+    `    *"--show-item revision"*) echo "${revision}"; exit 0;;`,
+    '    *) echo "svn://stub/repository/trunk"; exit 0;;',
+    "  esac",
+    "fi",
+    "exit 1",
+  ].join("\n");
+  await writeFile(file, `${script}\n`, { mode: 0o755 });
+  await chmod(file, 0o755);
+  return dir;
+}
+
+test("TC-AUTO-010 SVN 版本库检出：修订号落库、扫描跳过 .svn、档案与发布版本回填", async () => {
+  const svnFixture = await mkdtemp(join(tmpdir(), "opc-svn-fixture-"));
+  await mkdir(join(svnFixture, "src"), { recursive: true });
+  await mkdir(join(svnFixture, "test"), { recursive: true });
+  await writeFile(join(svnFixture, "package.json"), JSON.stringify({ name: "svn-app", version: "1.0.0", dependencies: { express: "^4.19.0" }, scripts: { test: "node --test" } }, null, 2));
+  await writeFile(join(svnFixture, "src/index.js"), "const express = require('express');\nmodule.exports = express;\n");
+  await writeFile(join(svnFixture, "test/app.test.js"), "import assert from 'node:assert';\nassert.ok(true);\n");
+  await writeFile(join(svnFixture, "README.md"), "# svn-app\n\nSVN 检出夹具。\n");
+  const stubDir = await makeSvnStub(svnFixture, "12345");
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${stubDir}:${originalPath ?? ""}`;
+  try {
+    const created = await call("POST", "/api/v1/admin/projects", {
+      name: "SVN 检出项目",
+      stage: "planning",
+      repository: { url: "svn://svn.internal/company/repo", kind: "svn", branch: "trunk", revision: "12345" },
+      autopilotOptions: { scaffold: false, pipeline: false, deployTest: true },
+    });
+    assert.equal(created.status, 201);
+    const projectId = created.json.data.id;
+    const autopilot = created.json.data.autopilot;
+    assert.equal(autopilot.repository.kind, "svn");
+    assert.equal(autopilot.checkout.vcs, "svn");
+    assert.equal(autopilot.checkout.commit, null);
+    assert.equal(autopilot.checkout.revision, "12345");
+    assert.equal(autopilot.checkout.files > 0, true);
+
+    const repo = await pool.query("SELECT kind, default_ref FROM ref.code_repository WHERE project_id = $1", [projectId]);
+    assert.deepEqual(repo.rows[0], { kind: "svn", default_ref: "trunk" });
+    const checkout = await pool.query("SELECT vcs_kind, branch, revision, commit_sha FROM ref.project_checkout WHERE project_id = $1 AND status = 'ok'", [projectId]);
+    assert.deepEqual(checkout.rows[0], { vcs_kind: "svn", branch: "trunk", revision: "12345", commit_sha: null });
+
+    const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+    assert.equal(summary.status, 200);
+    assert.equal(summary.json.data.checkout.vcs_kind, "svn");
+    assert.equal(summary.json.data.checkout.revision, "12345");
+    assert.equal(summary.json.data.checkout.commit_sha, null);
+    assert.equal(summary.json.data.profile.software_profile.vcs, "svn");
+    assert.equal(summary.json.data.profile.software_profile.revision, "12345");
+    assert.equal(summary.json.data.profile.software_profile.commit, null);
+    assert.equal(summary.json.data.profile.tech_stack.primaryLanguage, "javascript");
+
+    // 扫描必须跳过 SVN 元数据目录
+    const scanRow = await pool.query<{ structure: string[] }>("SELECT structure FROM stat.project_scan WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]);
+    assert.equal(scanRow.rows[0].structure.some((item) => item.includes(".svn")), false);
+
+    // 发布版本号回退到 SVN 修订号（无部署命令 → 发布单已建、执行转裁决）
+    const release = await pool.query("SELECT version, status FROM biz.release_order WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]);
+    assert.equal(release.rows[0].version, "12345");
+    assert.equal(release.rows[0].status, "approved");
+    assert.equal(autopilot.deploy.status, "pending");
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+  }
+});
+
+test("TC-AUTO-011 svn 客户端缺失：502 明确提示并登记 svn_client 裁决", async () => {
+  const isolatedPath = await mkdtemp(join(tmpdir(), "opc-empty-path-"));
+  const originalPath = process.env.PATH;
+  process.env.PATH = isolatedPath;
+  try {
+    const created = await call("POST", "/api/v1/admin/projects", {
+      name: "SVN 缺客户端项目",
+      stage: "planning",
+      repository: { url: "svn://svn.internal/company/repo", kind: "svn" },
+      autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+    });
+    assert.equal(created.status, 502);
+    assert.equal(created.json.errorCode, "ERR-AUTO-002");
+    assert.match(created.json.message, /svn/);
+    assert.match(created.json.message, /subversion/);
+
+    const project = await pool.query<{ id: string }>("SELECT id FROM biz.project WHERE name = $1 ORDER BY id DESC LIMIT 1", ["SVN 缺客户端项目"]);
+    assert.equal(project.rows.length, 1);
+    const projectId = project.rows[0].id;
+    const failed = await pool.query("SELECT vcs_kind, status, error FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]);
+    assert.equal(failed.rows[0].status, "failed");
+    assert.equal(failed.rows[0].vcs_kind, "svn");
+    assert.match(failed.rows[0].error, /svn/);
+
+    const decisions = await pool.query("SELECT topic, risk_level, status FROM stat.project_decision WHERE project_id = $1 AND topic = 'svn_client'", [projectId]);
+    assert.equal(decisions.rows.length, 1);
+    assert.equal(decisions.rows[0].status, "pending");
+    assert.equal(decisions.rows[0].risk_level, "high");
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+  }
 });

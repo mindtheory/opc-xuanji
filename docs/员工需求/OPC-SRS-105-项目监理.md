@@ -412,12 +412,12 @@ updated: 2026-11-14
 
 ### 3.27 REQ-PRJ-027 建项目自动检出（项目自动驾驶）
 
-**需求陈述**：新建项目时直接填写版本库；登记后系统自动从版本库检出项目（浅克隆），并把检出事实（commit、分支、文件数、字节数、工作区路径）落库留痕。
+**需求陈述**：新建项目时直接填写版本库；登记后系统自动从版本库检出项目（Git 浅克隆或 SVN 检出），并把检出事实（commit 或 revision、分支/主干、文件数、字节数、工作区路径）落库留痕。
 
 **验收标准**：
 
-- **AC-1** 新建项目支持 `repository:{url,branch?,authRef?}`；支持 `https`、`ssh`、`git@`、`file://` 与本地路径，其余协议 400（`ERR-AUTO-001`）。
-- **AC-2** 检出成功写 `ref.project_checkout`（`status=ok`、`commit_sha`、`file_count`、`size_bytes`），并可经 `GET /admin/projects/{id}/autopilot` 查询。
+- **AC-1** 新建项目支持 `repository:{url,kind?,branch?,revision?,authRef?,name?}`；Git 支持 `https`、`ssh`、`git@`、`file://` 与本地路径，SVN 支持 `svn://`、`svn+ssh://` 与绝对 URL；`kind` 显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git；其余协议 400（`ERR-AUTO-001`）。
+- **AC-2** 检出成功写 `ref.project_checkout`（`status=ok`、`vcs_kind`、Git 的 `commit_sha` / SVN 的 `revision`、`file_count`、`size_bytes`），并可经 `GET /admin/projects/{id}/autopilot` 查询。
 - **AC-3** 检出失败写 `status=failed` + 错误摘要并返回 502（`ERR-AUTO-002`）；**不得伪造**项目档案与计划。
 - **AC-4** 凭据只接受 `env:` 等引用（`ERR-AUTO-003`），检出进程不落明文、不写日志。
 
@@ -431,7 +431,7 @@ updated: 2026-11-14
 
 - **AC-1** 扫描产出语言分布、依赖/构建清单、目录结构、测试目录与文件、CI 配置、代码行数与文件数，写入 `stat.project_scan`。
 - **AC-2** 自动回填 `biz.project`：`project_type=software`、`tech_stack`（主语言/框架/包管理器）、`software_profile`（仓库地址、commit、文件数、LOC、清单、测试、CI、扫描时间）。
-- **AC-3** 扫描上限（2000 文件）与跳过目录（`.git`/`node_modules`/`dist` 等）写死，避免大仓库拖垮主进程。
+- **AC-3** 扫描上限（2000 文件）与跳过目录（`.git`/`.svn`/`.hg`/`node_modules`/`dist` 等）写死，避免大仓库与 VCS 元数据拖垮主进程。
 - **AC-4** 未识别到构建清单时生成「技术栈缺失」裁决，不猜造技术栈。
 
 追溯：AC 直验 / `UC-024`
@@ -527,6 +527,19 @@ updated: 2026-11-14
 
 追溯：AC 直验 / `UC-030`
 
+### 3.36 REQ-PRJ-036 SVN 版本库检出（公司主用版本库）
+
+**需求陈述**：公司主用 SVN，自动驾驶除 Git 外必须支持 SVN 检出：按主干/分支路径与修订号检出工作副本，落库检出事实，并保持扫描、骨架与发布口径一致；svn 客户端缺失时显式降级而不是伪造成功。
+
+**验收标准**：
+
+- **AC-1** 入参支持 `repository:{url,kind?,branch?,revision?,authRef?,name?}` 与工具平铺参数 `repositoryKind`、`revision`；`kind` 显式优先，`svn://`、`svn+ssh://` 推断 svn，其余默认 git。
+- **AC-2** SVN 语义：`branch`=主干/分支路径（相对 URI，如 `trunk`、`branches/release-1.0`；也接受绝对 URL），`revision`=`HEAD`|数字|`r数字`，默认 `HEAD`；检出事实写 `ref.project_checkout`（迁移 `0014_autopilot_svn.sql` 新增 `vcs_kind varchar(8) NOT NULL DEFAULT 'git'` CHECK（git/svn）与 `revision varchar(32)`，表数仍 91、该表列数 13→15）；Git 仍 `branch`=分支、`commit_sha` 落库。
+- **AC-3** 检出走 CLI（subversion ≥1.10）；svn 客户端缺失时返回 502（`ERR-AUTO-002`）并登记裁决 `topic=svn_client`，不伪造检出与档案；密码经 stdin 传送，凭据仅接受 `env:` 引用，不落库不落日志。
+- **AC-4** 扫描跳过目录新增 `.svn`/`.hg`；`software_profile` 增加 `vcs`（git/svn）与 `revision`（git 为 null）；SVN 骨架只落工作副本、`status=generated`、不建本地分支不提交、不产生 `scaffold_review` 裁决；测试环境发布版本号=`coalesce(commit_sha, revision)`；响应 `bootstrap.repository` 增加 `kind`、`bootstrap.checkout` 增加 `vcs`/`revision`（git revision=null、svn commit=null）。
+
+追溯：AC 直验 / `UC-024` / `TC-AUTO-010`、`TC-AUTO-011`
+
 ## 4. 数据对象与视图（需求层）
 
 | 数据对象 | 用途 |
@@ -564,9 +577,9 @@ updated: 2026-11-14
 
 ## 6. 验收与追溯
 
-- 本文 35 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
+- 本文 36 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
 - 单员工流程：`project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`、`project_release_flow`、`project_test_review`；跨员工 `project_acceptance_flow` 含验收终审 human gate。
-- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.35（含基础资源配置 §3.23–§3.26、项目自动驾驶与自动化生产 §3.27–§3.34、创意转项目 §3.35）。
+- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.36（含基础资源配置 §3.23–§3.26、项目自动驾驶与自动化生产 §3.27–§3.34、创意转项目 §3.35、SVN 版本库检出 §3.36）。
 - 版本库/制品库/SSH 环境/测试管理为软件研发项目增量，契约与 DDL 在 Phase 2 落地；落地前 manifest 只声明工具族与写目标，不宣称已实现。
 - 插件可插拔验收：manifest 完整、启用/停用可逆、停用后不派工、卸载不误删项目数据。
 
@@ -586,6 +599,7 @@ updated: 2026-11-14
 - [x] 自动生产含骨架生成、测试流水线、测试环境发布三步；只补缺失骨架、不推送远端、发布失败不伪造。
 - [x] 已建项目可一键接入自动驾驶；重复执行版本递增、资源复用、裁决不重复追问。
 - [x] 创意文本或文档（多格式、多文件）可 AI 解析后自动建项目并进自动驾驶；AI 不可用降级规则，缺仓库转裁决。
+- [x] SVN 版本库可检出（主干/分支路径 + 修订号）；svn 客户端缺失显式 502 + 裁决，扫描跳过 `.svn`/`.hg`，骨架不提交、发布版本号取 revision。
 
 ## 与其他文档的关系
 

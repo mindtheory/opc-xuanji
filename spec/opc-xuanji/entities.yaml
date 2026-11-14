@@ -2575,8 +2575,14 @@ entities:
       - name: branch
         type: varchar(128)
         nullable: true
+      - name: vcs_kind
+        type: varchar(8)
+        nullable: false
       - name: commit_sha
         type: varchar(64)
+        nullable: true
+      - name: revision
+        type: varchar(32)
         nullable: true
       - name: workspace_path
         type: text

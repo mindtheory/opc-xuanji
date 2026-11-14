@@ -1,13 +1,14 @@
 /**
- * 项目自动驾驶（SRS-105 REQ-PRJ-027..030）：
- * 新建项目时填写版本库 → 自动检出（浅克隆）→ 静态扫描（不执行仓库代码）→
+ * 项目自动驾驶（SRS-105 REQ-PRJ-027..030、REQ-PRJ-036）：
+ * 新建项目时填写版本库 → 自动检出（Git 浅克隆 / SVN checkout）→ 静态扫描（不执行仓库代码）→
  * 回填项目档案（语言/框架/结构/测试/CI/许可）→ 生成开发/测试/部署计划 →
  * 仅把需要老板裁决的事项（许可、测试基线、CI、生产目标、技术栈歧义）推入裁决队列。
  *
  * 边界：只读仓库文件，不安装依赖、不构建、不运行任何仓库脚本；凭据只接受 env: 引用且不落日志；
+ * SVN 检出依赖 subversion ≥1.10（svn checkout / svn info），svn 缺失时降级为裁决；
  * 生产部署仍须人工审批，本服务只生成计划与测试环境登记。
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, readdir, readFile, rm, writeFile, stat as fsStat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -23,7 +24,7 @@ const exec = promisify(execFile);
 const AUTH_REF = /^(env|secret|vault|ssh-agent):[A-Za-z0-9_./-]+$/;
 const MAX_FILES = 2000;
 const MAX_STRUCTURE = 120;
-const SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", "target", "vendor", "__pycache__", ".next", ".venv", "coverage", "out"]);
+const SKIP_DIRS = new Set([".git", ".svn", ".hg", "node_modules", "dist", "build", "target", "vendor", "__pycache__", ".next", ".venv", "coverage", "out"]);
 
 const LANG_BY_EXT: Record<string, string> = {
   ".ts": "typescript", ".tsx": "typescript", ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
@@ -52,8 +53,11 @@ export interface RepositoryInput {
   branch?: string;
   authRef?: string;
   kind?: string;
+  revision?: string;
   name?: string;
 }
+
+type VcsKind = "git" | "svn";
 
 function str(value: unknown, field: string, required = true): string | null {
   if (value === undefined || value === null || value === "") {
@@ -64,11 +68,44 @@ function str(value: unknown, field: string, required = true): string | null {
   return value.trim();
 }
 
-function repoUrl(value: unknown): string {
+/** 版本库类型：显式 kind 优先；svn://、svn+ssh:// 推断 SVN；其余默认 Git（公司主用 SVN 时可显式传 kind）。 */
+function repoKind(repo: RepositoryInput): VcsKind {
+  if (repo.kind === undefined || repo.kind === null || repo.kind === "") {
+    return /^svn(\+ssh)?:\/\//i.test(repo.url) ? "svn" : "git";
+  }
+  const kind = str(repo.kind, "kind") as string;
+  if (kind !== "git" && kind !== "svn") throw new OpcError(ERR.AUTO_INVALID, `kind 取值非法：${kind}`, 400);
+  return kind;
+}
+
+function repoUrl(value: unknown, kind: VcsKind): string {
   const url = str(value, "repositoryUrl") as string;
+  if (kind === "svn") {
+    const ok = /^(https?|svn|svn\+ssh|file):\/\/\S+$/i.test(url) || /^\/[^\s]+$/.test(url);
+    if (!ok) throw new OpcError(ERR.AUTO_INVALID, `SVN 版本库地址非法（支持 svn://、svn+ssh://、http(s)://、file://、本地路径）：${url.slice(0, 120)}`, 400);
+    return url;
+  }
   const ok = /^https?:\/\/\S+$/i.test(url) || /^git@[^:\s]+:\S+$/i.test(url) || /^ssh:\/\/\S+$/i.test(url) || /^file:\/\/\S+$/i.test(url) || /^\/[^\s]+$/.test(url);
   if (!ok) throw new OpcError(ERR.AUTO_INVALID, `版本库地址非法（支持 https/ssh/git@/file:///本地路径）：${url.slice(0, 120)}`, 400);
   return url;
+}
+
+/** SVN 修订号：HEAD 或数字（可带 r 前缀）；缺省 HEAD。 */
+function svnRevision(value: string | undefined): string {
+  if (value === undefined || value === null || value === "") return "HEAD";
+  const raw = str(value, "revision") as string;
+  if (raw.toUpperCase() === "HEAD") return "HEAD";
+  const matched = /^r?(\d{1,12})$/i.exec(raw);
+  if (matched === null) throw new OpcError(ERR.AUTO_INVALID, `revision 只支持 HEAD 或数字修订号（如 12345 / r12345）：${raw.slice(0, 40)}`, 400);
+  return matched[1];
+}
+
+/** SVN 主干/分支：相对 URI 片段拼到版本库地址后；绝对 URL（含 scheme）直接使用。 */
+function svnCheckoutUrl(url: string, branch: string | null): string {
+  if (branch === null || branch.trim() === "") return url;
+  const value = branch.trim();
+  if (/^(https?|svn|svn\+ssh|file):\/\//i.test(value)) return value;
+  return `${url.replace(/\/+$/, "")}/${value.replace(/^\/+/, "")}`;
 }
 
 function ciDate(daysFromNow: number): string {
@@ -107,10 +144,8 @@ export class ProjectAutopilotService {
 
   // ---------------------------------------------------------------- 版本库登记
 
-  private async registerRepository(projectId: number, repo: RepositoryInput): Promise<Row> {
-    const kind = repo.kind === undefined ? "git" : str(repo.kind, "kind") as string;
-    if (!["git", "svn"].includes(kind)) throw new OpcError(ERR.AUTO_INVALID, `kind 取值非法：${kind}`, 400);
-    const url = repoUrl(repo.url);
+  private async registerRepository(projectId: number, repo: RepositoryInput, kind: VcsKind): Promise<Row> {
+    const url = repoUrl(repo.url, kind);
     const name = repo.name?.trim() || url.split("/").filter(Boolean).pop()?.replace(/\.git$/, "") || "repository";
     const authRef = repo.authRef === undefined ? null : str(repo.authRef, "authRef") as string;
     if (authRef !== null && !AUTH_REF.test(authRef)) {
@@ -121,71 +156,164 @@ export class ProjectAutopilotService {
       [projectId, url],
     );
     if (existing.rows.length > 0) {
-      // 重复执行：复用已登记的版本库，不重复建行（已建项目接入自动驾驶时很关键）
+      // 重复执行：复用已登记的版本库，不重复建行（已建项目接入自动驾驶时很关键）；kind 以本次入参为准
       await this.pool.query(
         `UPDATE ref.code_repository
-         SET sync_status = 'pending', default_ref = COALESCE($2, default_ref), auth_ref = COALESCE($3, auth_ref)
+         SET sync_status = 'pending', kind = $2, default_ref = COALESCE($3, default_ref), auth_ref = COALESCE($4, auth_ref)
          WHERE id = $1`,
-        [Number(existing.rows[0].id), repo.branch ?? null, authRef],
+        [Number(existing.rows[0].id), kind, repo.branch ?? null, authRef],
       );
-      return { id: existing.rows[0].id, reused: true };
+      return { id: existing.rows[0].id, reused: true, kind };
     }
     const inserted = await this.pool.query(
       `INSERT INTO ref.code_repository (project_id, name, kind, url, default_ref, auth_ref, sync_mode, sync_status)
        VALUES ($1,$2,$3,$4,$5,$6,'manual','pending') RETURNING id`,
       [projectId, name.slice(0, 120), kind, url, repo.branch ?? null, authRef],
     );
-    return { id: String((inserted.rows[0] as Row).id), reused: false };
+    return { id: String((inserted.rows[0] as Row).id), reused: false, kind };
   }
 
   // ---------------------------------------------------------------- 检出
 
-  private async checkout(projectId: number, repositoryId: number, repo: RepositoryInput): Promise<Row> {
-    const url = repoUrl(repo.url);
+  private async checkout(projectId: number, repositoryId: number, repo: RepositoryInput, kind: VcsKind): Promise<Row> {
+    const url = repoUrl(repo.url, kind);
     const branch = repo.branch === undefined ? null : str(repo.branch, "branch") as string;
     const authRef = repo.authRef === undefined ? null : str(repo.authRef, "authRef") as string;
+    // 修订号只对 SVN 生效：Git 传 revision 直接 400，避免静默忽略；非法修订号同样在落失败记录前拒绝
+    const revision = kind === "svn" ? svnRevision(repo.revision) : null;
+    if (kind === "git" && repo.revision !== undefined && repo.revision !== "") {
+      throw new OpcError(ERR.AUTO_INVALID, "revision 仅用于 SVN 版本库", 400);
+    }
     const root = this.workspaceRoot();
     const dir = join(root, `project-${projectId}-${Date.now()}`);
     await mkdir(root, { recursive: true });
 
-    const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" };
     let askpass: string | null = null;
     const startedAt = new Date();
     try {
-      if (authRef !== null) {
-        if (!authRef.startsWith("env:")) throw new OpcError(ERR.AUTO_CRED, "自动检出暂只支持 env: 凭据引用", 400);
-        const token = process.env[authRef.slice("env:".length)];
-        if (!token) throw new OpcError(ERR.AUTO_CRED, `凭据环境变量未设置：${authRef}`, 400);
-        askpass = join(tmpdir(), `opc-askpass-${Date.now()}-${Math.random().toString(36).slice(2)}.sh`);
-        await writeFile(askpass, '#!/bin/sh\ncase "$1" in *[Uu]sername*) echo "x-access-token";; *) echo "${OPC_CLONE_TOKEN}";; esac\n', { mode: 0o700 });
-        env.GIT_ASKPASS = askpass;
-        env.GIT_ASKPASS_REQUIRE = "force";
-        env.OPC_CLONE_TOKEN = token;
+      let commitSha: string | null = null;
+      let svnRev: string | null = null;
+      let checkoutUrl = url;
+      if (kind === "svn") {
+        const svn = await this.svnCheckout(projectId, repo, branch, revision as string, dir);
+        checkoutUrl = svn.url;
+        svnRev = svn.revision;
+      } else {
+        const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" };
+        if (authRef !== null) {
+          if (!authRef.startsWith("env:")) throw new OpcError(ERR.AUTO_CRED, "自动检出暂只支持 env: 凭据引用", 400);
+          const token = process.env[authRef.slice("env:".length)];
+          if (!token) throw new OpcError(ERR.AUTO_CRED, `凭据环境变量未设置：${authRef}`, 400);
+          askpass = join(tmpdir(), `opc-askpass-${Date.now()}-${Math.random().toString(36).slice(2)}.sh`);
+          await writeFile(askpass, '#!/bin/sh\ncase "$1" in *[Uu]sername*) echo "x-access-token";; *) echo "${OPC_CLONE_TOKEN}";; esac\n', { mode: 0o700 });
+          env.GIT_ASKPASS = askpass;
+          env.GIT_ASKPASS_REQUIRE = "force";
+          env.OPC_CLONE_TOKEN = token;
+        }
+        await exec("git", ["clone", "--depth", "1", ...(branch === null ? [] : ["--branch", branch]), url, dir], { env, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
+        const rev = await exec("git", ["-C", dir, "rev-parse", "HEAD"], { timeout: 15_000 });
+        commitSha = rev.stdout.trim();
       }
-      await exec("git", ["clone", "--depth", "1", ...(branch === null ? [] : ["--branch", branch]), url, dir], { env, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
-      const rev = await exec("git", ["-C", dir, "rev-parse", "HEAD"], { timeout: 15_000 });
-      const commitSha = rev.stdout.trim();
       const measured = await this.measure(dir);
       const row = await this.pool.query(
-        `INSERT INTO ref.project_checkout (project_id, repository_id, url, branch, commit_sha, workspace_path, file_count, size_bytes, status, checked_out_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ok',$9) RETURNING id`,
-        [projectId, repositoryId, url, branch, commitSha, dir, measured.files, measured.bytes, startedAt],
+        `INSERT INTO ref.project_checkout (project_id, repository_id, url, branch, vcs_kind, commit_sha, revision, workspace_path, file_count, size_bytes, status, checked_out_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'ok',$11) RETURNING id`,
+        [projectId, repositoryId, checkoutUrl, branch, kind, commitSha, svnRev, dir, measured.files, measured.bytes, startedAt],
       );
-      await this.record("project.autopilot.checkout", projectId, { url, branch, commitSha, files: measured.files });
-      return { id: String((row.rows[0] as Row).id), dir, commitSha, branch, files: measured.files, bytes: measured.bytes, status: "ok" };
+      await this.record("project.autopilot.checkout", projectId, { url: checkoutUrl, vcs: kind, branch, commitSha, revision: svnRev, files: measured.files });
+      return { id: String((row.rows[0] as Row).id), dir, commitSha, revision: svnRev, branch, files: measured.files, bytes: measured.bytes, status: "ok" };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const detail = message.split("\n").slice(0, 3).join(" ").slice(0, 300);
       await this.pool.query(
-        `INSERT INTO ref.project_checkout (project_id, repository_id, url, branch, status, error, checked_out_at)
-         VALUES ($1,$2,$3,$4,'failed',$5,$6)`,
-        [projectId, repositoryId, url, branch, `检出失败：${detail}`, startedAt],
+        `INSERT INTO ref.project_checkout (project_id, repository_id, url, branch, vcs_kind, status, error, checked_out_at)
+         VALUES ($1,$2,$3,$4,$5,'failed',$6,$7)`,
+        [projectId, repositoryId, url, branch, kind, `检出失败：${detail}`, startedAt],
       );
       if (error instanceof OpcError) throw error;
       throw new OpcError(ERR.AUTO_CHECKOUT, `检出失败：${detail}`, 502);
     } finally {
       if (askpass !== null) await rm(askpass, { force: true });
     }
+  }
+
+  /** SVN 环境：沿用宿主 PATH/HOME/ssh-agent；语言固定 C.UTF-8，保证 svn 输出可解析。 */
+  private svnEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: process.env.HOME ?? tmpdir(),
+      LANG: "C.UTF-8",
+      LC_ALL: "C.UTF-8",
+    };
+    if (process.env.SSH_AUTH_SOCK !== undefined) env.SSH_AUTH_SOCK = process.env.SSH_AUTH_SOCK;
+    return env;
+  }
+
+  /**
+   * 带 stdin 的子进程执行（SVN 口令经 `--password-from-stdin` 传入，不出现在 argv/日志）。
+   * 失败时只保留 stderr 末尾三行，避免把大段输出写进调用方。
+   */
+  private runSvn(args: string[], options: { env: NodeJS.ProcessEnv; timeoutMs: number; stdin?: string }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const child = spawn("svn", args, { env: options.env, stdio: ["pipe", "pipe", "pipe"] });
+      let stderr = "";
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error(`svn 超时（${Math.round(options.timeoutMs / 1000)}s）`));
+      }, options.timeoutMs);
+      child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+      child.on("error", (error) => { clearTimeout(timer); reject(error); });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new Error(`svn 退出码 ${code}：${stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300)}`));
+      });
+      if (options.stdin !== undefined) child.stdin.write(options.stdin);
+      child.stdin.end();
+    });
+  }
+
+  /** SVN 检出：subversion ≥1.10；branch 为主干/分支路径或绝对 URL；revision=HEAD|数字。 */
+  private async svnCheckout(projectId: number, repo: RepositoryInput, branch: string | null, revision: string, dir: string): Promise<{ url: string; revision: string }> {
+    const env = this.svnEnv();
+    try {
+      await exec("svn", ["--version", "--quiet"], { env, timeout: 15_000 });
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      if (code === "ENOENT") {
+        // 降级为裁决：把「检出主机缺 svn」交给老板安排安装，而不是让项目静默失败
+        await this.recordDecision(projectId, {
+          topic: "svn_client",
+          question: "检出主机未安装 svn 客户端（subversion ≥1.10）：安装后才能检出公司 SVN 版本库，是否安排安装？",
+          riskLevel: "high",
+          options: [
+            { label: "安装 subversion", impact: "在检出主机执行 apt-get install subversion（≥1.10）后重试" },
+            { label: "改用 Git 镜像", impact: "公司以 SVN 为准，镜像会产生双份维护" },
+          ],
+          payload: { url: repo.url, vcs: "svn" },
+        });
+        throw new OpcError(ERR.AUTO_CHECKOUT, "检出失败：检出主机未安装 svn 客户端（subversion ≥1.10），安装后重试", 502);
+      }
+      const detail = error instanceof Error ? error.message.split("\n")[0].slice(0, 200) : String(error).slice(0, 200);
+      throw new OpcError(ERR.AUTO_CHECKOUT, `检出失败：svn 客户端不可用（${detail}）`, 502);
+    }
+    const checkoutUrl = svnCheckoutUrl(repo.url, branch);
+    const args = ["checkout", "--non-interactive", "--no-auth-cache"];
+    if (revision !== "HEAD") args.push("--revision", revision);
+    let stdin: string | undefined;
+    if (repo.authRef !== undefined) {
+      if (!repo.authRef.startsWith("env:")) throw new OpcError(ERR.AUTO_CRED, "自动检出暂只支持 env: 凭据引用", 400);
+      const token = process.env[repo.authRef.slice("env:".length)];
+      if (!token) throw new OpcError(ERR.AUTO_CRED, `凭据环境变量未设置：${repo.authRef}`, 400);
+      const username = process.env.OPC_SVN_USERNAME?.trim() || "opc";
+      args.push("--username", username, "--password-from-stdin");
+      stdin = token;
+    }
+    args.push(checkoutUrl, dir);
+    await this.runSvn(args, { env, timeoutMs: 180_000, stdin });
+    const info = await exec("svn", ["info", "--non-interactive", "--show-item", "revision", dir], { env, timeout: 15_000 });
+    const actual = info.stdout.trim();
+    return { url: checkoutUrl, revision: /^\d+$/.test(actual) ? actual : revision };
   }
 
   private async measure(dir: string): Promise<{ files: number; bytes: number }> {
@@ -280,12 +408,14 @@ export class ProjectAutopilotService {
 
   // ---------------------------------------------------------------- 回填档案与计划
 
-  private async applyProfile(projectId: number, repo: RepositoryInput, checkout: Row, scan: Row): Promise<void> {
+  private async applyProfile(projectId: number, repo: RepositoryInput, checkout: Row, scan: Row, kind: VcsKind): Promise<void> {
     const techStack = { primaryLanguage: (scan.stack as Row).primary ?? null, languages: scan.languages, frameworks: (scan.stack as Row).frameworks, packageManager: (scan.stack as Row).packageManager };
     const softwareProfile = {
       repositoryUrl: repo.url,
+      vcs: kind,
       branch: checkout.branch ?? null,
-      commit: checkout.commitSha,
+      commit: checkout.commitSha ?? null,
+      revision: checkout.revision ?? null,
       files: checkout.files,
       bytes: checkout.bytes,
       loc: scan.loc,
@@ -510,8 +640,8 @@ export class ProjectAutopilotService {
     return [];
   }
 
-  /** 只在缺失时补骨架；生成后提交到本地分支（不推送远端）。 */
-  private async generateScaffold(projectId: number, checkoutId: number, dir: string, scan: Row): Promise<Row> {
+  /** 只在缺失时补骨架；Git 生成后提交到本地分支（不推送远端），SVN 只落工作副本不提交（不写远端）。 */
+  private async generateScaffold(projectId: number, checkoutId: number, dir: string, scan: Row, kind: VcsKind): Promise<Row> {
     const templates = await this.scaffoldTemplates(scan);
     const created: string[] = [];
     const skipped: string[] = [];
@@ -529,7 +659,10 @@ export class ProjectAutopilotService {
     let status = created.length === 0 ? "skipped" : "generated";
     let branch: string | null = null;
     let error: string | null = null;
-    if (created.length > 0) {
+    if (created.length > 0 && kind === "svn") {
+      // SVN 没有本地分支提交语义：骨架只落工作副本，提交/合入由人工走公司 SVN 流程，故不产生 scaffold_review 裁决
+      status = "generated";
+    } else if (created.length > 0) {
       branch = `opc/autopilot-${Date.now()}`;
       try {
         await exec("git", ["-C", dir, "checkout", "-q", "-b", branch]);
@@ -543,9 +676,9 @@ export class ProjectAutopilotService {
     const row = await this.pool.query(
       `INSERT INTO stat.project_scaffold (project_id, checkout_id, branch, files, status, error)
        VALUES ($1,$2,$3,$4::jsonb,$5,$6) RETURNING id, branch, files, status, error`,
-      [projectId, checkoutId, branch, JSON.stringify({ created, skipped }), status, error],
+      [projectId, checkoutId, branch, JSON.stringify({ created, skipped, vcs: kind }), status, error],
     );
-    await this.record("project.autopilot.scaffold", projectId, { created, skipped, status, branch });
+    await this.record("project.autopilot.scaffold", projectId, { created, skipped, status, branch, vcs: kind });
     return { id: String((row.rows[0] as Row).id), branch, files: { created, skipped }, status, error };
   }
 
@@ -636,11 +769,12 @@ export class ProjectAutopilotService {
     );
     if (env.rows.length === 0) throw new OpcError(ERR.AUTO_INVALID, "项目还没有测试环境：先执行自动驾驶生成部署计划", 400);
     const envId = env.rows[0].id;
-    const checkout = await this.pool.query<{ commit_sha: string | null }>(
-      "SELECT commit_sha FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1",
+    const checkout = await this.pool.query<{ commit_sha: string | null; revision: string | null }>(
+      "SELECT commit_sha, revision FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1",
       [projectId],
     );
-    const version = typeof input.version === "string" ? input.version : String(checkout.rows[0]?.commit_sha ?? "0").slice(0, 12);
+    // 发布版本号：Git 取 commit SHA 前 12 位，SVN 取修订号；都缺失时兜底 0
+    const version = typeof input.version === "string" ? input.version : String(checkout.rows[0]?.commit_sha ?? checkout.rows[0]?.revision ?? "0").slice(0, 12);
     const release = await this.pool.query(
       `INSERT INTO biz.release_order (project_id, environment_id, version, change_note, rollback_version, requested_by, approved_by, status)
        VALUES ($1,$2,$3,'autopilot 自动发布到测试环境','previous','autopilot:test','autopilot:test','approved') RETURNING id`,
@@ -696,12 +830,19 @@ export class ProjectAutopilotService {
     if (repo === undefined || repo === null || typeof repo.url !== "string") {
       throw new OpcError(ERR.AUTO_INVALID, "repositoryUrl 必须提供", 400);
     }
-    const registered = await this.registerRepository(projectId, repo);
-    const checkout = await this.checkout(projectId, Number(registered.id), repo);
+    // 先完成入参校验，再登记/检出：非法地址、git 误传 revision、非法修订号都不产生脏记录
+    const kind = repoKind(repo);
+    repoUrl(repo.url, kind);
+    if (kind === "svn") svnRevision(repo.revision);
+    if (kind === "git" && repo.revision !== undefined && repo.revision !== "") {
+      throw new OpcError(ERR.AUTO_INVALID, "revision 仅用于 SVN 版本库", 400);
+    }
+    const registered = await this.registerRepository(projectId, repo, kind);
+    const checkout = await this.checkout(projectId, Number(registered.id), repo, kind);
     const scan = await this.scan(String(checkout.dir));
-    await this.applyProfile(projectId, repo, checkout, scan);
+    await this.applyProfile(projectId, repo, checkout, scan, kind);
     const checkoutId = Number(checkout.id);
-    const scaffold = options.scaffold === false ? null : await this.generateScaffold(projectId, checkoutId, String(checkout.dir), scan);
+    const scaffold = options.scaffold === false ? null : await this.generateScaffold(projectId, checkoutId, String(checkout.dir), scan, kind);
     const pipeline = options.pipeline === false ? null : await this.runPipeline(projectId, checkoutId, String(checkout.dir), scan, options);
     const plans = await this.generatePlans(projectId, repo, scan);
     const deploy = options.deployTest === false ? null : await this.deployTestEnvironment(projectId, { healthUrl: options.healthUrl });
@@ -713,8 +854,8 @@ export class ProjectAutopilotService {
     );
     return {
       projectId,
-      repository: { id: registered.id, url: repo.url, branch: checkout.branch, reused: registered.reused === true },
-      checkout: { commit: checkout.commitSha, files: checkout.files, bytes: checkout.bytes, status: checkout.status },
+      repository: { id: registered.id, url: repo.url, kind, branch: checkout.branch, reused: registered.reused === true },
+      checkout: { vcs: kind, commit: checkout.commitSha ?? null, revision: checkout.revision ?? null, files: checkout.files, bytes: checkout.bytes, status: checkout.status },
       scan: { languages: scan.languages, frameworks: (scan.stack as Row).frameworks, packageManager: (scan.stack as Row).packageManager, tests: scan.tests, ci: scan.ci, loc: scan.loc },
       scaffold,
       pipeline,

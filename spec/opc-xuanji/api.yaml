@@ -1696,14 +1696,25 @@ paths:
     post:
       operationId: bootstrapProjectAutopilot
       tags: [admin]
-      summary: '项目自动驾驶：浅克隆版本库 → 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 裁决项入队'
+      summary: '项目自动驾驶：检出/浅克隆版本库（Git/SVN）→ 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 裁决项入队'
+      description: >-
+        支持 Git 与 SVN 双协议：repository.kind 显式优先，`svn://`、`svn+ssh://` 推断为 svn，其余默认 git；Git 用 branch（提交落 commit_sha），
+        SVN 用 branch（主干/分支路径，如 trunk、branches/release-1.0，也接受绝对 URL）与 revision（HEAD|数字|r数字，默认 HEAD）。
+        SVN 检出依赖本机 subversion ≥1.10，缺失时返回 502 ERR-AUTO-002 并登记 topic=svn_client 裁决；密码经 stdin 传送，凭据仅接受 env: 引用。
+        响应 bootstrap.repository 带 kind，bootstrap.checkout 带 vcs/revision（git revision=null、svn commit=null）。
       parameters:
         - { name: projectId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapAutopilotRequest'
       responses:
-        '201': { description: Created }
+        '201': { description: Created；bootstrap.repository.kind 标识 git/svn，bootstrap.checkout.vcs 与 revision 回显检出事实 }
         '400': { description: ERR-AUTO-001 / ERR-AUTO-003 }
         '404': { description: ERR-AUTO-001 项目不存在 }
-        '502': { description: ERR-AUTO-002 检出失败 }
+        '502': { description: ERR-AUTO-002 检出失败 / 缺少 svn 客户端 }
     get:
       operationId: getProjectAutopilot
       tags: [admin]
@@ -1865,6 +1876,23 @@ paths:
 
 components:
   schemas:
+    BootstrapAutopilotRequest:
+      type: object
+      additionalProperties: true
+      description: >-
+        项目自动驾驶检出入参。repository 必须提供 url；kind 显式优先，svn://、svn+ssh:// 推断 svn，其余默认 git。
+        工具 opc_project_bootstrap 另提供平铺参数 repositoryKind/revision，语义与本 schema 的 repository.kind/revision 相同。
+      properties:
+        repository:
+          type: object
+          required: [url]
+          properties:
+            url: { type: string, description: 版本库地址（Git：https/ssh/git@/file；SVN：svn://、svn+ssh://、http(s):// 绝对 URL） }
+            kind: { type: string, enum: [git, svn], description: 显式版本库类型；缺省时 svn://、svn+ssh:// 推断 svn，其余默认 git }
+            branch: { type: string, description: 'Git 分支；SVN 为主干/分支路径（如 trunk、branches/release-1.0），也接受绝对 URL' }
+            revision: { type: string, description: 'SVN 修订号：HEAD|数字|r数字，默认 HEAD；Git 不传，传了返回 400 ERR-AUTO-001' }
+            authRef: { type: string, description: '凭据引用，仅接受 env: 引用；SVN 密码经 stdin 传送，不落库不落日志' }
+            name: { type: string }
     ProjectResourceRequest:
       type: object
       additionalProperties: true

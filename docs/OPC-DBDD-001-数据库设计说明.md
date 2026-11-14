@@ -217,7 +217,7 @@ flowchart LR
 | 77 | `ref.shared_resource` | 公司基础资源 | 18 | `kind/access_method/status` CHECK；`credential_ref` 仅引用；`UNIQUE(kind,name)`、`code` 唯一 |
 | 78 | `ref.shared_setting` | 公司默认口径 | 4 | 主键 `id`；`key` 唯一；`value` jsonb |
 | 79 | `ref.project_shared_resource` | 项目资源绑定 | 6 | 主键 `id`、`UNIQUE(project_id,resource_id)`；`resource_id` FK RESTRICT；`role` CHECK |
-| 80 | `ref.project_checkout` | 版本库检出记录 | 13 | `status` CHECK；`index(project_id,status)` |
+| 80 | `ref.project_checkout` | 版本库检出记录 | 15 | `status` CHECK；`vcs_kind` CHECK（git/svn）；`index(project_id,status)` |
 | 81 | `stat.project_scan` | 仓库静态扫描 | 11 | `status` CHECK；`index(project_id,created_at DESC)` |
 | 82 | `stat.project_plan` | 自动生成计划 | 8 | `plan_kind/status` CHECK；`UNIQUE(project_id,plan_kind,version)` |
 | 83 | `stat.project_decision` | 项目裁决队列 | 12 | `status/risk_level` CHECK；`index(project_id,status)` |
@@ -880,16 +880,16 @@ GROUP BY table_schema ORDER BY table_schema;
 
 ### 3.11 项目自动驾驶（v2.16 新增 4 张）
 
-> 迁移：`migrations/0009_project_autopilot.sql`；实体：`ProjectCheckout`、`ProjectScan`、`ProjectPlan`、`ProjectDecision`。
+> 迁移：`migrations/0009_project_autopilot.sql`；v2.22 由 `migrations/0014_autopilot_svn.sql` 追加 SVN 检出列；实体：`ProjectCheckout`、`ProjectScan`、`ProjectPlan`、`ProjectDecision`。
 
 | 表 | 主要列 | 约束/索引 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `ref.project_checkout` | `project_id, repository_id, url, branch, commit_sha, workspace_path, file_count, size_bytes, status, error, checked_out_at, created_at` | `status` CHECK（pending/ok/failed）；`index(project_id,status)` | 每次浅克隆的检出事实；失败也留痕，不伪造档案 |
+| `ref.project_checkout` | `project_id, repository_id, url, branch, vcs_kind, commit_sha, revision, workspace_path, file_count, size_bytes, status, error, checked_out_at, created_at` | `vcs_kind varchar(8) NOT NULL DEFAULT 'git'` + CHECK（git/svn）；`revision varchar(32)`；`status` CHECK（pending/ok/failed）；`index(project_id,status)` | 每次检出的事实：Git 记 `commit_sha`、SVN 记 `revision`，`vcs_kind` 标识协议；失败也留痕，不伪造档案 |
 | `stat.project_scan` | `project_id, checkout_id, scanner_version, languages, manifests, structure, tests, ci, findings, status, created_at` | `status` CHECK（ok/degraded/failed）；`index(project_id,created_at DESC)` | 静态扫描结果（只读文件，不执行仓库代码） |
 | `stat.project_plan` | `project_id, plan_kind, version, title, content, status, generated_at` | `plan_kind` CHECK（dev/test/deploy）；`status` CHECK（draft/active/archived）；`UNIQUE(project_id,plan_kind,version)` | 自动生成的开发/测试/部署计划；默认 draft |
 | `stat.project_decision` | `project_id, topic, question, options, risk_level, status, decision, decided_by, decided_at, payload, created_at` | `status` CHECK（pending/decided/dismissed）；`risk_level` CHECK；`index(project_id,status)` | 仅供老板裁决的事项；未裁决不放行生产 |
 
-**自动驾驶口径**：建项目填写 `repository` 即触发「浅克隆 → 静态扫描 → 回填 `biz.project.tech_stack/software_profile` → 生成三份计划 → 裁决项入队」；检出上限 2000 文件，跳过 `.git/node_modules/dist` 等目录；生产发布仍需人工审批。
+**自动驾驶口径**：建项目填写 `repository` 即触发「检出/浅克隆 → 静态扫描 → 回填 `biz.project.tech_stack/software_profile` → 生成三份计划 → 裁决项入队」；Git 用 branch + commit，SVN 用 `branch`（主干/分支路径）与 `revision`（HEAD|数字|r数字），`vcs_kind` 落 `ref.project_checkout`；检出上限 2000 文件，跳过 `.git/.svn/.hg/node_modules/dist` 等目录；SVN 检出依赖本机 CLI（subversion ≥1.10），缺失时 502 `ERR-AUTO-002` 并登记 `svn_client` 裁决；生产发布仍需人工审批。
 
 ### 3.12 自动驾驶·自动化生产（v2.17 新增 3 张）
 

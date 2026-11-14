@@ -1082,6 +1082,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-PRJ-033 | 自动发布测试环境 | UC-026 | TC-AUTO-007 | deployProjectTest |
 | REQ-PRJ-034 | 已建项目接入自动驾驶与重复执行幂等 | UC-029 | TC-AUTO-008、009 | bootstrapProjectAutopilot / getProjectAutopilot |
 | REQ-PRJ-035 | 创意（文本/文档）转项目并进入自动驾驶 | UC-030 | TC-IDEA-001..005 | analyzeIdea / createProjectFromIdea |
+| REQ-PRJ-036 | SVN 版本库检出（公司主用版本库） | UC-024 | TC-AUTO-010、011 | bootstrapProjectAutopilot |
 | REQ-OPS-001 | 运行错误自动登记并开 Issue | UC-028 | TC-OPS-002、003、005 | syncIssues / listIssues |
 | REQ-OPS-002 | 用量遥测与使用习惯审视 | UC-027 | TC-OPS-001、004 | getUsageSummary / generateUsageInsight |
 | REQ-OPS-003 | 反馈投递治理（去重/限额/脱敏） | UC-027、028 | TC-OPS-003 | syncIssues |
@@ -1096,7 +1097,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：31 个 UC 全部在被映射的 REQ 中出现（UC-001..031 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 158 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：31 个 UC 全部在被映射的 REQ 中出现（UC-001..031 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 159 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 

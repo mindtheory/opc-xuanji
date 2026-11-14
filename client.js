@@ -1988,6 +1988,36 @@ window.__ModuleLoader__.load({
     }
 
     // ================= 自动驾驶 =================
+    // 版本库类型与修订号：与后端 repository 契约对齐（kind 默认 git，revision 仅 SVN，缺省 HEAD）
+    var REPO_KIND_OPTIONS = [{ value: "git", label: "Git" }, { value: "svn", label: "SVN" }];
+    function repoKind(value) { return value === "svn" ? "svn" : "git"; }
+    function repoKindLabel(value) { return repoKind(value) === "svn" ? "SVN" : "Git"; }
+    function repoBranchLabel(value) { return repoKind(value) === "svn" ? "主干/分支路径（如 trunk、branches/x）" : "分支"; }
+    function repoDefaultRef(repo) { return (repo && (repo.default_ref || repo.defaultRef)) || ""; }
+    function repoRevision(checkout) {
+      if (!checkout) return "";
+      var rev = checkout.revision;
+      return rev === undefined || rev === null ? "" : String(rev);
+    }
+    function checkoutVcs(checkout) {
+      if (!checkout) return "git";
+      var vcs = checkout.vcs || checkout.vcs_kind || checkout.vcsKind;
+      return vcs === "svn" ? "svn" : "git";
+    }
+    // 检出摘要：SVN 用修订号，Git 用 commit（bootstrap 用 commit，summary 行用 commit_sha）
+    function checkoutRefText(checkout) {
+      if (!checkout) return "";
+      if (checkoutVcs(checkout) === "svn") return "修订 r" + (repoRevision(checkout) || "-");
+      return "commit " + String(checkout.commit || checkout.commit_sha || checkout.commitSha || "").slice(0, 12);
+    }
+    // Git 不传 revision；SVN 的 branch 是主干/分支路径，revision 缺省 HEAD
+    function repoPayload(kind, url, branch, authRef, revision) {
+      var k = repoKind(kind);
+      var repo = { url: url, kind: k, branch: branch || undefined, authRef: authRef || undefined };
+      if (k === "svn") repo.revision = revision || "HEAD";
+      return repo;
+    }
+
     function AutopilotTab(props) {
       var projectsS = useLoad(function () { return apiGet("/admin/projects"); }, []);
       var projects = (projectsS[0].data && projectsS[0].data.items) || [];
@@ -1997,32 +2027,59 @@ window.__ModuleLoader__.load({
         if (!selected && projects.length) setSelected(String(projects[0].id));
       }, [projects.length, selected]);
       var sumS = useLoad(function () { return selected ? apiGet("/admin/projects/" + selected + "/autopilot") : Promise.resolve(null); }, [selected]);
-      var sum = (sumS[0].data && sumS[0].data) || {};
-      var reposS = useLoad(function () { return selected ? apiGet("/admin/projects/" + selected + "/repositories") : Promise.resolve(null); }, [selected]);
-      var repos = (reposS[0].data && reposS[0].data.items) || [];
-      var formS = react.useState({ name: "", repositoryUrl: "", branch: "main", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true });
+      var sumData = sumS[0].data;
+      var sum = sumData || {};
+      var reposS = useLoad(function () {
+        return selected
+          ? apiGet("/admin/projects/" + selected + "/repositories").then(function (d) { return { projectId: String(selected), items: (d && d.items) || [] }; })
+          : Promise.resolve(null);
+      }, [selected]);
+      var repoData = reposS[0].data;
+      var repos = repoData && String(repoData.projectId) === String(selected) ? repoData.items : [];
+      var formS = react.useState({ name: "", repositoryUrl: "", branch: "main", kind: "git", revision: "", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true });
       var form = formS[0], setForm = formS[1];
       var busyS = react.useState(false);
       var busy = busyS[0], setBusy = busyS[1];
       var decideS = react.useState(null);
       var deciding = decideS[0], setDeciding = decideS[1];
-      var ideaS = react.useState({ idea: "", repositoryUrl: "", branch: "", authRef: "" });
+      var ideaS = react.useState({ idea: "", repositoryUrl: "", branch: "", kind: "git", revision: "", authRef: "" });
       var ideaForm = ideaS[0], setIdeaForm = ideaS[1];
       var filesS = react.useState([]);
       var ideaFiles = filesS[0], setIdeaFiles = filesS[1];
       var analysisS = react.useState(null);
       var ideaResult = analysisS[0], setIdeaResult = analysisS[1];
       function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
+      function upRepoKind(value) {
+        var next = Object.assign({}, form);
+        next.kind = repoKind(value);
+        if (next.kind !== "svn") next.revision = "";
+        setForm(next);
+      }
       function knownRepoUrl() {
         if (repos.length > 0 && repos[0].url) return repos[0].url;
         var profile = (sum.profile && sum.profile.software_profile) || null;
         return (profile && profile.repositoryUrl) || "";
       }
+      var prefilledRef = react.useRef("");
       react.useEffect(function () {
         if (!selected) return;
-        var url = knownRepoUrl();
-        if (url && !form.repositoryUrl) up("repositoryUrl", url);
-      }, [selected, repos.length, sum.profile]);
+        // 等当前项目的版本库登记与自动驾驶快照都到位，避免把上一个项目的数据预填进来
+        if (!repoData || String(repoData.projectId) !== String(selected)) return;
+        if (sumData && sumData.projectId !== undefined && String(sumData.projectId) !== String(selected)) return;
+        var repo = repos.length > 0 ? repos[0] : null;
+        var switched = prefilledRef.current !== String(selected);
+        if (!switched && form.repositoryUrl) return; // 用户已填地址且没切项目：不覆盖
+        prefilledRef.current = String(selected);
+        var url = (repo && repo.url) || knownRepoUrl();
+        var nextKind = repoKind(repo && repo.kind);
+        var next = Object.assign({}, form);
+        if (url) next.repositoryUrl = url;
+        next.kind = nextKind;
+        if (nextKind === "svn") next.branch = repoDefaultRef(repo);
+        else if (repoDefaultRef(repo)) next.branch = repoDefaultRef(repo);
+        if (nextKind !== "svn") next.revision = "";
+        setForm(next);
+      }, [selected, repoData, sumData]);
       function refreshAll() { projectsS[1](); if (selected) sumS[1](); }
       function run() {
         if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
@@ -2030,12 +2087,12 @@ window.__ModuleLoader__.load({
         apiPost("/admin/projects", {
           name: form.name || ("自动生产-" + new Date().toISOString().slice(5, 16)),
           stage: "planning",
-          repository: { url: form.repositoryUrl, branch: form.branch || undefined, authRef: form.authRef || undefined },
+          repository: repoPayload(form.kind, form.repositoryUrl, form.branch, form.authRef, form.revision),
           autopilotOptions: { scaffold: form.scaffold, pipeline: form.pipeline, deployTest: form.deployTest, healthUrl: form.healthUrl || undefined },
         }).then(function (r) {
           var ap = r.autopilot || {};
           var parts = [];
-          if (ap.checkout) parts.push("检出 " + String(ap.checkout.commit || "").slice(0, 8));
+          if (ap.checkout) parts.push("检出 " + checkoutRefText(ap.checkout));
           if (ap.scaffold) parts.push("骨架 " + ap.scaffold.status);
           if (ap.pipeline) parts.push("流水线 " + ap.pipeline.status);
           if (ap.deploy) parts.push("测试环境 " + ap.deploy.status);
@@ -2046,6 +2103,12 @@ window.__ModuleLoader__.load({
           .then(function () { setBusy(false); });
       }
       function upIdea(key, value) { var next = Object.assign({}, ideaForm); next[key] = value; setIdeaForm(next); }
+      function upIdeaRepoKind(value) {
+        var next = Object.assign({}, ideaForm);
+        next.kind = repoKind(value);
+        if (next.kind !== "svn") next.revision = "";
+        setIdeaForm(next);
+      }
       function pickIdeaFiles(event) {
         var list = Array.prototype.slice.call(event.target.files || []);
         event.target.value = "";
@@ -2067,13 +2130,16 @@ window.__ModuleLoader__.load({
       function submitIdea(create) {
         if (!ideaForm.idea && ideaFiles.length === 0) { props.flash("请填写创意或上传文档", false); return; }
         setBusy(true);
+        var ideaKind = repoKind(ideaForm.kind);
         var payload = {
           idea: ideaForm.idea,
           files: ideaFiles.map(function (file) { return { name: file.name, contentBase64: file.contentBase64 }; }),
           repositoryUrl: ideaForm.repositoryUrl || undefined,
           branch: ideaForm.branch || undefined,
           authRef: ideaForm.authRef || undefined,
+          repository: { kind: ideaKind },
         };
+        if (ideaKind === "svn") payload.repository.revision = ideaForm.revision || "HEAD";
         apiPost(create ? "/admin/projects/from-idea" : "/admin/ideas/analyze", payload)
           .then(function (r) {
             setIdeaResult(r.analysis || null);
@@ -2094,11 +2160,11 @@ window.__ModuleLoader__.load({
         if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
         setBusy(true);
         apiPost("/admin/projects/" + selected + "/autopilot", {
-          repository: { url: form.repositoryUrl, branch: form.branch || undefined, authRef: form.authRef || undefined },
+          repository: repoPayload(form.kind, form.repositoryUrl, form.branch, form.authRef, form.revision),
           options: { scaffold: form.scaffold, pipeline: form.pipeline, deployTest: form.deployTest, healthUrl: form.healthUrl || undefined },
         }).then(function (r) {
           var parts = [];
-          if (r.checkout) parts.push("检出 " + String(r.checkout.commit || "").slice(0, 8));
+          if (r.checkout) parts.push("检出 " + checkoutRefText(r.checkout));
           if (r.scaffold) parts.push("骨架 " + r.scaffold.status);
           if (r.pipeline) parts.push("流水线 " + r.pipeline.status);
           if (r.deploy) parts.push("测试环境 " + r.deploy.status);
@@ -2139,8 +2205,10 @@ window.__ModuleLoader__.load({
           h("div", { className: "ocH" }, "新建项目并自动生产"),
           h("div", { className: "ocFormRow" },
             h(Field, { label: "项目名称", value: form.name, onChange: function (v) { up("name", v); } }),
-            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///…" }),
-            h(Field, { label: "分支", value: form.branch, onChange: function (v) { up("branch", v); } }),
+            h(Select, { label: "版本库类型", value: form.kind, options: REPO_KIND_OPTIONS, onChange: upRepoKind }),
+            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///… / svn://…" }),
+            h(Field, { label: repoBranchLabel(form.kind), value: form.branch, onChange: function (v) { up("branch", v); } }),
+            form.kind === "svn" ? h(Field, { label: "修订号", value: form.revision, onChange: function (v) { up("revision", v); }, placeholder: "HEAD 或 12345" }) : null,
             h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
             h(Field, { label: "健康检查 URL", value: form.healthUrl, onChange: function (v) { up("healthUrl", v); }, placeholder: "http://host:port/health" })),
           h("div", { className: "ocRow" },
@@ -2157,8 +2225,10 @@ window.__ModuleLoader__.load({
               h("span", { className: "ocFieldLabel" }, "上传文档（可多选）"),
               h("input", { type: "file", multiple: true, accept: ".txt,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.log,.docx,.xlsx,.pdf", onChange: pickIdeaFiles })),
             h(Field, { label: "项目名称（可选）", value: ideaForm.name || "", onChange: function (v) { upIdea("name", v); }, placeholder: "留空由 AI 命名" }),
-            h(Field, { label: "版本库（可选）", value: ideaForm.repositoryUrl, onChange: function (v) { upIdea("repositoryUrl", v); }, placeholder: "留空则建项目后转裁决等仓库" }),
-            h(Field, { label: "分支", value: ideaForm.branch, onChange: function (v) { upIdea("branch", v); } })),
+            h(Select, { label: "版本库类型", value: ideaForm.kind, options: REPO_KIND_OPTIONS, onChange: upIdeaRepoKind }),
+            h(Field, { label: "版本库（可选）", value: ideaForm.repositoryUrl, onChange: function (v) { upIdea("repositoryUrl", v); }, placeholder: "https://… / file:///… / svn://…；留空则建项目后转裁决等仓库" }),
+            h(Field, { label: repoBranchLabel(ideaForm.kind), value: ideaForm.branch, onChange: function (v) { upIdea("branch", v); } }),
+            ideaForm.kind === "svn" ? h(Field, { label: "修订号", value: ideaForm.revision, onChange: function (v) { upIdea("revision", v); }, placeholder: "HEAD 或 12345" }) : null),
           ideaFiles.length ? h("div", { className: "ocRow" }, ideaFiles.map(function (file, index) {
             return h("span", { key: file.name + index, className: "ocChip" },
               file.name,
@@ -2180,11 +2250,13 @@ window.__ModuleLoader__.load({
           h("div", { className: "ocH" }, "对已选项目执行自动驾驶"),
           h("div", { className: "ocMuted" }, "已建项目也能走同一条流水线：检出 → 扫描 → 回填档案 → 计划（版本递增）→ 可选骨架/流水线/测试环境发布；不会重复建版本库、里程碑、测试计划与裁决。"),
           h("div", { className: "ocFormRow" },
-            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///…" }),
-            h(Field, { label: "分支", value: form.branch, onChange: function (v) { up("branch", v); } }),
+            h(Select, { label: "版本库类型", value: form.kind, options: REPO_KIND_OPTIONS, onChange: upRepoKind }),
+            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///… / svn://…" }),
+            h(Field, { label: repoBranchLabel(form.kind), value: form.branch, onChange: function (v) { up("branch", v); } }),
+            form.kind === "svn" ? h(Field, { label: "修订号", value: form.revision, onChange: function (v) { up("revision", v); }, placeholder: "HEAD 或 12345" }) : null,
             h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
             h(Btn, { kind: "primary", disabled: busy, onClick: runExisting }, busy ? "执行中…" : "在现有项目执行")),
-          repos.length > 0 ? h("div", { className: "ocMuted" }, "已登记版本库：" + repos.map(function (r) { return r.name + "（" + r.url + "）"; }).join("；")) : null),
+          repos.length > 0 ? h("div", { className: "ocMuted" }, "已登记版本库：" + repos.map(function (r) { return r.name + "（" + repoKindLabel(r.kind) + " · " + r.url + "）"; }).join("；")) : null),
         !selected ? null : h(Fragment, null,
           h(KpiGrid, { items: [
             { label: "检出", value: checkout && checkout.status === "ok" ? 1 : 0, unit: checkout && checkout.status === "ok" ? "ok" : "", tone: checkout && checkout.status === "ok" ? "ok" : "warn" },
@@ -2197,7 +2269,7 @@ window.__ModuleLoader__.load({
           ] }),
           h(Card, null,
             h("div", { className: "ocH" }, "检出与扫描"),
-            h("div", { className: "ocMuted" }, checkout ? ("commit " + String(checkout.commit_sha || "").slice(0, 12) + " · 文件 " + (checkout.file_count || 0) + " · 字节 " + (checkout.size_bytes || 0) + " · 分支 " + (checkout.branch || "-")) : "尚未检出"),
+            h("div", { className: "ocMuted" }, checkout ? (checkoutRefText(checkout) + " · 文件 " + (checkout.file_count || 0) + " · 字节 " + (checkout.size_bytes || 0) + " · 分支 " + (checkout.branch || "-")) : "尚未检出"),
             h("div", { className: "ocMuted" }, "语言：" + Object.keys((sum.scan && sum.scan.languages) || {}).join(" / ") + "；测试：" + (((sum.scan && sum.scan.tests) || []).length) + "；CI：" + (((sum.scan && sum.scan.ci) || []).length)),
             h("div", { className: "ocMuted" }, "缓存排除：" + Object.keys(scanFindings).length + " 项扫描证据")),
           h(Card, null,

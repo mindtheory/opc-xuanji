@@ -54,7 +54,7 @@ updated: 2026-11-14
 | 对象 | 数量 | 来源 |
 | :--- | :--- | :--- |
 | 主文档功能需求 | 39 条（VIEW 4 + TOKEN 3 + CONFLICT 3 + WF 9 + AUDIT 4 + TASK 3 + WEB 6 + EMP 7） | SRS §4 |
-| 员工需求 | 158 条（11 份分册，v2.20 项目监理 +1） | `docs/员工需求/` |
+| 员工需求 | 159 条（11 份分册，v2.20 项目监理 +1、v2.22 SVN 检出 +1） | `docs/员工需求/` |
 | 非功能需求 | 26 条（NFR-001..022 + NFR-WEB-001..004） | SRS §10 |
 | 用例 | 31 条（UC-001..031） | `usecases.yaml` |
 | HTTP operation | 62 个 | `api.yaml` |
@@ -136,6 +136,7 @@ updated: 2026-11-14
 | REQ-OPS-003 | 反馈投递治理 | UC-027、028 | TC-OPS-003 | syncIssues | `ops/feedback.ts` | `ops.test.ts` |
 | REQ-PRJ-034 | 已建项目接入自动驾驶与重复执行幂等 | UC-029 | TC-AUTO-008、009 | bootstrapProjectAutopilot / getProjectAutopilot | `domains/project/autopilot.ts`、`client.js` | `autopilot.test.ts` |
 | REQ-PRJ-035 | 创意转项目并进入自动驾驶 | UC-030 | TC-IDEA-001..005 | analyzeIdea / createProjectFromIdea | `domains/project/idea.ts`、`platform/documents.ts`、`client.js` | `idea.test.ts` |
+| REQ-PRJ-036 | SVN 版本库检出（公司主用版本库） | UC-024 | TC-AUTO-010、011 | bootstrapProjectAutopilot | `domains/project/autopilot.ts` | `autopilot.test.ts` |
 | REQ-OPS-004 | 裁决与简报微信推送 | UC-031 | TC-WECHAT-001..005 | getWechatStatus / pushWechatText / syncWechatOutbox | `notify/wechat.ts` | `wechat.test.ts` |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list | `employees/catalog.ts` | `employees.test.ts`、`unit/employees.test.ts` |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle | `employees/index.ts` | `employees.test.ts` |
@@ -224,7 +225,7 @@ updated: 2026-11-14
 | UC-021 | 时间管理与关键节点提醒 | REQ-PRJ-022 | TC-PRJ-007 | `test/integration/project-software.test.ts` |
 | UC-022 | 公司基础资源登记与默认口径 | REQ-PRJ-023 | TC-RES-001、004、005 | `test/integration/admin-shared.test.ts` |
 | UC-023 | 新建项目按公司默认资源选型 | REQ-PRJ-025 | TC-RES-002、003 | `test/integration/admin-shared.test.ts` |
-| UC-024 | 建项目填写版本库并自动检出入档 | REQ-PRJ-027 | TC-AUTO-001 | `test/integration/autopilot.test.ts` |
+| UC-024 | 建项目填写版本库并自动检出入档（Git/SVN） | REQ-PRJ-027、036 | TC-AUTO-001、010、011 | `test/integration/autopilot.test.ts` |
 | UC-025 | 自动生成计划并推送裁决 | REQ-PRJ-029 | TC-AUTO-002、003、004 | `test/integration/autopilot.test.ts` |
 | UC-026 | 自动化生产（骨架/流水线/测试环境） | REQ-PRJ-031 | TC-AUTO-005、006、007 | `test/integration/autopilot.test.ts` |
 | UC-027 | 用量遥测与使用习惯审视 | REQ-OPS-002 | TC-OPS-001、004 | `test/integration/ops.test.ts` |
