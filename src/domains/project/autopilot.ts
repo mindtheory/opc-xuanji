@@ -1272,7 +1272,8 @@ export class ProjectAutopilotService {
         await exec("rsync", ["-a", "--delete", "--exclude", ".git", "--exclude", ".svn", "--exclude", "node_modules", `${dir}/`, `${target}/`], { timeout: 300_000, maxBuffer: 4 * 1024 * 1024 });
         log.push(`[sync] 本机 rsync → ${target}`);
       } else {
-        target = `~/opc-deploy/project-${projectId}/v-${version.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+        // 相对路径：ssh 登录后 cwd 即用户主目录；'~/x' 在远端 shell 里不会被展开（会建出字面 ~ 目录）
+        target = `opc-deploy/project-${projectId}/v-${version.replace(/[^A-Za-z0-9._-]/g, "_")}`;
         const authRef = envRow.auth_ref === null || envRow.auth_ref === undefined ? null : String(envRow.auth_ref);
         let password: string | null = null;
         if (authRef !== null && authRef.startsWith("env:")) password = process.env[authRef.slice("env:".length)] ?? null;
