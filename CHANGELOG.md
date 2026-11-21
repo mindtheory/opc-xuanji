@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **新建 git 项目对 GitHub 私有仓库检出失败（502 ERR-AUTO-002）**：`git clone` 在无 TTY 环境下遇到私有仓库时报 `could not read Username for 'https://github.com': terminal prompts disabled`，新建项目接口整体 502。现在 Git 检出未显式传 `authRef` 且地址为 GitHub 时，自动回退使用服务自带的运维 token（`OPC_GITHUB_TOKEN`，经一次性 askpass 脚本注入，不落 argv/日志）；显式 `authRef` 优先级不变。
-- **裁决项「测试环境发布未配置执行命令」无解决方案**：`deploy_executor` 裁决此前只给「人工接手/放宽限制重试」两个空泛选项，老板拍板后自动推进仍会再次阻塞。现在裁决选项给出可执行方案：①内置执行器（推荐，rsync 工作副本到测试服务器 `~/opc-deploy/project-<id>/v-<版本>/`，仓库含 `opc-deploy.sh` 时自动执行并注入 `OPC_DEPLOY_DIR/OPC_DEPLOY_VERSION`，远程走 SSH、口令经 askpass 引用）；②配置 `OPC_TEST_DEPLOY_CMD`；③人工发布。老板裁决「内置执行器」后下一轮自动推进即自动发布并继续计划；测试新增 TC-AUTO-020 回归（`autopilot.test.ts` 19→20）。
+- **裁决项「测试环境发布未配置执行命令」无解决方案**：`deploy_executor` 裁决此前只给「人工接手/放宽限制重试」两个空泛选项，老板拍板后自动推进仍会再次阻塞。现在裁决选项给出可执行方案：①内置执行器（推荐，rsync 工作副本到测试服务器 `~/opc-deploy/project-<id>/v-<版本>/`，仓库含 `opc-deploy.sh` 时自动执行并注入 `OPC_DEPLOY_DIR/OPC_DEPLOY_VERSION`，远程走 SSH、口令经 askpass 引用）；②配置 `OPC_TEST_DEPLOY_CMD`；③人工发布。老板裁决「内置执行器」后下一轮自动推进即自动发布并继续计划；远程目标路径用相对路径（ssh 登录后 cwd 即主目录，`'~/x'` 不会被远端 shell 展开导致 rsync mkdir 失败 exit 11）；测试新增 TC-AUTO-020 回归（`autopilot.test.ts` 19→20）。
 - **公司信息首次保存报 `entity_type` NOT NULL 违反**：设置页表单会把未填字段以空字符串整体提交（含 `entityType:""`），后端把空串当 `null` 写入 NOT NULL 的 `entity_type`，首建与保存返回 500。现在空串 `entityType` 视为缺省：首建落「服务型」、更新保持原值；设置页无档案时也给主体类型真实默认值；`company-profile.test.ts` TC-ADM-001 增表单形状回归断言（用例数不变，全量 144/144）。
 
 - **自动驾驶页白屏（v2.23 回归）**：`client.js` 新增展示兜底函数 `textOf`。此前自动驾驶页签的 `ProjectInfoCard`/`RoadmapCard` 等组件引用了未定义的 `textOf`，进入页签即抛 `ReferenceError`，导致整块主面板白屏；已用假 React 渲染器复现（`textOf is not defined`）并在修复后逐一渲染项目总览/详情/当前执行/路线图/执行记录与已加载/已归档两种页面状态验证通过。
