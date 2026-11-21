@@ -21,6 +21,7 @@ import { SuperAgentsBridge } from "../../agents/bridge.ts";
 import { SuperAgentService } from "../../agents/service.ts";
 import { SalesService } from "../../domains/sales/service.ts";
 import { GoofishRpa, runSalesRadar, runSalesOrderListen, runSalesListing } from "../../domains/sales/rpa.ts";
+import { CompletenessService } from "../../domains/admin/completeness.ts";
 
 function monthPath(now: Date): string {
   const year = now.getUTCFullYear();
@@ -153,6 +154,20 @@ export function defaultTasks(): TaskDefinition[] {
         ];
         await wechat.enqueueBrief("每日晨报", briefLines.join("\n"), `brief:daily_report:${ctx.now.toISOString().slice(0, 10)}`).catch(() => undefined);
         return { reportDate: ctx.now.toISOString().slice(0, 10), taxAlerts: tax.rows.length, contractAlerts: contracts.rows.length, conflicts: conflicts.rows.length };
+      },
+    },
+    {
+      id: "completeness_check",
+      name: "信息完善度巡检（每日 09:10，AI 补全 + 向老板提问）",
+      defaults: { cron: "10 9 * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const result = await new CompletenessService(ctx.pool, ctx.audit).inspect(ctx.now);
+        if (result.questions !== undefined && Number(result.questions) > 0) {
+          await ctx.notify("completeness_questions", "digest", { score: result.score, questions: result.questions, autoFilled: result.autoFilled });
+          const wechat = new WechatPushService(ctx.pool, ctx.audit);
+          await wechat.enqueueBrief("信息完善度巡检", `完善度 ${result.score}%：AI 已自动补全 ${result.autoFilled} 项，还有 ${result.questions} 个问题等老板在「设置 → 信息完善度巡检」回答。`, `brief:completeness:${ctx.now.toISOString().slice(0, 10)}`).catch(() => undefined);
+        }
+        return result;
       },
     },
     {

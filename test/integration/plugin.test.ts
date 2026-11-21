@@ -51,7 +51,7 @@ test("opc_health：可执行并返回 PG/pgvector/任务信息", async () => {
   const data = JSON.parse(result.text);
   assert.equal(data.pg, true);
   assert.equal(data.pgvector, true);
-  assert.equal(data.registeredTasks.length, 24);
+  assert.equal(data.registeredTasks.length, 25);
 });
 
 test("opc_task_list / opc_task_upsert：配置驱动可增改", async () => {

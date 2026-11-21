@@ -12,7 +12,7 @@ import vm from "node:vm";
 
 const CLIENT = new URL("../../client.js", import.meta.url);
 const EXPORTS_ANCHOR = "    exports.apply = apply;";
-const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console, SalesTab: SalesTab, DecisionsCard: DecisionsCard, AutopilotSettingsCard: AutopilotSettingsCard, IntelTab: IntelTab, CompanyIntelSection: CompanyIntelSection };";
+const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console, SalesTab: SalesTab, DecisionsCard: DecisionsCard, AutopilotSettingsCard: AutopilotSettingsCard, IntelTab: IntelTab, CompanyIntelSection: CompanyIntelSection, CompletenessCard: CompletenessCard, SettingsTab: SettingsTab };";
 
 const Fragment = Symbol("Fragment");
 
@@ -289,4 +289,23 @@ test("client.js 公司情报中心可渲染（防白屏回归）", async () => {
     false,
   ]);
   assert.doesNotThrow(() => render(createElement(components.IntelTab, { flash() {} })), "IntelTab 公司情报视图渲染失败");
+});
+
+test("client.js 信息完善度巡检卡可渲染（防白屏回归）", async () => {
+  const components = await loadComponents();
+  assert.equal(typeof components.CompletenessCard, "function", "缺少组件 CompletenessCard");
+  resetHooks();
+  assert.doesNotThrow(() => render(createElement(components.CompletenessCard, { flash() {} })), "CompletenessCard 加载态渲染失败");
+  const overview = {
+    settings: { enabled: true, autoFill: true, maxQuestionsPerRun: 5 },
+    lastRun: { ranAt: NOW, score: 62, checked: 16, missing: 6, autoFilled: 1, questions: 2 },
+    score: 62,
+    domains: [{ domain: "公司基础信息", items: [{ key: "industry", label: "所属行业", filled: false, weight: 2 }] }],
+    questions: [
+      { id: 1, topic: "信息完善度 · 所属行业", question: "公司主营业务所属行业？", options: [{ label: "软件开发与信息技术服务" }], status: "pending", payload: { fieldKey: "industry" } },
+      { id: 2, topic: "信息完善度 · 官网", question: "有官网吗？", options: [], status: "decided", decision: "暂无官网", payload: { fieldKey: "website" } },
+    ],
+  };
+  resetHooks([{ loading: false, error: "", data: overview }, 0, false]);
+  assert.doesNotThrow(() => render(createElement(components.CompletenessCard, { flash() {} })), "CompletenessCard 已加载渲染失败");
 });

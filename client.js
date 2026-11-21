@@ -1386,6 +1386,66 @@ window.__ModuleLoader__.load({
           h("span", { className: "ocMuted" }, "保存后项目交付物、开票与合同主体立即使用新信息")));
     }
 
+    // ---- 信息完善度巡检（每日 09:10：AI 能补的补，补不了的提问老板） ----
+    function CompletenessCard(props) {
+      var ovS = useLoad(function () { return apiGet("/admin/completeness/overview"); }, []);
+      var ov = ovS[0].data || {};
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      var answerS = react.useState({});
+      var answers = answerS[0], setAnswers = answerS[1];
+      function act(promise, okMsg) {
+        setBusy(true);
+        return promise.then(function () { props.flash(okMsg, true); ovS[1](); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(false); });
+      }
+      var questions = ov.questions || [];
+      var pending = questions.filter(function (q) { return q.status === "pending"; });
+      var decided = questions.filter(function (q) { return q.status !== "pending"; });
+      var lastRun = ov.lastRun || null;
+      var score = Number(ov.score || 0);
+      function optList(q) {
+        var opts = q.options;
+        if (typeof opts === "string") { try { opts = JSON.parse(opts); } catch (e) { opts = null; } }
+        return Array.isArray(opts) ? opts.filter(function (o) { return o && o.label; }) : [];
+      }
+      return h(Card, null,
+        h("div", { className: "ocH" }, "信息完善度巡检", h("span", { className: "ocCount" }, "每日 09:10 · AI 能补的自动补，补不了的问老板"),
+          h("span", { style: { marginLeft: "auto", display: "inline-flex", gap: 8 } },
+            h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/completeness/inspect", {}), "巡检完成"); } }, "立即巡检"),
+            h(Btn, { disabled: busy || ov.settings === undefined, onClick: function () { act(apiPut("/admin/completeness/settings", { enabled: !(ov.settings && ov.settings.enabled !== false) }), "已切换巡检开关"); } }, (ov.settings && ov.settings.enabled !== false) ? "暂停巡检" : "恢复巡检"))),
+        ovS[0].loading
+          ? h("div", { className: "ocSkel", style: { width: "60%", height: 16 } })
+          : h(Fragment, null,
+              h("div", { className: "ocRow" },
+                h("b", null, "完善度 " + score + "%"),
+                lastRun ? h("span", { className: "ocMuted" }, "上次巡检 " + fmtTime(lastRun.ranAt) + " · 检查 " + lastRun.checked + " 项 · 缺 " + lastRun.missing + " 项 · AI 补全 " + lastRun.autoFilled + " · 提问 " + lastRun.questions) : h("span", { className: "ocMuted" }, "尚未巡检过"),
+                ov.settings && ov.settings.autoFill === false ? h(Badge, { tone: "warn" }, "AI 自动补全已关") : null),
+              h("div", { className: "ocRow" }, (ov.domains || []).map(function (d) {
+                var filled = d.items.filter(function (x) { return x.filled; }).length;
+                return h("span", { key: d.domain, className: "ocMuted" }, d.domain + " " + filled + "/" + d.items.length + " ");
+              })),
+              pending.length ? h("div", { className: "ocFormStack", style: { marginTop: 8 } }, pending.map(function (q) {
+                var meta = q.payload || {};
+                return h("div", { key: q.id, className: "ocSection" },
+                  h("div", { className: "ocRowLine" }, h(Badge, { tone: "warn" }, "待回答"), h("b", null, String(q.topic || ""))),
+                  h("div", { className: "ocMuted" }, String(q.question || "")),
+                  h("div", { className: "ocFormRow" },
+                    h(Field, { label: "回答", value: answers[String(q.id)] || "", onChange: function (v) { var next = Object.assign({}, answers); next[String(q.id)] = v; setAnswers(next); } }),
+                    h(Btn, { kind: "primary", disabled: busy || !(answers[String(q.id)] || "").trim(), onClick: function () { act(apiPost("/admin/completeness/questions/" + encodeURIComponent(q.id) + "/answer", { answer: answers[String(q.id)] }), meta.fieldKey === "strategy" ? "已记录：AI 将据此起草战略记忆" : "已回答，信息已回填"); } }, "提交回答"),
+                    h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/completeness/questions/" + encodeURIComponent(q.id) + "/answer", { later: true }), "已标记稍后提供"); } }, "稍后提供")),
+                  optList(q).length ? h("div", { className: "ocFormRow" }, optList(q).map(function (o) {
+                    return h("span", { key: String(o.label), className: "ocMuted" },
+                      h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/completeness/questions/" + encodeURIComponent(q.id) + "/answer", { answer: String(o.label) }), "已选择：" + String(o.label)); } }, String(o.label)),
+                      o.impact ? h("span", null, " " + String(o.impact)) : null);
+                  })) : null);
+              })) : h("div", { className: "ocMuted", style: { marginTop: 8 } }, "没有待回答的问题。"),
+              decided.length ? h("details", { style: { marginTop: 8 } }, h("summary", { className: "ocMuted" }, "已回答 " + decided.length + " 条"),
+                decided.map(function (q) { return h("div", { key: q.id, className: "ocMuted" }, String(q.topic || "") + " → " + String(q.decision || "")); })) : null,
+              h("div", { className: "ocHint" }, "巡检范围：公司基础信息、公司战略（记忆）、项目档案、情报来源。AI 能补全的（项目简介、战略草案）自动补或出记忆提议；缺关键事实的生成提问，回答后自动回填公司基础信息。")));
+    }
+
     function SettingsTab(props) {
       var healthS = useLoad(function () { return apiGet("/agents/health"); }, []);
       var manifestS = useLoad(function () { return apiGet("/web/manifest"); }, []);
@@ -1423,9 +1483,10 @@ window.__ModuleLoader__.load({
       }
       function resetProfile() { setDraft(profileToDraft(loadedProfile)); }
       return h(Fragment, null,
-        h(PageHeader, { title: "设置", subtitle: "公司基础信息 · 基础设施健康 · 全局暂停 · 网页表现层 manifest" },
+        h(PageHeader, { title: "设置", subtitle: "公司基础信息 · 信息完善度巡检 · 基础设施健康 · 全局暂停 · 网页表现层 manifest" },
           h(Btn, { onClick: function () { healthS[1](); manifestS[1](); profileS[1](); } }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
         h(ErrLine, { error: healthS[0].error || manifestS[0].error, onRetry: function () { healthS[1](); manifestS[1](); profileS[1](); } }),
+        h(CompletenessCard, { flash: props.flash }),
         h(CompanyProfileCard, {
           draft: draft,
           defaults: profileData.defaults || {},

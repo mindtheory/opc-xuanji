@@ -42,6 +42,7 @@ test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲
   const ids = tasks.map((task) => task.taskId).sort();
   assert.deepEqual(ids, [
     "audit_export",
+    "completeness_check",
     "conflict_escalation",
     "contract_expiry",
     "daily_report",

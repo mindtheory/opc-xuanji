@@ -32,6 +32,7 @@ import type { AdminService } from "../domains/admin/service.ts";
 import type { IssueReporter, UsageService } from "../ops/feedback.ts";
 import { SalesService } from "../domains/sales/service.ts";
 import { CompanyIntelService } from "../domains/intel/company.ts";
+import { CompletenessService } from "../domains/admin/completeness.ts";
 import { GoofishRpa, runSalesRadar } from "../domains/sales/rpa.ts";
 
 export interface WebServices {
@@ -1079,6 +1080,38 @@ export const ROUTES: Route[] = [
     keys: [],
     async handler(ctx) {
       return { status: 200, data: await new CompanyIntelService(ctx.pool, ctx.audit).memoryDigest(new Date()) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/completeness\/overview$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await new CompletenessService(ctx.pool, ctx.audit).overview() };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/completeness\/settings$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 200, data: await new CompletenessService(ctx.pool, ctx.audit).updateSettings(body) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/completeness\/inspect$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await new CompletenessService(ctx.pool, ctx.audit).inspect(new Date(), { force: true }) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/completeness\/questions\/([^/]+)\/answer$/,
+    keys: ["decisionId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await new CompletenessService(ctx.pool, ctx.audit).answer(requireId(params, "decisionId"), { answer: typeof body.answer === "string" ? body.answer : undefined, later: body.later === true }) };
     },
   },
   {

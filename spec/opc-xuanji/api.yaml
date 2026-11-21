@@ -1540,6 +1540,61 @@ paths:
       responses:
         '200': { description: 'OK；proposals/skipped/items/titles[]；同来源同日不重复出提议' }
 
+  /api/v1/admin/completeness/overview:
+    get:
+      operationId: getCompletenessOverview
+      tags: [admin]
+      summary: 信息完善度总览（设置 + 最近巡检快照 + 各域完善度明细 + 待回答提问卡）
+      responses:
+        '200': { description: 'OK；settings/lastRun/score/domains[]/questions[]（提问卡存 stat.project_decision，project_id=0 公司哨兵）' }
+
+  /api/v1/admin/completeness/settings:
+    put:
+      operationId: updateCompletenessSettings
+      tags: [admin]
+      summary: 修改巡检设置（enabled 急停 / autoFill AI 自动补全开关 / maxQuestionsPerRun 每轮提问上限 1–20，越界收敛）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                autoFill: { type: boolean }
+                maxQuestionsPerRun: { type: integer, minimum: 1, maximum: 20 }
+      responses:
+        '200': { description: OK，返回归一化后的完整设置 }
+        '400': { description: ERR-WEB-001 参数非法 }
+
+  /api/v1/admin/completeness/inspect:
+    post:
+      operationId: runCompletenessInspect
+      tags: [admin]
+      summary: 立即巡检一次（算完善度 → AI 自动补全项目简介/战略草案 → 缺口生成提问卡，同字段待答不重复）
+      responses:
+        '200': { description: 'OK；score/checked/missing/autoFilled/questions' }
+
+  /api/v1/admin/completeness/questions/{decisionId}/answer:
+    post:
+      operationId: answerCompletenessQuestion
+      tags: [admin]
+      summary: 老板回答提问（公司基础信息字段自动回填 biz.company_profile；later=true 标记稍后提供）
+      parameters:
+        - { name: decisionId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answer: { type: string }
+                later: { type: boolean }
+      responses:
+        '200': { description: 'OK；fieldKey/appliedTo/later' }
+        '400': { description: ERR-WEB-001 空回答或提问不存在 }
+
   /api/v1/admin/intel/items:
     get:
       operationId: listAdminIntelItems
