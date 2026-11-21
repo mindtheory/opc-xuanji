@@ -570,7 +570,7 @@ export function createHub(options: HubConfig = {}): Hub {
       description: "提出记忆写入建议（必须带来源引用；老板确认后才落库）。",
       parameters: OBJECT(
         {
-          type: { type: "string", enum: ["company_profile", "experience", "skill", "customer", "session_digest"] },
+          type: { type: "string", enum: ["company_profile", "experience", "skill", "customer", "session_digest", "market_intel"] },
           title: { type: "string" },
           content: { type: "string" },
           sourceRefs: { type: "array", items: { type: "string" } },

@@ -1465,6 +1465,81 @@ paths:
       responses:
         '201': { description: Created }
 
+  /api/v1/admin/intel/company/settings:
+    get:
+      operationId: getIntelCompanySettings
+      tags: [admin]
+      summary: 公司情况采集设置（情报与项目无关，公司级开放系统）
+      description: >-
+        存 ref.shared_setting（键 intel.collect.settings）。enabled 采集总开关（急停）；maxItemsPerSource 每来源每次最多条数（1–100，默认 20）；
+        memoryDailyCap 每日入记忆提议上限（1–50，默认 10）；memoryMinScore 入记忆最低相关分（0–100，默认 0）。
+      responses:
+        '200': { description: OK }
+    put:
+      operationId: updateIntelCompanySettings
+      tags: [admin]
+      summary: 修改公司情况采集设置（部分字段可省，越界收敛，非法 400 ERR-INT-001）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                maxItemsPerSource: { type: integer, minimum: 1, maximum: 100 }
+                memoryDailyCap: { type: integer, minimum: 1, maximum: 50 }
+                memoryMinScore: { type: integer, minimum: 0, maximum: 100 }
+      responses:
+        '200': { description: OK，返回归一化后的完整设置 }
+        '400': { description: ERR-INT-001 参数非法 }
+
+  /api/v1/admin/intel/company/summary:
+    get:
+      operationId: getIntelCompanySummary
+      tags: [admin]
+      summary: 公司情报总览 KPI（来源健康 / 公司级条目 / 记忆提议）
+      responses:
+        '200': { description: 'OK；sourcesActive/sourcesPaused/sourcesFailing/items24h/itemsTotal/itemsBriefed/memoryPending/memoryConfirmed/failures24h' }
+
+  /api/v1/admin/intel/company/items:
+    get:
+      operationId: listIntelCompanyItems
+      tags: [admin]
+      summary: 公司级情报条目列表（biz.intel_item.project_id IS NULL）
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/company/proposals:
+    get:
+      operationId: listIntelCompanyProposals
+      tags: [admin]
+      summary: 待确认的市场情报记忆提议（market_intel，确认后走 /web/memory/proposals/{id}/confirm 落库）
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/intel/company/collect:
+    post:
+      operationId: runIntelCompanyCollect
+      tags: [admin]
+      summary: 立即执行一次情况采集（忽略来源间隔；enabled=false 时空转）
+      description: 抓公开来源（政府网政策/统计局/市监总局等，checkpoint.kind 指定解析器）→ 公司级条目入库（project_id=NULL）→ 增量游标 checkpoint.seen；单来源失败留痕不影响其它来源。
+      responses:
+        '200': { description: 'OK；enabled/due/collected/inserted/duplicates/failed/sources[]' }
+
+  /api/v1/admin/intel/company/memory:
+    post:
+      operationId: runIntelCompanyMemory
+      tags: [admin]
+      summary: 汇总入公司记忆（近 24h 公司级条目 → market_intel 记忆提议，老板确认后落库）
+      responses:
+        '200': { description: 'OK；proposals/skipped/items/titles[]；同来源同日不重复出提议' }
+
   /api/v1/admin/intel/items:
     get:
       operationId: listAdminIntelItems

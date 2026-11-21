@@ -12,7 +12,7 @@ import vm from "node:vm";
 
 const CLIENT = new URL("../../client.js", import.meta.url);
 const EXPORTS_ANCHOR = "    exports.apply = apply;";
-const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console, SalesTab: SalesTab, DecisionsCard: DecisionsCard, AutopilotSettingsCard: AutopilotSettingsCard };";
+const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console, SalesTab: SalesTab, DecisionsCard: DecisionsCard, AutopilotSettingsCard: AutopilotSettingsCard, IntelTab: IntelTab, CompanyIntelSection: CompanyIntelSection };";
 
 const Fragment = Symbol("Fragment");
 
@@ -237,4 +237,56 @@ test("client.js 虚拟销售页可渲染（加载态 / 空数据 / 有数据，�
     ]);
     assert.doesNotThrow(() => render(createElement(components.SalesTab, { flash() {} })), `SalesTab ${sec} 段渲染失败`);
   }
+});
+
+test("client.js 公司情报中心可渲染（防白屏回归）", async () => {
+  const components = await loadComponents();
+  assert.equal(typeof components.CompanyIntelSection, "function", "缺少组件 CompanyIntelSection");
+  assert.equal(typeof components.IntelTab, "function", "缺少组件 IntelTab");
+  // 加载态
+  resetHooks();
+  assert.doesNotThrow(() => render(createElement(components.CompanyIntelSection, { flash() {} })), "CompanyIntelSection 加载态渲染失败");
+  // 已加载：KPI + 设置 + 来源 + 待确认记忆 + 条目
+  const sum = { sourcesActive: 3, sourcesFailing: 1, items24h: 12, itemsTotal: 88, itemsBriefed: 30, memoryPending: 2, memoryConfirmed: 5 };
+  const set = { enabled: true, maxItemsPerSource: 20, memoryDailyCap: 10, memoryMinScore: 0 };
+  const items = [{ id: 1, title: "最新政策", source_name: "政府网", published_at: NOW, status: "collected", url: "https://x" }];
+  const proposals = [{ id: 7, title: "市场情报摘要 · 统计局 · 2026-11-21", content: "- 数据", source_refs: ["https://x"], status: "pending" }];
+  const src = [{ id: 2, name: "统计局", url: "https://s", source_type: "web", enabled: true, status: "active", last_success_at: NOW }];
+  resetHooks([
+    { loading: false, error: "", data: sum }, 0,
+    { loading: false, error: "", data: set }, 0,
+    { loading: false, error: "", data: { items: items } }, 0,
+    { loading: false, error: "", data: { items: proposals } }, 0,
+    { loading: false, error: "", data: { items: [src] } }, 0,
+    null,
+    false,
+  ]);
+  assert.doesNotThrow(() => render(createElement(components.CompanyIntelSection, { flash() {} })), "CompanyIntelSection 已加载渲染失败");
+  // 编辑态（draft 非 null）
+  resetHooks([
+    { loading: false, error: "", data: sum }, 0,
+    { loading: false, error: "", data: set }, 0,
+    { loading: false, error: "", data: { items: items } }, 0,
+    { loading: false, error: "", data: { items: [] } }, 0,
+    { loading: false, error: "", data: { items: [src] } }, 0,
+    { enabled: true, maxItemsPerSource: 20, memoryDailyCap: 10, memoryMinScore: 0 },
+    false,
+  ]);
+  assert.doesNotThrow(() => render(createElement(components.CompanyIntelSection, { flash() {} })), "CompanyIntelSection 编辑态渲染失败");
+  // IntelTab 默认公司情报视图（view 默认 "company"）
+  resetHooks([
+    { loading: false, error: "", data: { items: [{ id: 3, name: "项目A", stage: "dev" }] } }, 0,
+    "3",
+    "company",
+    { loading: false, error: "", data: null }, 0,
+    { loading: false, error: "", data: { items: [] } }, 0,
+    { loading: false, error: "", data: sum }, 0,
+    { loading: false, error: "", data: set }, 0,
+    { loading: false, error: "", data: { items: items } }, 0,
+    { loading: false, error: "", data: { items: proposals } }, 0,
+    { loading: false, error: "", data: { items: [src] } }, 0,
+    null,
+    false,
+  ]);
+  assert.doesNotThrow(() => render(createElement(components.IntelTab, { flash() {} })), "IntelTab 公司情报视图渲染失败");
 });

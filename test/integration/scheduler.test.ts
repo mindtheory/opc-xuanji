@@ -49,6 +49,8 @@ test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲
     "intel_aggregate",
     "intel_analyze",
     "intel_brief",
+    "intel_company_collect",
+    "intel_company_memory",
     "intel_push",
     "intel_source_collect",
     "invoice_backlog",

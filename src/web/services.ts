@@ -292,7 +292,7 @@ export class SessionGrantService {
   }
 }
 
-export type MemoryScope = "company_profile" | "experience" | "skill" | "customer" | "session_digest";
+export type MemoryScope = "company_profile" | "experience" | "skill" | "customer" | "session_digest" | "market_intel";
 
 export interface MemoryCard {
   id: number;
@@ -317,7 +317,7 @@ export class MemoryService {
   async search(input: { query: string; scopes: MemoryScope[]; limit?: number; purpose: string }): Promise<MemoryCard[]> {
     if (input.query.trim() === "") throw new OpcError(ERR.WEB_INVALID, "记忆检索词不能为空", 400);
     if (input.purpose.trim() === "") throw new OpcError(ERR.WEB_INVALID, "记忆检索用途不能为空", 400);
-    const allowedScopes = new Set(["company_profile", "experience", "skill", "customer", "session_digest"]);
+    const allowedScopes = new Set(["company_profile", "experience", "skill", "customer", "session_digest", "market_intel"]);
     if (input.scopes.length === 0) throw new OpcError(ERR.WEB_INVALID, "必须指定记忆 scope", 400);
     if (input.scopes.some((scope) => !allowedScopes.has(scope))) {
       throw new OpcError(ERR.WEB_INVALID, "包含不支持的记忆 scope", 400);
@@ -359,7 +359,7 @@ export class MemoryService {
   }
 
   async propose(input: { type: MemoryScope; title: string; content: string; sourceRefs: string[]; confidence: number }): Promise<{ proposalId: number; status: string }> {
-    if (!["company_profile", "experience", "skill", "customer", "session_digest"].includes(input.type)) {
+    if (!["company_profile", "experience", "skill", "customer", "session_digest", "market_intel"].includes(input.type)) {
       throw new OpcError(ERR.WEB_INVALID, `不支持的记忆类型：${input.type}`, 400);
     }
     if (input.title.trim() === "" || input.content.trim() === "") throw new OpcError(ERR.WEB_INVALID, "记忆标题与内容不能为空", 400);

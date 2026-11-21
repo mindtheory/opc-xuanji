@@ -12,6 +12,7 @@ import type { TaskDefinition } from "../engine.ts";
 import { DashboardService } from "../../web/dashboard.ts";
 import { RadarService } from "../../web/services.ts";
 import { IntelPipelineService, type RawIntelItem } from "../../domains/intel/daily.ts";
+import { CompanyIntelService } from "../../domains/intel/company.ts";
 import type { PluginCandidate } from "../../web/plugin-score.ts";
 import { IssueReporter, UsageService } from "../../ops/feedback.ts";
 import { WechatPushService } from "../../notify/wechat.ts";
@@ -293,6 +294,26 @@ export function defaultTasks(): TaskDefinition[] {
         );
         await ctx.notify("keyword_radar", "digest", { written, scanned: items.length });
         return { scanned: items.length, written };
+      },
+    },
+    {
+      id: "intel_company_collect",
+      name: "公司情况采集（每 30 分钟，公开来源→公司情报库）",
+      defaults: { cron: "*/30 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const result = await new CompanyIntelService(ctx.pool, ctx.audit).collectAll(ctx.now);
+        if (result.failed > 0) await ctx.notify("intel_company_collect_failed", "digest", { due: result.due, failed: result.failed, errors: result.sources.filter((s) => s.error !== undefined).map((s) => `${s.name}：${s.error}`) });
+        return { enabled: result.enabled, due: result.due, collected: result.collected, inserted: result.inserted, duplicates: result.duplicates, failed: result.failed };
+      },
+    },
+    {
+      id: "intel_company_memory",
+      name: "公司情报入记忆（每日 08:40，近 24h 摘要→记忆提议）",
+      defaults: { cron: "40 8 * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const result = await new CompanyIntelService(ctx.pool, ctx.audit).memoryDigest(ctx.now);
+        if (result.proposals > 0) await ctx.notify("intel_company_memory", "digest", { proposals: result.proposals, titles: result.titles });
+        return { proposals: result.proposals, skipped: result.skipped, items: result.items };
       },
     },
     {

@@ -31,6 +31,7 @@ import type { ProjectSoftwareService } from "../domains/project/software.ts";
 import type { AdminService } from "../domains/admin/service.ts";
 import type { IssueReporter, UsageService } from "../ops/feedback.ts";
 import { SalesService } from "../domains/sales/service.ts";
+import { CompanyIntelService } from "../domains/intel/company.ts";
 import { GoofishRpa, runSalesRadar } from "../domains/sales/rpa.ts";
 
 export interface WebServices {
@@ -1021,6 +1022,63 @@ export const ROUTES: Route[] = [
     async handler(ctx, _params, _body, query) {
       const projectId = requireId({ projectId: String(query.get("projectId") ?? "") }, "projectId");
       return { status: 200, data: await requireAdmin(ctx).intelSummary(projectId) };
+    },
+  },
+  // ---------------- 公司情报中心（v2.29）：情况采集 / 汇总入公司记忆（与项目无关） ----------------
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/company\/settings$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await new CompanyIntelService(ctx.pool, ctx.audit).getSettings() };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/intel\/company\/settings$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 200, data: await new CompanyIntelService(ctx.pool, ctx.audit).updateSettings(body as Record<string, unknown>) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/company\/summary$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await new CompanyIntelService(ctx.pool, ctx.audit).summary() };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/company\/items$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: { items: await new CompanyIntelService(ctx.pool, ctx.audit).listItems(query.get("status"), Number(query.get("limit") ?? 100)) } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/intel\/company\/proposals$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: { items: await new CompanyIntelService(ctx.pool, ctx.audit).listProposals(Number(query.get("limit") ?? 20)) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/intel\/company\/collect$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await new CompanyIntelService(ctx.pool, ctx.audit).collectAll(new Date(), { force: true }) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/intel\/company\/memory$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await new CompanyIntelService(ctx.pool, ctx.audit).memoryDigest(new Date()) };
     },
   },
   {

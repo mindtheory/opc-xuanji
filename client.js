@@ -1200,7 +1200,7 @@ window.__ModuleLoader__.load({
         h("div", { className: "ocSection" },
           h("div", { className: "ocH" }, t("panel.propose") + "（带来源引用；老板确认后落库）"),
           h("div", { className: "ocFormRow" },
-            h(Select, { label: "type", value: prop.type, options: [{ value: "company_profile", label: "company_profile" }, { value: "experience", label: "experience" }, { value: "skill", label: "skill" }, { value: "customer", label: "customer" }, { value: "session_digest", label: "session_digest" }], onChange: function (v) { setProp(Object.assign({}, prop, { type: v })); } }),
+            h(Select, { label: "type", value: prop.type, options: [{ value: "company_profile", label: "company_profile" }, { value: "experience", label: "experience" }, { value: "skill", label: "skill" }, { value: "customer", label: "customer" }, { value: "session_digest", label: "session_digest" }, { value: "market_intel", label: "market_intel（市场情报）" }], onChange: function (v) { setProp(Object.assign({}, prop, { type: v })); } }),
             h(Field, { label: "title", value: prop.title, onChange: function (v) { setProp(Object.assign({}, prop, { title: v })); } }),
             h(Field, { label: "sourceRefs（逗号）", value: prop.sourceRefs, onChange: function (v) { setProp(Object.assign({}, prop, { sourceRefs: v })); } }),
             h(NumField, { label: "confidence", value: prop.confidence, onChange: function (v) { setProp(Object.assign({}, prop, { confidence: v })); } })),
@@ -2138,7 +2138,8 @@ window.__ModuleLoader__.load({
     }
 
     var INTEL_VIEWS = [
-      { id: "overview", label: "概览" },
+      { id: "company", label: "公司情报" },
+      { id: "overview", label: "项目情报" },
       { id: "scopes", label: "情报空间" },
       { id: "sources", label: "数据源" },
       { id: "topics", label: "关注主题" },
@@ -2147,6 +2148,95 @@ window.__ModuleLoader__.load({
       { id: "briefs", label: "日报" },
       { id: "runs", label: "流水线" },
     ];
+
+    function CompanyIntelSection(props) {
+      var sumS = useLoad(function () { return apiGet("/admin/intel/company/summary"); }, []);
+      var setS = useLoad(function () { return apiGet("/admin/intel/company/settings"); }, []);
+      var itemsS = useLoad(function () { return apiGet("/admin/intel/company/items?limit=50"); }, []);
+      var propsS = useLoad(function () { return apiGet("/admin/intel/company/proposals?limit=10"); }, []);
+      var srcS = useLoad(function () { return apiGet("/admin/intel/sources"); }, []);
+      var sum = sumS[0].data || {};
+      var settings = setS[0].data || {};
+      var draftS = react.useState(null);
+      var draft = draftS[0], setDraft = draftS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      function reloadAll() { sumS[1](); setS[1](); itemsS[1](); propsS[1](); srcS[1](); }
+      function act(promise, okMsg) {
+        setBusy(true);
+        return promise.then(function () { props.flash(okMsg); reloadAll(); })
+          .catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function saveSettings() {
+        var body = { enabled: draft.enabled, maxItemsPerSource: Number(draft.maxItemsPerSource), memoryDailyCap: Number(draft.memoryDailyCap), memoryMinScore: Number(draft.memoryMinScore) };
+        return act(apiPut("/admin/intel/company/settings", body), "采集设置已保存");
+      }
+      var sources = ((srcS[0].data && srcS[0].data.items) || []).filter(function (s) { return s.source_type === "web" || s.source_type === "rss" || s.source_type === "api"; });
+      var items = (itemsS[0].data && itemsS[0].data.items) || [];
+      var proposals = (propsS[0].data && propsS[0].data.items) || [];
+      var editing = draft !== null;
+      var d = draft || { enabled: settings.enabled !== false, maxItemsPerSource: settings.maxItemsPerSource || 20, memoryDailyCap: settings.memoryDailyCap || 10, memoryMinScore: settings.memoryMinScore || 0 };
+      return h(Fragment, null,
+        h(KpiGrid, { items: [
+          { label: "启用来源", value: sum.sourcesActive || 0, tone: (sum.sourcesActive || 0) > 0 ? "ok" : "warn" },
+          { label: "连续失败来源", value: sum.sourcesFailing || 0, tone: (sum.sourcesFailing || 0) > 0 ? "bad" : "ok" },
+          { label: "24h 新采", value: sum.items24h || 0, tone: (sum.items24h || 0) > 0 ? "warn" : "" },
+          { label: "公司情报库", value: sum.itemsTotal || 0 },
+          { label: "已入摘要", value: sum.itemsBriefed || 0 },
+          { label: "待确认记忆", value: sum.memoryPending || 0, tone: (sum.memoryPending || 0) > 0 ? "warn" : "" },
+          { label: "已入公司记忆", value: sum.memoryConfirmed || 0, tone: "ok" },
+        ] }),
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "情况采集", h("span", { className: "ocCount" }, "公开来源 → 公司情报库 → 公司记忆（与项目无关）")),
+          h("div", { className: "ocMeta" },
+            h(Badge, { tone: settings.enabled === false ? "bad" : "ok" }, settings.enabled === false ? "采集急停中" : "采集中"),
+            h("span", { className: "ocMuted" }, "每来源上限 " + (settings.maxItemsPerSource || 20)),
+            h("span", { className: "ocMuted" }, "每日入记忆上限 " + (settings.memoryDailyCap || 10)),
+            h("span", { className: "ocMuted" }, "入记忆最低相关分 " + (settings.memoryMinScore || 0)),
+            h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/intel/company/collect", {}), "采集完成"); } }, "立即采集"),
+            h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/intel/company/memory", {}), "已生成记忆提议"); } }, "汇总入记忆"),
+            editing
+              ? h("span", { style: { display: "inline-flex", gap: 8, alignItems: "center" } },
+                  h("label", null, h("input", { type: "checkbox", checked: d.enabled, onChange: function (e) { setDraft(Object.assign({}, d, { enabled: e.target.checked })); } }), " 启用"),
+                  h("input", { className: "ocInput", style: { width: 70 }, type: "number", "aria-label": "每来源上限", value: d.maxItemsPerSource, onChange: function (e) { setDraft(Object.assign({}, d, { maxItemsPerSource: e.target.value })); } }),
+                  h("input", { className: "ocInput", style: { width: 70 }, type: "number", "aria-label": "每日入记忆上限", value: d.memoryDailyCap, onChange: function (e) { setDraft(Object.assign({}, d, { memoryDailyCap: e.target.value })); } }),
+                  h("input", { className: "ocInput", style: { width: 70 }, type: "number", "aria-label": "入记忆最低相关分", value: d.memoryMinScore, onChange: function (e) { setDraft(Object.assign({}, d, { memoryMinScore: e.target.value })); } }),
+                  h(Btn, { kind: "primary", disabled: busy, onClick: function () { saveSettings().then(function () { setDraft(null); }); } }, "保存"),
+                  h(Btn, { onClick: function () { setDraft(null); } }, "取消"))
+              : h(Btn, { onClick: function () { setDraft({ enabled: settings.enabled !== false, maxItemsPerSource: settings.maxItemsPerSource || 20, memoryDailyCap: settings.memoryDailyCap || 10, memoryMinScore: settings.memoryMinScore || 0 }); } }, "编辑设置"))),
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "数据源", h("span", { className: "ocCount" }, sources.length + " 个公开来源（官方站默认停用，启用即采；到「数据源」页签启用）")),
+          h(Table, { columns: [
+            { key: "name", label: "来源" },
+            { key: "url", label: "地址" },
+            { key: "enabled", label: "状态", render: function (row) { return h(Badge, { tone: row.enabled && row.status === "active" ? "ok" : "" }, row.enabled ? (row.status === "active" ? "启用" : String(row.status)) : "停用"); } },
+            { key: "last_success_at", label: "最近成功", render: function (row) { return h("span", { className: "ocMuted" }, row.last_success_at ? fmtTime(row.last_success_at) : "—"); } },
+          ], rows: sources, loading: srcS[0].loading, empty: "还没有数据源", emptyHint: "在「数据源」页签添加公开来源（政府网/统计局/市监总局等）。" })),
+        proposals.length > 0
+          ? h("div", { className: "ocSection" },
+              h("div", { className: "ocH" }, "待确认记忆（市场情报摘要）", h("span", { className: "ocCount" }, proposals.length + " 条 · 确认后入公司记忆")),
+              proposals.map(function (p) {
+                return h("div", { key: p.id, className: "ocCard", style: { display: "flex", gap: 12, marginBottom: 8 } },
+                  h("div", { style: { minWidth: 0 } },
+                    h("div", null, h("strong", null, p.title)),
+                    h("div", { className: "ocMuted", style: { whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto" } }, String(p.content || "").slice(0, 400)),
+                    h("div", { className: "ocMuted" }, "来源引用 " + ((p.source_refs || []).length) + " 条")),
+                  h("div", { style: { marginLeft: "auto" } },
+                    h(Btn, { kind: "primary", disabled: busy, onClick: function () { act(apiPost("/web/memory/proposals/" + encodeURIComponent(p.id) + "/confirm", {}), "已入公司记忆"); } }, "确认入记忆")));
+              }))
+          : null,
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "公司情报库", h("span", { className: "ocCount" }, "最近 50 条")),
+          h(Table, { columns: [
+            { key: "title", label: "标题" },
+            { key: "source_name", label: "来源", render: function (row) { return h("span", { className: "ocMuted" }, row.source_name || "—"); } },
+            { key: "published_at", label: "发布", render: function (row) { return h("span", { className: "ocMuted" }, row.published_at ? String(row.published_at).slice(0, 10) : "—"); } },
+            { key: "status", label: "状态", render: function (row) { return h(Badge, { tone: row.status === "briefed" ? "ok" : "" }, row.status); } },
+            { key: "url", label: "链接", render: function (row) { return row.url ? h("a", { href: row.url, target: "_blank", rel: "noreferrer" }, "打开") : "—"; } },
+          ], rows: items, loading: itemsS[0].loading, empty: "公司情报库为空", emptyHint: "启用数据源后点击「立即采集」，或等待每 30 分钟的自动采集。" })),
+        h("div", { className: "ocHint" }, "定时任务：公司情况采集每 30 分钟一轮（按来源间隔限流）；每日 08:40 把近 24h 情报汇总为记忆提议，老板确认后入公司记忆（记忆页可检索 scope=market_intel）。"));
+    }
 
     function IntelItemsSection(props) {
       var statusS = react.useState("");
@@ -2324,7 +2414,7 @@ window.__ModuleLoader__.load({
       var projects = (projectsS[0].data && projectsS[0].data.items) || [];
       var selS = react.useState("");
       var selected = selS[0], setSelected = selS[1];
-      var viewS = react.useState("overview");
+      var viewS = react.useState("company");
       var view = viewS[0], setView = viewS[1];
       react.useEffect(function () {
         if (!selected && projects.length) setSelected(String(projects[0].id));
@@ -2337,7 +2427,9 @@ window.__ModuleLoader__.load({
       var sources = (sourcesS[0].data && sourcesS[0].data.items) || [];
       function reloadAll() { projectsS[1](); summaryS[1](); sourcesS[1](); }
       var body = null;
-      if (view === "overview") {
+      if (view === "company") {
+        body = h(CompanyIntelSection, { key: "company-intel", flash: props.flash });
+      } else if (view === "overview") {
         body = summaryS[0].loading
           ? h("div", { className: "ocMetrics", role: "status", "aria-busy": "true", "aria-label": t("panel.loading") }, [0, 1, 2, 3, 4, 5, 6].map(function (k) { return h("div", { className: "ocMetric", key: k }, h("span", { className: "ocSkel", style: { width: "60%", display: "block" } }), h("span", { className: "ocSkel", style: { width: "40%", height: 20, display: "block", marginTop: 8 } })); }))
           : h(Fragment, null,
@@ -2383,11 +2475,11 @@ window.__ModuleLoader__.load({
         body = h(IntelRunsSection, { key: "runs-" + selected, projectId: selected, flash: props.flash, onChanged: function () { summaryS[1](); } });
       }
       return h(Fragment, null,
-        h(PageHeader, { title: "情报管理", subtitle: projects.length + " 个项目 · 数据源、关注主题、日报与五阶段流水线" },
-          h(Select, { label: "当前项目", value: selected, options: projects.map(function (p) { return { value: String(p.id), label: p.name + " · " + p.stage }; }), onChange: setSelected }),
+        h(PageHeader, { title: "情报管理", subtitle: "公司情报（对外公开系统，与项目无关）+ 项目情报流水线" },
+          view === "company" ? null : h(Select, { label: "当前项目", value: selected, options: projects.map(function (p) { return { value: String(p.id), label: p.name + " · " + p.stage }; }), onChange: setSelected }),
           h(Btn, { onClick: reloadAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
-        h(ErrLine, { error: projectsS[0].error || summaryS[0].error, onRetry: reloadAll }),
-        project
+        h(ErrLine, { error: view === "company" ? "" : projectsS[0].error || summaryS[0].error, onRetry: reloadAll }),
+        view === "company" || project
           ? h(Fragment, null,
               h("div", { className: "ocSeg", role: "group", "aria-label": "情报管理视图" },
                 INTEL_VIEWS.map(function (item) {
