@@ -12,7 +12,7 @@ import vm from "node:vm";
 
 const CLIENT = new URL("../../client.js", import.meta.url);
 const EXPORTS_ANCHOR = "    exports.apply = apply;";
-const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console };";
+const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console, SalesTab: SalesTab };";
 
 const Fragment = Symbol("Fragment");
 
@@ -190,4 +190,30 @@ test("client.js 新建项目独立页可渲染（默认 / 创意解析 / 已创�
     analysis,
   ]);
   assert.doesNotThrow(() => render(createElement(components.NewProjectTab, { flash() {}, onOpenProject() {} })));
+});
+
+test("client.js 虚拟销售页可渲染（加载态 / 空数据 / 有数据，防白屏回归）", async () => {
+  const components = await loadComponents();
+  assert.equal(typeof components.SalesTab, "function", "缺少组件 SalesTab");
+  // 加载态：所有 useLoad 返回 loading（data=null）
+  resetHooks();
+  assert.doesNotThrow(() => render(createElement(components.SalesTab, { flash() {} })));
+  // 已加载：配置 + 各列表有行（线索/商品/订单/运行四段都走一遍）
+  const config = { enabled: true, categories: ["copywriting"], keywords: [], priceFloor: 5, priceCap: 2000, dailyActionCap: 40, actionsToday: 3, pauseReason: null };
+  const lead = { id: 1, category: "copywriting", categoryLabel: "文案代写", title: "短视频文案", demandNote: "样本 6 个", aiScore: 0.8, status: "new" };
+  const product = { id: 2, category: "copywriting", categoryLabel: "文案代写", title: "文案服务", price: 39, status: "ready", materials: { title: "标题", source: "rule" } };
+  const order = { id: 3, platformOrderId: "GF1", buyerNick: "甲", title: "文案 10 条", amount: 19, status: "generated", deliverablePath: "/x/交付说明.md" };
+  const runRow = { id: 4, kind: "radar", status: "ok", summary: { newLeads: 1 }, startedAt: NOW };
+  for (const sec of ["leads", "products", "orders", "runs"]) {
+    resetHooks([
+      sec,
+      { loading: false, error: "", data: config }, 0,
+      { loading: false, error: "", data: [lead] }, 0,
+      { loading: false, error: "", data: [product] }, 0,
+      { loading: false, error: "", data: [order] }, 0,
+      { loading: false, error: "", data: [runRow] }, 0,
+      false,
+    ]);
+    assert.doesNotThrow(() => render(createElement(components.SalesTab, { flash() {} })), `SalesTab ${sec} 段渲染失败`);
+  }
 });

@@ -964,7 +964,7 @@ window.__ModuleLoader__.load({
       var orderS = useLoad(function () { return apiGet("/admin/sales/orders?limit=50"); }, []);
       var runS = useLoad(function () { return apiGet("/admin/sales/runs?limit=10"); }, []);
       var busyS = react.useState(false);
-      var busy = busyS[0], setBusy = setBusy[1];
+      var busy = busyS[0], setBusy = busyS[1];
       var cfg = cfgS[0].data || {};
       function act(promise, ok, reload) {
         setBusy(true);
