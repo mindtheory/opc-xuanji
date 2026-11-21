@@ -5,6 +5,7 @@
  * 只做协议适配与参数校验，业务规则全部在 src/platform、src/workflow、src/scheduler。
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { Pool } from "../db/pool.ts";
 import { OpcError, asOpcError, ERR } from "../platform/errors.ts";
@@ -70,6 +71,28 @@ interface Route {
 function json(res: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload);
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "content-length": Buffer.byteLength(body) });
+  res.end(body);
+}
+
+/** GET 成功响应带弱 ETag：内容未变时浏览器协商缓存直接 304，省掉重复传输与前端轮询开销。 */
+function jsonCached(req: IncomingMessage, res: ServerResponse, status: number, payload: unknown): void {
+  if (req.method !== "GET") {
+    json(res, status, payload);
+    return;
+  }
+  const body = JSON.stringify(payload);
+  const etag = `W/"${createHash("sha256").update(body).digest("base64url").slice(0, 27)}"`;
+  if (req.headers["if-none-match"] === etag) {
+    res.writeHead(304, { etag });
+    res.end();
+    return;
+  }
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(body),
+    etag,
+    "cache-control": "no-cache",
+  });
   res.end(body);
 }
 
@@ -1352,7 +1375,7 @@ export function createApiHandler(ctx: ApiContext): (req: IncomingMessage, res: S
           const body = await readBody(req);
           const result = await route.handler(ctx, params, body, url.searchParams);
           statusCode = result.status;
-          json(res, result.status, { code: 0, data: result.data });
+          jsonCached(req, res, result.status, { code: 0, data: result.data });
           return;
         }
         statusCode = 404;

@@ -233,6 +233,18 @@ test("tasks：列表 18 项 / 配置 200 / 立即执行 200 / 晨报可查", asy
   assert.ok(report.json.data.content.taxAlerts !== undefined);
 });
 
+test("GET 协商缓存：响应带弱 ETag，If-None-Match 命中返回 304 空体", async () => {
+  const first = await fetch(`${base}/api/v1/tasks`);
+  assert.equal(first.status, 200);
+  const etag = first.headers.get("etag");
+  assert.ok(etag !== null && etag.startsWith('W/"'), `缺少弱 ETag：${etag}`);
+  assert.equal(first.headers.get("cache-control"), "no-cache");
+  await first.json();
+  const second = await fetch(`${base}/api/v1/tasks`, { headers: { "if-none-match": etag! } });
+  assert.equal(second.status, 304);
+  assert.equal(await second.text(), "");
+});
+
 test("未知路由 404", async () => {
   const { status, json } = await call("GET", "/api/v1/nope");
   assert.equal(status, 404);
