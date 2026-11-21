@@ -1885,6 +1885,36 @@ paths:
         '200': { description: OK；默认 archived=active，已归档项目不出现在默认列表 }
         '400': { description: ERR-AUTO-001 参数非法 }
 
+  /api/v1/admin/autopilot/settings:
+    get:
+      operationId: getAutopilotSettings
+      tags: [admin]
+      summary: 自动驾驶初始设置（并发项目数 / 时间表模式 / 全速步数）
+      description: >-
+        全局设置存 ref.shared_setting（键 autopilot.settings）。parallelProjects=一轮定时任务并发推进的项目数（1–8，默认 2）；
+        followSchedule=是否按时间表推进（true=未到计划开工日期的阶段挂起等待，false=全速：上一步完成立即做下一步，默认 false）；
+        stepsPerTick=全速模式每项目每轮最多推进步数（1–5，默认 3）。仅约束后台自动推进，老板手动「执行」不受限。
+      responses:
+        '200': { description: OK }
+    put:
+      operationId: updateAutopilotSettings
+      tags: [admin]
+      summary: 修改自动驾驶初始设置（部分字段可省，越界值收敛到边界）
+      description: 校验后落库并写审计 project.autopilot.settings.update；非法类型返回 ERR-AUTO-001。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parallelProjects: { type: integer, minimum: 1, maximum: 8 }
+                followSchedule: { type: boolean }
+                stepsPerTick: { type: integer, minimum: 1, maximum: 5 }
+      responses:
+        '200': { description: OK，返回归一化后的完整设置 }
+        '400': { description: ERR-AUTO-001 参数非法 }
+
   /api/v1/admin/projects/{projectId}/archive:
     post:
       operationId: archiveProject

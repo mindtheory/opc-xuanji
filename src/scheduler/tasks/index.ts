@@ -40,7 +40,7 @@ export function defaultTasks(): TaskDefinition[] {
     },
     {
       id: "project_plan_auto",
-      name: "项目计划自动推进（每 15 分钟，一个项目一步）",
+      name: "项目计划自动推进（每 15 分钟，按自动驾驶设置并发推进）",
       defaults: { cron: "*/15 * * * *", timezone: "Asia/Shanghai", enabled: true },
       async handler(ctx) {
         const bridge = new SuperAgentsBridge({ baseUrl: process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined });

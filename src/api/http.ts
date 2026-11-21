@@ -1239,6 +1239,22 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/autopilot\/settings$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await requireAdmin(ctx).autopilotSettings() };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/autopilot\/settings$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 200, data: await requireAdmin(ctx).updateAutopilotSettings(body as Record<string, unknown>) };
+    },
+  },
+  {
     method: "POST",
     pattern: /^\/api\/v1\/admin\/projects\/([^/]+)\/archive$/,
     keys: ["projectId"],

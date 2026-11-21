@@ -844,7 +844,7 @@ test("TC-AUTO-020 发布裁决「内置执行器」：老板拍板后自动 rsyn
   }
 });
 
-test("TC-AUTO-019 后台推进：挑未完成项目，阻塞后不重复推进", async () => {
+test("TC-AUTO-019 后台推进：全速模式一轮连推多步，阻塞后不重复推进", async () => {
   const created = await call("POST", "/api/v1/admin/projects", {
     name: "后台推进项目",
     stage: "planning",
@@ -854,15 +854,11 @@ test("TC-AUTO-019 后台推进：挑未完成项目，阻塞后不重复推进",
   const projectId = created.json.data.id;
   const audit = new AuditService(pool, { schemaVersion: "1" });
   const autopilot = new ProjectAutopilotService(pool, audit);
+  // 默认全速模式（followSchedule=false, stepsPerTick=3）：freeze → design → build（无编码 agent 阻塞）一轮完成
   const picked = await autopilot.autoAdvanceNext();
-  assert.equal(picked.advanced, 1);
   assert.equal(picked.projectId, Number(projectId));
-  const second = await autopilot.autoAdvanceNext();
-  assert.equal(second.projectId, Number(projectId));
-  assert.equal(second.task, "design");
-  const third = await autopilot.autoAdvanceNext();
-  assert.equal(third.blocked, true);
-  assert.equal(third.blockTopic, "coding_agent");
+  assert.equal(picked.blocked, true);
+  assert.equal(picked.blockTopic, "coding_agent");
   const blocked = await autopilot.autoAdvanceNext();
   assert.equal(blocked.advanced, 0);
   const decisions = await call("GET", `/api/v1/admin/projects/${projectId}/decisions?status=pending`);
@@ -878,4 +874,78 @@ test("TC-AUTO-019 后台推进：挑未完成项目，阻塞后不重复推进",
   assert.equal(reopened.json.data.items.some((item: any) => item.topic === "coding_agent"), true);
   const all = await pool.query("SELECT count(*)::int AS n FROM stat.project_decision WHERE project_id = $1 AND topic = 'coding_agent'", [projectId]);
   assert.equal(all.rows[0].n, 2);
+});
+
+test("TC-AUTO-023 自动驾驶初始设置：默认值、修改与校验", async () => {
+  const def = await call("GET", "/api/v1/admin/autopilot/settings");
+  assert.equal(def.json.code, 0);
+  assert.equal(def.json.data.parallelProjects, 2);
+  assert.equal(def.json.data.followSchedule, false);
+  assert.equal(def.json.data.stepsPerTick, 3);
+  const updated = await call("PUT", "/api/v1/admin/autopilot/settings", { parallelProjects: 4, followSchedule: true });
+  assert.equal(updated.json.data.parallelProjects, 4);
+  assert.equal(updated.json.data.followSchedule, true);
+  assert.equal(updated.json.data.stepsPerTick, 3, "未提交的字段保持原值");
+  const bad = await call("PUT", "/api/v1/admin/autopilot/settings", { parallelProjects: "abc" });
+  assert.equal(bad.json.code, 400);
+  assert.equal(bad.json.errorCode, "ERR-AUTO-001");
+  // 越界值收敛到边界（1–8 / 1–5）
+  const clamped = await call("PUT", "/api/v1/admin/autopilot/settings", { parallelProjects: 99, stepsPerTick: 0 });
+  assert.equal(clamped.json.data.parallelProjects, 8);
+  assert.equal(clamped.json.data.stepsPerTick, 1);
+  await call("PUT", "/api/v1/admin/autopilot/settings", { parallelProjects: 2, followSchedule: false, stepsPerTick: 3 });
+});
+
+test("TC-AUTO-024 按时间表推进：未到开工日期的阶段挂起等待", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "时间表项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+  const audit = new AuditService(pool, { schemaVersion: "1" });
+  const autopilot = new ProjectAutopilotService(pool, audit);
+  await autopilot.updateSettings({ followSchedule: true, parallelProjects: 1 });
+  try {
+    const first = await autopilot.autoAdvanceNext();
+    assert.equal(first.projectId, Number(projectId));
+    assert.equal(first.scheduleHold, undefined, "freeze 计划开工为今天，应放行");
+    const second = await autopilot.autoAdvanceNext();
+    assert.equal(second.scheduleHold, true, "design 计划开工在未来，应按时间表挂起");
+    assert.match(String(second.holdReason), /按时间表推进/);
+    // 切全速后同一项目立即继续（不受时间表限制）
+    await autopilot.updateSettings({ followSchedule: false });
+    const turbo = await autopilot.autoAdvanceNext();
+    assert.equal(turbo.scheduleHold, undefined);
+  } finally {
+    await autopilot.updateSettings({ parallelProjects: 2, followSchedule: false, stepsPerTick: 3 });
+  }
+});
+
+test("TC-AUTO-025 裁决备选方案：详情与列表接口都返回 options", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "备选方案项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+  const audit = new AuditService(pool, { schemaVersion: "1" });
+  const autopilot = new ProjectAutopilotService(pool, audit);
+  for (let i = 0; i < 6; i += 1) {
+    const step = await autopilot.advancePlan(projectId);
+    if (step.blocked === true) break;
+  }
+  const list = await call("GET", `/api/v1/admin/projects/${projectId}/decisions?status=pending`);
+  const items = list.json.data.items as Array<any>;
+  assert.ok(items.length > 0, "应有待裁决项");
+  for (const item of items) {
+    assert.ok(Array.isArray(item.options) && item.options.length >= 2, `裁决 ${item.topic} 应给出至少两个备选方案`);
+    assert.ok(item.options.every((o: any) => typeof o.label === "string" && o.label !== ""), "备选方案必须有 label");
+  }
+  const detail = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  const detailPending = (detail.json.data.decisions as Array<any>).filter((d) => d.status === "pending");
+  assert.ok(detailPending.length > 0);
+  assert.ok(detailPending.every((d) => Array.isArray(d.options) && d.options.length >= 2), "详情接口也必须返回备选方案");
 });

@@ -158,7 +158,7 @@ updated: 2026-11-14
 
 ## 2. 接口清单（117 个 /api/v1 operation）
 
-> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P119 管理面（项目/情报 Web 控制台、公司基础资源、公司基础信息、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送、虚拟销售）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P121 管理面（项目/情报 Web 控制台、公司基础资源、公司基础信息、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送、虚拟销售、自动驾驶初始设置）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -839,7 +839,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
-### 7.6 管理面接口（P50–P119，Web 控制台）
+### 7.6 管理面接口（P50–P121，Web 控制台）
 
 管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
 
@@ -910,6 +910,13 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P115–P117 订单 | `GET /admin/sales/orders?status=&limit=`；`POST .../generate`（AI 生产交付物落盘 `OPC_SALES_ROOT/orders/<id>/`）；`POST .../confirm-ship`（generated→shipping，平台发货由值守执行，收款走平台担保仅记账） |
 | P118–P119 运行 | `GET /admin/sales/runs?limit=`（radar/list/listen 留痕）；`POST /admin/sales/radar/run` 立即执行一次雷达，RPA 失败 502 `ERR-SALES-002` |
 | 风控 | 全部写操作写审计（`sales.*`）；`enabled=false` 时任务空转；当日动作超限自动急停；系统不做任何资金操作 |
+
+**P120–P121 自动驾驶初始设置（v2.28 增补）**：
+
+| 项 | 内容 |
+| :--- | :--- |
+| P120–P121 设置 | `GET/PUT /admin/autopilot/settings`：全局初始设置存 `ref.shared_setting`（键 `autopilot.settings`）。`parallelProjects` 并发任务数（一轮定时同时推进项目数，1–8，默认 2）；`followSchedule` 是否按时间表推进（true=未到计划开工日期的阶段挂起等待，false=全速连推，默认 false）；`stepsPerTick` 全速每项目每轮最多步数（1–5，默认 3）。PUT 部分字段可省、越界收敛到边界、非法类型 400 `ERR-AUTO-001`，审计 `project.autopilot.settings.update`；仅约束后台 `project_plan_auto`，老板手动「执行」不受限 |
+| 裁决备选 | `GET /admin/projects/{id}/decisions` 与 `/admin/projects/{id}/autopilot` 详情均返回 `options[]`（`{label, impact}`）；前端 `DecisionsCard` 逐条渲染备选方案并支持一键拍板（提交该 label），保留自定义裁决入口 |
 
 ## 8. DSH 工具契约（工具即接口）
 

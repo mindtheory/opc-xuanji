@@ -141,6 +141,31 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** 自动驾驶全局初始设置（存 ref.shared_setting，键 autopilot.settings；老板可在页面改）。 */
+export type AutopilotSettings = {
+  /** 并发推进的项目数（1–8）：一轮定时任务同时推进几个项目。 */
+  parallelProjects: number;
+  /** 是否按时间表推进：true=按计划阶段/里程碑日期推进，未到开工日期的阶段挂起等待；false=全速，上一步完成立即做下一步（默认）。 */
+  followSchedule: boolean;
+  /** 全速模式：每个项目每轮最多推进的步数（1–5），越大越快。 */
+  stepsPerTick: number;
+}
+
+export const AUTOPILOT_SETTINGS_KEY = "autopilot.settings";
+
+export const AUTOPILOT_SETTINGS_DEFAULTS: AutopilotSettings = { parallelProjects: 2, followSchedule: false, stepsPerTick: 3 };
+
+function normalizeSettings(raw: Row | null | undefined): AutopilotSettings {
+  const src = (raw ?? {}) as Row;
+  const parallel = Number(src.parallelProjects);
+  const steps = Number(src.stepsPerTick);
+  return {
+    parallelProjects: Number.isFinite(parallel) ? clamp(Math.round(parallel), 1, 8) : AUTOPILOT_SETTINGS_DEFAULTS.parallelProjects,
+    followSchedule: typeof src.followSchedule === "boolean" ? src.followSchedule : AUTOPILOT_SETTINGS_DEFAULTS.followSchedule,
+    stepsPerTick: Number.isFinite(steps) ? clamp(Math.round(steps), 1, 5) : AUTOPILOT_SETTINGS_DEFAULTS.stepsPerTick,
+  };
+}
+
 /** 自动驾驶阶段（顺序即页面步骤条顺序）；done 为收尾标记。 */
 const AUTOPILOT_STAGES: ReadonlyArray<{ key: string; label: string }> = [
   { key: "register", label: "登记版本库" },
@@ -1956,6 +1981,14 @@ export class ProjectAutopilotService {
     if (next === undefined) return this.finishPlan(projectId, runId, dir, checkout, planRow, reload.steps, { completed: true }, tasks);
 
     const taskKey = String(next.key);
+    // 时间表门控：仅后台自动推进受控（options.scheduled），老板手动「执行」不受限。
+    if (options.scheduled === true) {
+      const settings = await this.getSettings();
+      if (settings.followSchedule) {
+        const hold = this.scheduleHold(planContent, taskKey, new Date());
+        if (hold !== null) return { advanced: 0, projectId, runId, scheduleHold: true, task: taskKey, holdReason: hold };
+      }
+    }
     const scan = await this.latestScan(projectId);
     if (taskKey === "freeze") {
       const rel = await this.writePlanArtifact(dir, "freeze", this.scopeDoc(project, planRow, planContent, company));
@@ -2030,12 +2063,57 @@ export class ProjectAutopilotService {
     return { advanced: 1, projectId, runId, task: taskKey, nextTask: nextTask?.key ?? null, resumed };
   }
 
-  /** 后台定时任务的入口：先回收等待中的计划运行，再挑一个项目推进一个单元。 */
+  /** 读自动驾驶全局设置（缺省用默认值）。 */
+  async getSettings(): Promise<AutopilotSettings> {
+    const row = (await this.pool.query("SELECT value FROM ref.shared_setting WHERE key = $1", [AUTOPILOT_SETTINGS_KEY])).rows[0] as Row | undefined;
+    return normalizeSettings((row?.value ?? null) as Row | null);
+  }
+
+  /** 写自动驾驶全局设置（部分字段可省，校验后落库）。 */
+  async updateSettings(input: Row): Promise<AutopilotSettings> {
+    const current = await this.getSettings();
+    const next = normalizeSettings({
+      parallelProjects: input.parallelProjects ?? current.parallelProjects,
+      followSchedule: input.followSchedule ?? current.followSchedule,
+      stepsPerTick: input.stepsPerTick ?? current.stepsPerTick,
+    });
+    if (input.parallelProjects !== undefined && !Number.isFinite(Number(input.parallelProjects))) {
+      throw new OpcError(ERR.AUTO_INVALID, "parallelProjects 必须是 1–8 的整数", 400);
+    }
+    if (input.stepsPerTick !== undefined && !Number.isFinite(Number(input.stepsPerTick))) {
+      throw new OpcError(ERR.AUTO_INVALID, "stepsPerTick 必须是 1–5 的整数", 400);
+    }
+    if (input.followSchedule !== undefined && typeof input.followSchedule !== "boolean") {
+      throw new OpcError(ERR.AUTO_INVALID, "followSchedule 必须是布尔值", 400);
+    }
+    await this.pool.query(
+      `INSERT INTO ref.shared_setting (key, value, updated_at) VALUES ($1,$2::jsonb, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [AUTOPILOT_SETTINGS_KEY, JSON.stringify(next)],
+    );
+    await this.audit.record({ actor: "boss", action: "project.autopilot.settings.update", result: "ok", objectType: "Setting", objectId: AUTOPILOT_SETTINGS_KEY, payload: next });
+    return next;
+  }
+
+  /** 时间表门控：按时间表推进时，下一阶段计划开工日期未到则挂起等待。 */
+  private scheduleHold(planContent: Row, taskKey: string, now: Date): string | null {
+    const phases = Array.isArray(planContent.phases) ? (planContent.phases as Row[]) : [];
+    const phase = phases.find((item) => String(item.key) === taskKey);
+    if (phase === undefined) return null;
+    const startRaw = phase.startDate ?? phase.start_date;
+    if (typeof startRaw !== "string" || startRaw === "") return null;
+    const start = Date.parse(startRaw + "T00:00:00");
+    if (!Number.isFinite(start) || now.getTime() >= start) return null;
+    return `计划开工 ${startRaw}，按时间表推进，到期自动继续`;
+  }
+
+  /** 后台定时任务的入口：先回收等待中的计划运行，再按并发数挑项目推进。 */
   async autoAdvanceNext(now: Date = new Date()): Promise<Row> {
+    const settings = await this.getSettings();
     const running = await this.pool.query("SELECT id, project_id FROM stat.project_autopilot_run WHERE trigger = 'plan' AND status = 'running' AND started_at >= now() - interval '6 hours' ORDER BY id LIMIT 1");
     if (running.rows.length > 0) {
       const row = running.rows[0] as Row;
-      return this.advancePlan(Number(row.project_id), { runId: Number(row.id) });
+      return this.advancePlan(Number(row.project_id), { runId: Number(row.id), scheduled: true });
     }
     const candidates = await this.pool.query<Row>(
       `SELECT p.id,
@@ -2052,7 +2130,9 @@ export class ProjectAutopilotService {
        ORDER BY auto_at NULLS FIRST, p.id
        LIMIT 20`,
     );
+    const results: Row[] = [];
     for (const row of candidates.rows) {
+      if (results.length >= settings.parallelProjects) break;
       const projectId = Number(row.id);
       const last = (row.last_auto_result ?? null) as Row | null;
       const endedRaw = row.last_auto_ended_at;
@@ -2065,12 +2145,23 @@ export class ProjectAutopilotService {
         const pending = await this.pool.query("SELECT 1 FROM stat.project_decision WHERE project_id = $1 AND topic = $2 AND status = 'pending' LIMIT 1", [projectId, last.blockTopic]);
         if (pending.rows.length > 0) continue;
       }
-      const attempted = await this.advancePlan(projectId);
-      // 工作副本已被清理（/tmp 清理、磁盘迁移）时继续尝试下一个项目，避免卡在同一个失效项目上
+      // 全速模式：同一轮连续推进多步（每步仍受等待/阻塞保护）；按时间表模式维持一轮一步。
+      const maxSteps = settings.followSchedule ? 1 : settings.stepsPerTick;
+      let attempted: Row | null = null;
+      for (let step = 0; step < maxSteps; step += 1) {
+        attempted = await this.advancePlan(projectId);
+        // 工作副本已被清理（/tmp 清理、磁盘迁移）时继续尝试下一个项目，避免卡在同一个失效项目上
+        if (attempted.skipped === "workspace_missing" || attempted.skipped === "no_workspace") break;
+        if (attempted.waiting === true || attempted.blocked === true || attempted.completed === true || attempted.scheduleHold === true) break;
+        if (attempted.advanced !== 1) break;
+      }
+      if (attempted === null) continue;
       if (attempted.skipped === "workspace_missing" || attempted.skipped === "no_workspace") continue;
-      return attempted;
+      results.push(attempted);
     }
-    return { advanced: 0, reason: "no_candidate" };
+    if (results.length === 0) return { advanced: 0, reason: "no_candidate" };
+    if (results.length === 1) return results[0];
+    return { advanced: results.reduce((sum, item) => sum + (Number(item.advanced) || 0), 0), projects: results };
   }
 
 
@@ -2327,7 +2418,7 @@ export class ProjectAutopilotService {
       this.pool.query("SELECT * FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
       this.pool.query("SELECT * FROM stat.project_scan WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
       this.pool.query("SELECT id, plan_kind, version, title, status, content, generated_at FROM stat.project_plan WHERE project_id = $1 ORDER BY plan_kind, version DESC", [projectId]),
-      this.pool.query("SELECT id, topic, question, risk_level, status, decision, decided_by, decided_at FROM stat.project_decision WHERE project_id = $1 ORDER BY id", [projectId]),
+      this.pool.query("SELECT id, topic, question, options, risk_level, status, decision, decided_by, decided_at FROM stat.project_decision WHERE project_id = $1 ORDER BY id", [projectId]),
       this.pool.query("SELECT id, name, stage, project_type, description, tech_stack, software_profile, archived_at, archive_reason FROM biz.project WHERE id = $1", [projectId]),
       this.pool.query("SELECT * FROM stat.project_scaffold WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]),
       this.pool.query("SELECT * FROM stat.project_pipeline_run WHERE project_id = $1 ORDER BY id DESC LIMIT 10", [projectId]),

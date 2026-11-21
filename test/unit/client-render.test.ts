@@ -12,7 +12,7 @@ import vm from "node:vm";
 
 const CLIENT = new URL("../../client.js", import.meta.url);
 const EXPORTS_ANCHOR = "    exports.apply = apply;";
-const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console, SalesTab: SalesTab };";
+const EXPORTS_DEBUG = "    exports.__test = { AutopilotTab: AutopilotTab, NewProjectTab: NewProjectTab, PlanAutoCard: PlanAutoCard, CompanyProfileCard: CompanyProfileCard, ProjectOverviewCard: ProjectOverviewCard, ProjectInfoCard: ProjectInfoCard, CurrentRunCard: CurrentRunCard, RoadmapCard: RoadmapCard, RunsCard: RunsCard, Console: Console, SalesTab: SalesTab, DecisionsCard: DecisionsCard, AutopilotSettingsCard: AutopilotSettingsCard };";
 
 const Fragment = Symbol("Fragment");
 
@@ -165,11 +165,32 @@ test("client.js 自动驾驶页签初始化渲染不抛错", async () => {
     "3",
     { loading: false, error: "", data: summary }, 0,
     { loading: false, error: "", data: { projectId: "3", items: [] } }, 0,
+    { loading: false, error: "", data: { parallelProjects: 2, followSchedule: false, stepsPerTick: 3 } }, 0,
     { name: "", repositoryUrl: "", branch: "main", kind: "git", revision: "", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true },
     false,
     "",
   ]);
   assert.doesNotThrow(() => render(createElement(components.AutopilotTab, { flash() {} })));
+});
+
+test("client.js 裁决备选方案与自动驾驶设置卡可渲染（防白屏回归）", async () => {
+  const components = await loadComponents();
+  assert.equal(typeof components.DecisionsCard, "function", "缺少组件 DecisionsCard");
+  assert.equal(typeof components.AutopilotSettingsCard, "function", "缺少组件 AutopilotSettingsCard");
+  // 裁决卡：无备选 / 有备选（一键拍板）
+  resetHooks();
+  assert.doesNotThrow(() => render(createElement(components.DecisionsCard, { items: [{ id: 1, topic: "license", question: "开源还是商用？", risk_level: "medium", status: "pending" }], onSubmit() {} })));
+  resetHooks();
+  const withOpts = [{ id: 2, topic: "production_release", question: "是否批准发布生产？", risk_level: "high", status: "pending", options: [{ label: "批准生产发布", impact: "按部署计划执行" }, { label: "先验收测试环境", impact: "生产暂缓" }] }];
+  assert.doesNotThrow(() => render(createElement(components.DecisionsCard, { items: withOpts, onSubmit() {} })));
+  // options 为 JSON 字符串（pg jsonb 兜底）也不能炸
+  resetHooks();
+  assert.doesNotThrow(() => render(createElement(components.DecisionsCard, { items: [{ id: 3, topic: "t", question: "q", risk_level: "low", status: "pending", options: "[{\"label\":\"A\",\"impact\":\"a\"}]" }], onSubmit() {} })));
+  // 设置卡：默认展示态 + 编辑态
+  resetHooks();
+  assert.doesNotThrow(() => render(createElement(components.AutopilotSettingsCard, { settings: { parallelProjects: 2, followSchedule: false, stepsPerTick: 3 }, onSave: () => Promise.resolve() })));
+  resetHooks([null, false]);
+  assert.doesNotThrow(() => render(createElement(components.AutopilotSettingsCard, { settings: { parallelProjects: 4, followSchedule: true, stepsPerTick: 2 }, onSave: () => Promise.resolve() })));
 });
 test("client.js 新建项目独立页可渲染（默认 / 创意解析 / 已创建）", async () => {
   const components = await loadComponents();

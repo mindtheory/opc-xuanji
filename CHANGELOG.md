@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **自动驾驶初始设置 + 裁决备选方案到位（v2.28）**：自动驾驶新增全局初始设置（存 `ref.shared_setting` 键 `autopilot.settings`，页面「自动驾驶设置」卡可改）：`parallelProjects` 并发任务数（一轮定时同时推进几个项目，1–8，默认 2）、`followSchedule` 是否按时间表推进（true=未到计划开工日期的阶段挂起等待、按计划日期完成；false=全速：上一步完成立即做下一步、最快完成，默认 false）、`stepsPerTick` 全速模式每项目每轮最多步数（1–5，默认 3）；仅约束后台自动推进（`project_plan_auto`），老板手动「执行」不受限；越界值收敛到边界。裁决备选方案到位：`/admin/projects/{id}/autopilot` 详情此前漏查 `options` 列导致前端看不到备选方案，现补齐；`DecisionsCard` 渲染每个备选方案（label+impact）并支持一键拍板（点击即提交该方案），保留「自定义裁决」入口。新增 `GET/PUT /admin/autopilot/settings`（错误码复用 ERR-AUTO-001）；spec api.yaml 同步 2 路径；测试新增 TC-AUTO-023/024/025 + 渲染冒烟（全量 151→156）。
 - **虚拟销售模块（v2.27，老板拍板全自动化）**：闲鱼虚拟服务自动经营闭环——雷达发现 → AI 素材 → 老板确认上架 → 自动接单 → AI 自动生产交付物 → 老板确认发货 → 平台担保收款记账。新增 `sales` schema 5 表（迁移 0018：`sales.config/lead/product/order/run`）；`SalesService`（品类目录：文案代写/小说故事/策划方案/课程学习资料/软件与服务器部署；线索去重、拍板转商品、商品/订单状态机、AI 素材与交付物生成带规则兜底）；`GoofishRpa`（Playwright 持久化登录：扫码 QR 失效推微信、关键词搜索、发布预填、拉「我卖出的」、平台发货；选择器集中维护）；调度任务 `sales_radar`（每日 09:30）/`sales_orders`（每 30 分钟）/`sales_listing`（每 2 小时），默认停用待老板启用。风控护栏：总开关急停、每日动作上限超限自动急停、上架/发货必须老板确认卡点、不做任何资金操作（收款走平台担保仅记账）、全写审计。管理面新增「虚拟销售」页签（配置卡+急停、线索拍板、商品上架确认、订单生产/发货、运行记录）；HTTP 13 个 `/admin/sales/*` 端点、错误码 ERR-SALES-001/002；spec 同步（实体 92→97、UC-034、api.yaml）；新增 `sales.test.ts` 5 用例（全量 146→151）。注意：闲鱼无开放 API，RPA 违反平台规则存在封号风险——务必使用专用账号，先小流量试运行。
 
 ### Changed

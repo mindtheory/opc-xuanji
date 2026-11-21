@@ -2982,23 +2982,64 @@ window.__ModuleLoader__.load({
       var open = openS[0], setOpen = openS[1];
       var textS = react.useState("");
       var text = textS[0], setText = textS[1];
+      function optionList(d) {
+        var opts = d.options;
+        if (typeof opts === "string") { try { opts = JSON.parse(opts); } catch (e) { opts = null; } }
+        return Array.isArray(opts) ? opts.filter(function (o) { return o && o.label; }) : [];
+      }
       return h(Card, null,
         h("div", { className: "ocH" }, "待裁决", h("span", { className: "ocCount" }, items.length + " 项")),
         items.length ? h("div", { className: "ocFormStack" }, items.map(function (d) {
           var editing = !!open && String(open.id) === String(d.id);
+          var opts = optionList(d);
           return h("div", { key: d.id, className: "ocSection" },
             h("div", { className: "ocRowLine" },
               h(Badge, { tone: d.risk_level === "high" ? "bad" : d.risk_level === "medium" ? "warn" : "mute" }, textOf(d.risk_level, "low")),
               h("b", null, textOf(d.topic))),
             h("div", { className: "ocMuted" }, textOf(d.question)),
+            opts.length ? h("div", { className: "ocFormStack" }, opts.map(function (o, oi) {
+              return h("div", { key: oi, className: "ocRowLine" },
+                h(Btn, { onClick: function () { props.onSubmit(d.id, String(o.label)); } }, "选 " + String(o.label)),
+                o.impact ? h("span", { className: "ocMuted" }, String(o.impact)) : null);
+            })) : null,
             editing
               ? h(Fragment, null,
                   h(Field, { label: "裁决内容", value: text, onChange: setText }),
                   h("div", { className: "ocStickyActions" },
                     h(Btn, { kind: "primary", onClick: function () { props.onSubmit(d.id, text); } }, "确认裁决"),
                     h(Btn, { onClick: function () { setOpen(null); } }, "取消")))
-              : h(Btn, { onClick: function () { setOpen({ id: d.id }); setText(""); } }, "裁决"));
+              : h(Btn, { onClick: function () { setOpen({ id: d.id }); setText(""); } }, "自定义裁决"));
         })) : h("div", { className: "ocMuted" }, "没有待裁决事项：自动化不需要你拍板。"));
+    }
+
+    // ---- 自动驾驶初始设置（全局：并发项目数 / 时间表模式 / 全速步数） ----
+    function AutopilotSettingsCard(props) {
+      var st = props.settings || {};
+      var editS = react.useState(null);
+      var edit = editS[0], setEdit = editS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      var parallel = Number(st.parallelProjects || 2);
+      var follow = st.followSchedule !== false;
+      var steps = Number(st.stepsPerTick || 3);
+      var draft = edit || { parallelProjects: parallel, followSchedule: follow, stepsPerTick: steps };
+      function save() {
+        setBusy(true);
+        props.onSave(draft).then(function () { setEdit(null); }).catch(function () { }).then(function () { setBusy(false); });
+      }
+      var modeLabel = follow ? "按时间表推进（到开工日期才做下一步）" : "全速模式（算完就做下一步，最快完成）";
+      return h(Card, null,
+        h("div", { className: "ocH" }, "自动驾驶设置", h("span", { className: "ocCount" }, "全局")),
+        h("div", { className: "ocMuted" }, "并发项目数 " + parallel + " · " + modeLabel + (follow ? "" : " · 每轮每项目最多 " + steps + " 步")),
+        edit
+          ? h("div", { className: "ocFormStack" },
+              h(Select, { label: "并发任务数（同时推进几个项目）", value: String(draft.parallelProjects), options: [1, 2, 3, 4, 6, 8].map(function (n) { return { value: String(n), label: String(n) }; }), onChange: function (v) { setEdit(Object.assign({}, draft, { parallelProjects: Number(v) })); } }),
+              h(Select, { label: "推进节奏", value: draft.followSchedule ? "schedule" : "turbo", options: [{ value: "schedule", label: "按时间表（按计划日期完成）" }, { value: "turbo", label: "全速（不看时间表，最快速度完成）" }], onChange: function (v) { setEdit(Object.assign({}, draft, { followSchedule: v === "schedule" })); } }),
+              draft.followSchedule ? null : h(Select, { label: "全速每轮步数（越大越快）", value: String(draft.stepsPerTick), options: [1, 2, 3, 4, 5].map(function (n) { return { value: String(n), label: String(n) }; }), onChange: function (v) { setEdit(Object.assign({}, draft, { stepsPerTick: Number(v) })); } }),
+              h("div", { className: "ocStickyActions" },
+                h(Btn, { kind: "primary", disabled: busy, onClick: save }, "保存"),
+                h(Btn, { onClick: function () { setEdit(null); } }, "取消")))
+          : h(Btn, { onClick: function () { setEdit({ parallelProjects: parallel, followSchedule: follow, stepsPerTick: steps }); } }, "修改设置"));
     }
 
     // ---- 计划自动推进（后台定时任务，无手动按钮） ----
@@ -3057,6 +3098,13 @@ window.__ModuleLoader__.load({
           ? apiGet("/admin/projects/" + selected + "/repositories").then(function (d) { return { projectId: String(selected), items: (d && d.items) || [] }; })
           : Promise.resolve(null);
       }, [selected]);
+      var apSetS = useLoad(function () { return apiGet("/admin/autopilot/settings"); }, []);
+      var apSettings = apSetS[0].data || {};
+      function saveAutopilotSettings(draft) {
+        return apiPut("/admin/autopilot/settings", draft)
+          .then(function () { props.flash("自动驾驶设置已保存"); apSetS[1](); })
+          .catch(function (e) { props.flash(e.message || String(e), false); throw e; });
+      }
       var repoData = reposS[0].data;
       var repos = repoData && String(repoData.projectId) === String(selected) ? repoData.items : [];
       var formS = react.useState({ name: "", repositoryUrl: "", branch: "main", kind: "git", revision: "", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true });
@@ -3272,6 +3320,7 @@ window.__ModuleLoader__.load({
                     h(RoadmapCard, { roadmap: roadmap, plans: plans }),
                     h(RunsCard, { runs: runs, loading: false })),
                   h("div", { className: "ocSplitSide" },
+                    h(AutopilotSettingsCard, { settings: apSettings, onSave: saveAutopilotSettings }),
                     h(PlanAutoCard, { execution: planExecution }),
                     h(DecisionsCard, { items: pending, onSubmit: submitDecision }),
                     h(CheckoutCard, { checkout: checkout, tech: tech, scan: scan, planCount: plans.length, pipelineFailed: pipelineFailed }),

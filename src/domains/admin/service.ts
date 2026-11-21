@@ -1095,6 +1095,17 @@ export class AdminService {
     return this.autopilot.summary(projectId);
   }
 
+  /** 自动驾驶全局初始设置：并发项目数 / 是否按时间表推进 / 全速模式每轮步数。 */
+  async autopilotSettings(): Promise<Row> {
+    if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
+    return this.autopilot.getSettings();
+  }
+
+  async updateAutopilotSettings(input: Row): Promise<Row> {
+    if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
+    return this.autopilot.updateSettings(input);
+  }
+
   /** 自动驾驶项目列表：状态/当前执行/最近执行/计划与待裁决计数（archived=active|archived|all）。 */
   async listAutopilotProjects(filter: string | null): Promise<Row> {
     if (this.autopilot === undefined) throw new OpcError(ERR.AUTO_INVALID, "未装配项目自动驾驶服务", 503);
