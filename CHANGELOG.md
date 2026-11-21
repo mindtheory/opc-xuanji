@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **虚拟销售模块（v2.27，老板拍板全自动化）**：闲鱼虚拟服务自动经营闭环——雷达发现 → AI 素材 → 老板确认上架 → 自动接单 → AI 自动生产交付物 → 老板确认发货 → 平台担保收款记账。新增 `sales` schema 5 表（迁移 0018：`sales.config/lead/product/order/run`）；`SalesService`（品类目录：文案代写/小说故事/策划方案/课程学习资料/软件与服务器部署；线索去重、拍板转商品、商品/订单状态机、AI 素材与交付物生成带规则兜底）；`GoofishRpa`（Playwright 持久化登录：扫码 QR 失效推微信、关键词搜索、发布预填、拉「我卖出的」、平台发货；选择器集中维护）；调度任务 `sales_radar`（每日 09:30）/`sales_orders`（每 30 分钟）/`sales_listing`（每 2 小时），默认停用待老板启用。风控护栏：总开关急停、每日动作上限超限自动急停、上架/发货必须老板确认卡点、不做任何资金操作（收款走平台担保仅记账）、全写审计。管理面新增「虚拟销售」页签（配置卡+急停、线索拍板、商品上架确认、订单生产/发货、运行记录）；HTTP 13 个 `/admin/sales/*` 端点、错误码 ERR-SALES-001/002；spec 同步（实体 92→97、UC-034、api.yaml）；新增 `sales.test.ts` 5 用例（全量 146→151）。注意：闲鱼无开放 API，RPA 违反平台规则存在封号风险——务必使用专用账号，先小流量试运行。
+
 ### Changed
 
 - **GET 接口协商缓存（弱 ETag）**：`/api/v1` 全部 GET 成功响应带弱 ETag 与 `cache-control: no-cache`，`If-None-Match` 命中直接返回 304 空体；前端 fetch 默认协商缓存，自动驾驶页运行中 2.5s 轮询在数据未变时不再重复传输（autopilot 列表/详情两类接口占调用量约 42%）。无契约字段变化；`api.test.ts` 新增 ETag/304 回归用例（全量 145→146）。

@@ -1091,6 +1091,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-OPS-002 | 用量遥测与使用习惯审视 | UC-027 | TC-OPS-001、004 | getUsageSummary / generateUsageInsight |
 | REQ-OPS-003 | 反馈投递治理（去重/限额/脱敏） | UC-027、028 | TC-OPS-003 | syncIssues |
 | REQ-OPS-004 | 裁决与简报微信推送 | UC-031 | TC-WECHAT-001..005 | getWechatStatus / pushWechatText / syncWechatOutbox |
+| REQ-SALES-001 | 虚拟销售自动经营（雷达→上架→接单→交付→收款记账） | UC-034 | TC-SALES-001..005 | getSalesConfig / decideSalesLead / confirmSalesListing / generateSalesDeliverable / confirmSalesShip / runSalesRadarNow |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle |
 | REQ-EMP-003 | 派工隔离与最小权限 | — | TC-EMP-001 | 装配与工具注册 |
@@ -1101,7 +1102,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：33 个 UC 全部在被映射的 REQ 中出现（UC-001..033 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 163 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：34 个 UC 全部在被映射的 REQ 中出现（UC-001..034 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 163 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 

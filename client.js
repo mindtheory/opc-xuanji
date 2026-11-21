@@ -951,6 +951,90 @@ window.__ModuleLoader__.load({
         h(Table, { columns: cols, rows: tasks, loading: listS[0].loading, empty: "暂无定时任务", emptyHint: "调度任务初始化后会出现在这里。", emptyIcon: "clock" }));
     }
 
+    // ================= 虚拟销售 =================
+    var SALES_CAT_LABEL = { copywriting: "文案代写", fiction: "小说/故事", planning: "策划方案", courseware: "课程/学习资料", software: "软件与部署" };
+    var SALES_ORDER_TONE = { new: "warn", generating: "warn", generated: "ok", shipping: "warn", shipped: "ok", settled: "ok", failed: "err" };
+
+    function SalesTab(props) {
+      var secS = react.useState("leads");
+      var sec = secS[0], setSec = secS[1];
+      var cfgS = useLoad(function () { return apiGet("/admin/sales/config"); }, []);
+      var leadS = useLoad(function () { return apiGet("/admin/sales/leads?status=new&limit=50"); }, []);
+      var prodS = useLoad(function () { return apiGet("/admin/sales/products?limit=50"); }, []);
+      var orderS = useLoad(function () { return apiGet("/admin/sales/orders?limit=50"); }, []);
+      var runS = useLoad(function () { return apiGet("/admin/sales/runs?limit=10"); }, []);
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = setBusy[1];
+      var cfg = cfgS[0].data || {};
+      function act(promise, ok, reload) {
+        setBusy(true);
+        promise.then(function () { props.flash(ok, true); (reload || function () {})(); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); });
+        promise.then(function () { setBusy(false); }, function () { setBusy(false); });
+      }
+      function reloadAll() { cfgS[1](); leadS[1](); prodS[1](); orderS[1](); runS[1](); }
+      var secs = [{ id: "leads", label: "线索" }, { id: "products", label: "商品" }, { id: "orders", label: "订单" }, { id: "runs", label: "运行" }];
+      var leadCols = [
+        { key: "title", label: "需求线索", render: function (r) { return h("span", null, h("b", null, r.title), r.demandNote ? h("div", { className: "ocSub" }, String(r.demandNote).slice(0, 80)) : null); } },
+        { key: "category", label: "品类", render: function (r) { return h(Badge, { tone: "mute" }, r.categoryLabel || SALES_CAT_LABEL[r.category] || r.category); } },
+        { key: "aiScore", label: "评分", render: function (r) { return h("span", { className: "ocMono" }, r.aiScore === null ? "-" : Number(r.aiScore).toFixed(2)); } },
+        { key: "ops", label: "拍板", render: function (r) {
+            return h("div", { className: "ocRow" },
+              h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/leads/" + r.id + "/decide", { action: "promote", decidedBy: "老板" }), "已转商品（素材已生成）", leadS[1]); } }, "转商品"),
+              h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/leads/" + r.id + "/decide", { action: "reject", decidedBy: "老板" }), "已淘汰", leadS[1]); } }, "淘汰"));
+          } },
+      ];
+      var prodCols = [
+        { key: "title", label: "商品", render: function (r) { return h("span", null, h("b", null, r.title), h("div", { className: "ocSub" }, "¥" + r.price + " · " + (r.categoryLabel || r.category))); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "listed" ? "ok" : r.status === "paused" ? "mute" : "warn" }, r.status); } },
+        { key: "materials", label: "素材", render: function (r) { var m = r.materials || {}; return h("span", { className: "ocSub" }, (m.title || "-") + (m.source === "ai" ? " (AI)" : "")); } },
+        { key: "ops", label: "操作", render: function (r) {
+            return h("div", { className: "ocRow" },
+              r.status === "ready" ? h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/products/" + r.id + "/confirm-listing", { decidedBy: "老板" }), "已确认，上架值守将执行", prodS[1]); } }, "确认上架") : null,
+              r.status === "listing" ? h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/products/" + r.id + "/manual-listed", { decidedBy: "老板" }), "已标记上架", prodS[1]); } }, "已人工发布") : null,
+              (r.status === "listed" || r.status === "ready") ? h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/products/" + r.id + "/pause", { reason: "人工暂停", decidedBy: "老板" }), "已暂停", prodS[1]); } }, "暂停") : null);
+          } },
+      ];
+      var orderCols = [
+        { key: "title", label: "订单", render: function (r) { return h("span", null, h("b", null, r.title), h("div", { className: "ocSub" }, (r.platformOrderId || "-") + (r.buyerNick ? " · " + r.buyerNick : ""))); } },
+        { key: "amount", label: "金额", render: function (r) { return h("span", { className: "ocMono" }, r.amount === null ? "-" : "¥" + r.amount); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: SALES_ORDER_TONE[r.status] || "mute" }, r.status); } },
+        { key: "deliverable", label: "交付物", render: function (r) { return h("span", { className: "ocSub" }, r.deliverablePath ? String(r.deliverablePath).split("/").pop() : "-"); } },
+        { key: "ops", label: "操作", render: function (r) {
+            return h("div", { className: "ocRow" },
+              (r.status === "new" || r.status === "failed") ? h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/orders/" + r.id + "/generate", {}), "交付物已生成", orderS[1]); } }, "生产") : null,
+              r.status === "generated" ? h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/orders/" + r.id + "/confirm-ship", { decidedBy: "老板" }), "已确认发货", orderS[1]); } }, "确认发货") : null);
+          } },
+      ];
+      var runCols = [
+        { key: "id", label: "#", render: function (r) { return h("span", { className: "ocMono" }, r.id); } },
+        { key: "kind", label: "类型", render: function (r) { return h(Badge, { tone: "mute" }, r.kind); } },
+        { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "running" ? "warn" : "err" }, r.status); } },
+        { key: "summary", label: "摘要", render: function (r) { return h("span", { className: "ocSub" }, JSON.stringify(r.summary || {}).slice(0, 90)); } },
+        { key: "startedAt", label: "开始", render: function (r) { return h("span", { className: "ocMono" }, fmtTime(r.startedAt)); } },
+      ];
+      var rows = sec === "leads" ? { cols: leadCols, data: leadS[0].data || [], loading: leadS[0].loading, empty: "暂无待拍板线索" }
+        : sec === "products" ? { cols: prodCols, data: prodS[0].data || [], loading: prodS[0].loading, empty: "暂无商品" }
+        : sec === "orders" ? { cols: orderCols, data: orderS[0].data || [], loading: orderS[0].loading, empty: "暂无订单" }
+        : { cols: runCols, data: runS[0].data || [], loading: runS[0].loading, empty: "暂无运行记录" };
+      return h(Fragment, null,
+        h(PageHeader, { title: "虚拟销售", subtitle: "闲鱼虚拟服务自动经营：雷达发现 → 上架 → 接单 → 交付 → 收款记账" },
+          h(Btn, { disabled: busy, onClick: function () { act(apiPost("/admin/sales/radar/run", {}), "雷达已执行（结果见运行记录）", reloadAll); } }, "立即跑雷达"),
+          h(Btn, { onClick: reloadAll }, h(Icon, { name: "refresh", size: 14 }), "刷新")),
+        h(ErrLine, { error: cfgS[0].error, onRetry: cfgS[1] }),
+        h(Card, null, h("div", { className: "ocRow", style: { flexWrap: "wrap", gap: "10px", alignItems: "center" } },
+          h(Badge, { tone: cfg.enabled ? "ok" : "err" }, cfg.enabled ? "总开关：运行中" : "总开关：已急停"),
+          cfg.pauseReason ? h("span", { className: "ocSub" }, "急停原因：" + cfg.pauseReason) : null,
+          h("span", { className: "ocSub" }, "今日动作 " + (cfg.actionsToday || 0) + "/" + (cfg.dailyActionCap || 0)),
+          h("span", { className: "ocSub" }, "价格区间 ¥" + (cfg.priceFloor || 0) + "-" + (cfg.priceCap || 0)),
+          h(Btn, { disabled: busy, onClick: function () { act(apiPut("/admin/sales/config", { enabled: !cfg.enabled }), cfg.enabled ? "已急停" : "已启动", cfgS[1]); } }, cfg.enabled ? "急停" : "启动"),
+          h("span", { className: "ocSub" }, "提示：首次使用需在任务页启用 sales_* 三个任务，并用闲鱼专用账号扫码登录（登录态失效会微信推二维码）"))),
+        h("div", { className: "ocRow", style: { gap: "6px", margin: "10px 0" } }, secs.map(function (s) {
+          return h(Btn, { key: s.id, onClick: function () { setSec(s.id); }, className: sec === s.id ? "ocBtn primary" : undefined }, s.label);
+        })),
+        h(Table, { columns: rows.cols, rows: rows.data, loading: rows.loading, empty: rows.empty, emptyHint: "雷达任务每天 09:30 自动发现需求线索（启用后）。", emptyIcon: "radar" }));
+    }
+
     // ================= 审计 =================
     function AuditsTab(props) {
       var filterS = react.useState({ action: "", limit: 50 });
@@ -3448,7 +3532,7 @@ window.__ModuleLoader__.load({
     // 导航按“概览 / 经营 / 治理 / 知识 / 系统”分组，降低 12 个页签的认知负担。
     var NAV_GROUPS = [
       { title: "概览", items: [{ id: "cockpit", label: "驾驶舱", icon: "gauge" }, { id: "domains", label: "业务域", icon: "grid" }] },
-      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "projects", label: "项目管理", icon: "layers" }, { id: "autopilot", label: "自动驾驶", icon: "target" }, { id: "newproject", label: "新建项目", icon: "plus" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
+      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "projects", label: "项目管理", icon: "layers" }, { id: "autopilot", label: "自动驾驶", icon: "target" }, { id: "newproject", label: "新建项目", icon: "plus" }, { id: "sales", label: "虚拟销售", icon: "radar" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
       { title: "治理", items: [{ id: "audits", label: "审计", icon: "shield" }, { id: "conflicts", label: "冲突", icon: "alert" }, { id: "inbox", label: "收件箱", icon: "inbox" }] },
       { title: "知识", items: [{ id: "memory", label: "记忆", icon: "book" }, { id: "hindsight", label: "记忆同步", icon: "sync" }, { id: "radar", label: "雷达", icon: "radar" }, { id: "intel", label: "情报管理", icon: "target" }] },
       { title: "系统", items: [{ id: "settings", label: "设置", icon: "settings" }] },
@@ -3503,6 +3587,7 @@ window.__ModuleLoader__.load({
       else if (tab === "intel") body = h(IntelTab, { flash: flashMsg });
       else if (tab === "domains") body = h(DomainsTab, { flash: flashMsg });
       else if (tab === "workflows") body = h(WorkflowsTab, { flash: flashMsg });
+      else if (tab === "sales") body = h(SalesTab, { flash: flashMsg });
       else if (tab === "tasks") body = h(TasksTab, { flash: flashMsg });
       else if (tab === "audits") body = h(AuditsTab, { flash: flashMsg });
       else if (tab === "conflicts") body = h(ConflictsTab, { flash: flashMsg });

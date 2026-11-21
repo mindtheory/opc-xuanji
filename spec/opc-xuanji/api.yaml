@@ -61,6 +61,8 @@ errorCodes:
   - ERR-IDEA-001
   - ERR-IDEA-002
   - ERR-WECHAT-001
+  - ERR-SALES-001
+  - ERR-SALES-002
   - ERR-SYS-001
 
 paths:
@@ -1629,6 +1631,127 @@ paths:
       responses:
         '200': { description: OK }
         '400': { description: 'ERR-RES-001 参数非法（名称必填、信用代码 18 位、邮箱/官网/邮编格式）' }
+
+  /api/v1/admin/sales/config:
+    get:
+      operationId: getSalesConfig
+      tags: [sales]
+      summary: 虚拟销售配置（开关/品类/关键词/价格区间/每日动作上限/急停原因）
+      responses:
+        '200': { description: OK }
+    put:
+      operationId: updateSalesConfig
+      tags: [sales]
+      summary: 更新虚拟销售配置（价格区间与品类校验；enabled 为全局急停开关）
+      responses:
+        '200': { description: OK }
+        '400': { description: ERR-SALES-001 参数非法 }
+
+  /api/v1/admin/sales/leads:
+    get:
+      operationId: listSalesLeads
+      tags: [sales]
+      summary: 雷达线索列表（按 AI 评分排序，可按状态过滤）
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/sales/leads/{leadId}/decide:
+    post:
+      operationId: decideSalesLead
+      tags: [sales]
+      summary: 线索拍板：promote 转商品（AI 生成上架素材）或 reject 淘汰
+      responses:
+        '200': { description: OK }
+        '404': { description: ERR-SALES-001 线索不存在 }
+        '409': { description: ERR-SALES-001 线索已处理 }
+
+  /api/v1/admin/sales/products:
+    get:
+      operationId: listSalesProducts
+      tags: [sales]
+      summary: 商品列表（draft/ready/listing/listed/paused）
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/sales/products/{productId}/confirm-listing:
+    post:
+      operationId: confirmSalesListing
+      tags: [sales]
+      summary: 老板确认上架（ready→listing，上架值守才会执行发布）
+      responses:
+        '200': { description: OK }
+        '409': { description: ERR-SALES-001 状态不允许 }
+
+  /api/v1/admin/sales/products/{productId}/manual-listed:
+    post:
+      operationId: markSalesManualListed
+      tags: [sales]
+      summary: 人工发布完成回写（listing→listed，网页端发布入口不可用时的兜底闭环）
+      responses:
+        '200': { description: OK }
+        '409': { description: ERR-SALES-001 未确认上架 }
+
+  /api/v1/admin/sales/products/{productId}/pause:
+    post:
+      operationId: pauseSalesProduct
+      tags: [sales]
+      summary: 暂停商品（下架止损）
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/sales/orders:
+    get:
+      operationId: listSalesOrders
+      tags: [sales]
+      summary: 订单列表（new/generating/generated/shipping/shipped/settled/failed）
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/sales/orders/{orderId}/generate:
+    post:
+      operationId: generateSalesDeliverable
+      tags: [sales]
+      summary: 自动生产交付物（AI 按品类规格生成并落盘 OPC_SALES_ROOT）
+      responses:
+        '200': { description: OK }
+        '409': { description: ERR-SALES-001 状态不可生产 }
+
+  /api/v1/admin/sales/orders/{orderId}/confirm-ship:
+    post:
+      operationId: confirmSalesShip
+      tags: [sales]
+      summary: 老板确认发货（generated→shipping，平台发货由值守执行；收款走平台担保）
+      responses:
+        '200': { description: OK }
+        '409': { description: ERR-SALES-001 交付物未生成 }
+
+  /api/v1/admin/sales/runs:
+    get:
+      operationId: listSalesRuns
+      tags: [sales]
+      summary: 自动任务运行记录（radar/list/listen 留痕）
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/admin/sales/radar/run:
+    post:
+      operationId: runSalesRadarNow
+      tags: [sales]
+      summary: 立即执行一次销售雷达（登录检查→关键词搜索→AI 归纳线索→入库）
+      responses:
+        '200': { description: OK }
+        '502': { description: ERR-SALES-002 RPA 执行失败 }
 
   /api/v1/admin/shared-resources:
     get:

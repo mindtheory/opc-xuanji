@@ -102,6 +102,11 @@ const TABLES = [
   "biz.lead",
   "biz.dd_report",
   "biz.company_profile",
+  "sales.order",
+  "sales.product",
+  "sales.lead",
+  "sales.run",
+  "sales.config",
   "vec.embedding",
 ];
 

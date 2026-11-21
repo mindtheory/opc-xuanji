@@ -868,3 +868,45 @@ usecases:
       - 老板维护字段并保存；中枢逐字段校验（名称必填、信用代码 18 位、邮箱/官网/邮编格式）后单行 upsert
       - 写审计 company.profile.update，只记字段名不记银行账号/税号值
       - 项目自动驾驶交付物带公司主体抬头；员工经 view_company_profile 只读主体/行业/规模/官网（银行账号与联系方式明细不出视图）
+  - id: UC-034
+    title: 虚拟销售自动经营（闲鱼虚拟服务：雷达发现→上架→接单→交付→收款记账）
+    requirement: REQ-SALES-001
+    actors:
+      - 老板
+      - 中枢
+      - 销售值守（RPA）
+    goal: 每天自动检索闲鱼虚拟服务需求（文案/小说/策划/课程资料/软件部署五类），AI 生成上架素材，老板确认后自动上架；自动接单、自动生产交付物，老板一键确认发货，收款走平台担保仅记账
+    entities:
+      - SalesConfig
+      - SalesLead
+      - SalesProduct
+      - SalesOrder
+      - SalesRun
+    api:
+      - getSalesConfig
+      - updateSalesConfig
+      - listSalesLeads
+      - decideSalesLead
+      - listSalesProducts
+      - confirmSalesListing
+      - markSalesManualListed
+      - pauseSalesProduct
+      - listSalesOrders
+      - generateSalesDeliverable
+      - confirmSalesShip
+      - listSalesRuns
+      - runSalesRadarNow
+    tests:
+      - TC-SALES-001
+      - TC-SALES-002
+      - TC-SALES-003
+      - TC-SALES-004
+      - TC-SALES-005
+    preconditions: 迁移 0018 已应用；sales_* 三任务已在任务页启用；老板已用闲鱼专用账号扫码登录（登录态持久化）
+    steps:
+      - sales_radar 每日检索关键词与闲鱼在售样本，AI 归纳需求线索入库（按标题去重）
+      - 老板在「虚拟销售」页拍板：转商品（AI 生成标题/卖点/详情素材）或淘汰
+      - 老板确认上架后 sales_listing 值守执行发布；网页端入口不可用时人工发布并回写 listed
+      - sales_orders 值守拉取「我卖出的」订单（平台订单号幂等），新单自动生产交付物落盘并微信提醒
+      - 老板确认发货（generated→shipping），值守平台侧点发货；买家确认收货后记账 settled
+      - 全程风控：总开关急停、每日动作上限超限自动急停、上架/发货必须老板确认、不做资金操作、全写审计

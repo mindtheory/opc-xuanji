@@ -30,6 +30,8 @@ import type { HindsightSyncService } from "../memory/sync.ts";
 import type { ProjectSoftwareService } from "../domains/project/software.ts";
 import type { AdminService } from "../domains/admin/service.ts";
 import type { IssueReporter, UsageService } from "../ops/feedback.ts";
+import { SalesService } from "../domains/sales/service.ts";
+import { GoofishRpa, runSalesRadar } from "../domains/sales/rpa.ts";
 
 export interface WebServices {
   ingest: IngestService;
@@ -128,6 +130,11 @@ function requireId(params: Record<string, string>, key: string): number {
   const value = Number(params[key]);
   if (!Number.isInteger(value) || value <= 0) throw new OpcError(ERR.PRJ_INVALID, `${key} 必须是正整数`, 400);
   return value;
+}
+
+function clampLimit(raw: string | null): number {
+  const value = Number(raw ?? 50);
+  return Number.isInteger(value) && value > 0 && value <= 200 ? value : 50;
 }
 
 function requireMemorySync(ctx: ApiContext): HindsightSyncService {
@@ -1245,6 +1252,114 @@ export const ROUTES: Route[] = [
     keys: ["projectId"],
     async handler(ctx, params) {
       return { status: 200, data: await requireAdmin(ctx).unarchiveProject(requireId(params, "projectId")) };
+    },
+  },
+  // ---------- 虚拟销售（v2.27）：雷达线索 / 商品 / 订单 / 运行记录 ----------
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/sales\/config$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).getConfig() };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/sales\/config$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).updateConfig(body as Record<string, unknown>) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/sales\/leads$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).listLeads(query.get("status"), clampLimit(query.get("limit"))) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/sales\/leads\/([^/]+)\/decide$/,
+    keys: ["leadId"],
+    async handler(ctx, params, body) {
+      const action = body.action === "reject" ? "reject" : "promote";
+      const price = body.price === undefined || body.price === null ? null : Number(body.price);
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).decideLead(requireId(params, "leadId"), action, price, String(body.decidedBy ?? "老板")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/sales\/products$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).listProducts(query.get("status"), clampLimit(query.get("limit"))) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/sales\/products\/([^/]+)\/confirm-listing$/,
+    keys: ["productId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).confirmListing(requireId(params, "productId"), String(body.decidedBy ?? "老板")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/sales\/products\/([^/]+)\/manual-listed$/,
+    keys: ["productId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).markListedManual(requireId(params, "productId"), String(body.decidedBy ?? "老板")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/sales\/products\/([^/]+)\/pause$/,
+    keys: ["productId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).pauseProduct(requireId(params, "productId"), String(body.reason ?? "人工暂停"), String(body.decidedBy ?? "老板")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/sales\/orders$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).listOrders(query.get("status"), clampLimit(query.get("limit"))) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/sales\/orders\/([^/]+)\/generate$/,
+    keys: ["orderId"],
+    async handler(ctx, params) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).generateDeliverable(requireId(params, "orderId")) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/sales\/orders\/([^/]+)\/confirm-ship$/,
+    keys: ["orderId"],
+    async handler(ctx, params, body) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).confirmShip(requireId(params, "orderId"), String(body.decidedBy ?? "老板")) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/sales\/runs$/,
+    keys: [],
+    async handler(ctx, _params, _body, query) {
+      return { status: 200, data: await new SalesService(ctx.pool, ctx.audit).listRuns(clampLimit(query.get("limit"))) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/admin\/sales\/radar\/run$/,
+    keys: [],
+    async handler(ctx) {
+      const sales = new SalesService(ctx.pool, ctx.audit);
+      return { status: 200, data: await runSalesRadar(sales, new GoofishRpa(sales)) };
     },
   },
   {

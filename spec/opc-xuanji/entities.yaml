@@ -3292,3 +3292,171 @@ entities:
       - name: created_at
         type: timestamptz
         nullable: true
+  - name: SalesConfig
+    table: sales.config
+    module: sales
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: enabled
+        type: boolean
+        nullable: false
+      - name: categories
+        type: jsonb
+        nullable: false
+      - name: keywords
+        type: jsonb
+        nullable: false
+      - name: price_floor
+        type: "numeric(10,2)"
+        nullable: false
+      - name: price_cap
+        type: "numeric(10,2)"
+        nullable: false
+      - name: daily_action_cap
+        type: integer
+        nullable: false
+      - name: actions_today
+        type: integer
+        nullable: false
+      - name: action_day
+        type: date
+        nullable: false
+      - name: pause_reason
+        type: varchar(200)
+        nullable: true
+  - name: SalesLead
+    table: sales.lead
+    module: sales
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: category
+        type: varchar(32)
+        nullable: false
+      - name: title
+        type: varchar(200)
+        nullable: false
+      - name: demand_note
+        type: text
+        nullable: true
+      - name: source
+        type: varchar(32)
+        nullable: false
+      - name: evidence
+        type: jsonb
+        nullable: false
+      - name: ai_score
+        type: "numeric(4,3)"
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: product_id
+        type: bigint
+        nullable: true
+      - name: run_id
+        type: bigint
+        nullable: true
+  - name: SalesProduct
+    table: sales.product
+    module: sales
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: lead_id
+        type: bigint
+        nullable: true
+      - name: category
+        type: varchar(32)
+        nullable: false
+      - name: title
+        type: varchar(200)
+        nullable: false
+      - name: price
+        type: "numeric(10,2)"
+        nullable: false
+      - name: materials
+        type: jsonb
+        nullable: false
+      - name: delivery_spec
+        type: text
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: platform_item_id
+        type: varchar(64)
+        nullable: true
+      - name: listed_at
+        type: timestamptz
+        nullable: true
+  - name: SalesOrder
+    table: sales.order
+    module: sales
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: product_id
+        type: bigint
+        nullable: true
+      - name: platform_order_id
+        type: varchar(64)
+        nullable: false
+      - name: buyer_nick
+        type: varchar(128)
+        nullable: true
+      - name: title
+        type: varchar(200)
+        nullable: true
+      - name: demand_text
+        type: text
+        nullable: true
+      - name: amount
+        type: "numeric(10,2)"
+        nullable: true
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: deliverable_path
+        type: text
+        nullable: true
+      - name: shipped_at
+        type: timestamptz
+        nullable: true
+      - name: settled_at
+        type: timestamptz
+        nullable: true
+  - name: SalesRun
+    table: sales.run
+    module: sales
+    kind: entity
+    primaryKey:
+      strategy: identity
+      type: bigint
+      column: id
+    attributes:
+      - name: kind
+        type: varchar(16)
+        nullable: false
+      - name: status
+        type: varchar(16)
+        nullable: false
+      - name: summary
+        type: jsonb
+        nullable: false
+      - name: error
+        type: text
+        nullable: true

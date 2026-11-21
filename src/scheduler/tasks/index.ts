@@ -18,6 +18,8 @@ import { WechatPushService } from "../../notify/wechat.ts";
 import { ProjectAutopilotService } from "../../domains/project/autopilot.ts";
 import { SuperAgentsBridge } from "../../agents/bridge.ts";
 import { SuperAgentService } from "../../agents/service.ts";
+import { SalesService } from "../../domains/sales/service.ts";
+import { GoofishRpa, runSalesRadar, runSalesOrderListen, runSalesListing } from "../../domains/sales/rpa.ts";
 
 function monthPath(now: Date): string {
   const year = now.getUTCFullYear();
@@ -48,6 +50,39 @@ export function defaultTasks(): TaskDefinition[] {
         if (result.completed === true) await ctx.notify("project_plan_completed", "digest", { projectId: result.projectId, runId: result.runId });
         if (result.blocked === true) await ctx.notify("project_plan_blocked", "digest", { projectId: result.projectId, topic: result.blockTopic });
         return { ...result };
+      },
+    },
+    {
+      id: "sales_radar",
+      name: "虚拟销售雷达（每天 09:30 检索闲鱼虚拟服务需求）",
+      defaults: { cron: "30 9 * * *", timezone: "Asia/Shanghai", enabled: false },
+      async handler(ctx) {
+        const sales = new SalesService(ctx.pool, ctx.audit);
+        const rpa = new GoofishRpa(sales);
+        const notify = async (text: string) => ctx.notify("sales_alert", "instant", { text });
+        return runSalesRadar(sales, rpa, notify);
+      },
+    },
+    {
+      id: "sales_orders",
+      name: "虚拟销售订单值守（每 30 分钟拉单并自动生产交付物）",
+      defaults: { cron: "*/30 * * * *", timezone: "Asia/Shanghai", enabled: false },
+      async handler(ctx) {
+        const sales = new SalesService(ctx.pool, ctx.audit);
+        const rpa = new GoofishRpa(sales);
+        const notify = async (text: string) => ctx.notify("sales_alert", "instant", { text });
+        return runSalesOrderListen(sales, rpa, notify);
+      },
+    },
+    {
+      id: "sales_listing",
+      name: "虚拟销售上架值守（每 2 小时执行老板已确认的上架单）",
+      defaults: { cron: "0 */2 * * *", timezone: "Asia/Shanghai", enabled: false },
+      async handler(ctx) {
+        const sales = new SalesService(ctx.pool, ctx.audit);
+        const rpa = new GoofishRpa(sales);
+        const notify = async (text: string) => ctx.notify("sales_alert", "instant", { text });
+        return runSalesListing(sales, rpa, notify);
       },
     },
     {
