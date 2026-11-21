@@ -1086,6 +1086,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | REQ-PRJ-037 | 自动驾驶控制台（项目状态/当前执行/执行记录/计划路线图/归档） | UC-024、UC-025 | TC-AUTO-013、014、015、016 | listAutopilotProjects / archiveProject / unarchiveProject |
 | REQ-PRJ-038 | 项目描述从版本库抽取（人工优先） | UC-025 | TC-AUTO-012 | getProjectAutopilot |
 | REQ-PRJ-039 | 基于项目内容的计划生成 | UC-025 | TC-AUTO-012、014 | getProjectAutopilot / listProjectPlans |
+| REQ-PRJ-040 | 按计划自动推进项目并补齐交付物 | UC-032 | TC-AUTO-017、018、019 | 定时任务 project_plan_auto / getProjectAutopilot |
 | REQ-OPS-001 | 运行错误自动登记并开 Issue | UC-028 | TC-OPS-002、003、005 | syncIssues / listIssues |
 | REQ-OPS-002 | 用量遥测与使用习惯审视 | UC-027 | TC-OPS-001、004 | getUsageSummary / generateUsageInsight |
 | REQ-OPS-003 | 反馈投递治理（去重/限额/脱敏） | UC-027、028 | TC-OPS-003 | syncIssues |
@@ -1100,7 +1101,7 @@ REQ-VIEW-001                ← 需求编号：REQ-<域>-<3位>
 | 员工分册 REQ-FIN..PUB | 11 个员工分册 | 见各分册 | 见 `OPC-STD-001` | 见各分册 |
 | REQ-NFR-001..022 + REQ-NFR-WEB-001..004 | 非功能需求 | — | — | 全接口 |
 
-**覆盖自检**：31 个 UC 全部在被映射的 REQ 中出现（UC-001..031 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 162 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
+**覆盖自检**：33 个 UC 全部在被映射的 REQ 中出现（UC-001..033 逐条可见）；主文档 43 条功能需求 + 11 份员工分册 163 条均有 AC 与章节归属；26 条 NFR 全部有可验证判据。
 
 ### 12.4 G1 门禁验收命令
 

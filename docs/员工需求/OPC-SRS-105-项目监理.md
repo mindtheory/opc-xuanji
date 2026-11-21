@@ -583,6 +583,20 @@ updated: 2026-11-14
 
 追溯：AC 直验 / `UC-025` / `TC-AUTO-012`、`TC-AUTO-014`
 
+### 3.40 REQ-PRJ-040 按计划自动推进（后台定时、逐步补齐交付物）
+
+**需求陈述**：项目已有开发计划时，后台定时任务按计划顺序推进项目：逐步生成范围与验收、架构说明，派编码 agent 补齐实现，跑通流水线并生成测试报告，发布测试环境并生成发布记录；遇到需老板拍板的事项（编码 agent 不可用/失败、流水线失败、部署执行方式、生产发布）转裁决并暂停该项，不伪造完成。
+
+**验收标准**：
+
+- **AC-1** 触发：新定时任务 `project_plan_auto`（默认 `*/15 * * * *`、Asia/Shanghai、启用），每次 tick 只推进一个项目的一个单元；等待中的计划运行跨 tick 续跑，不重复起并行运行。
+- **AC-2** 任务与判据：五类任务 `freeze`（范围与验收）、`design`（架构与接口设计）、`build`（开发实现）、`verify`（联调与测试）、`release`（发布上线）；交付物写入检出目录 `docs/autopilot/{scope,architecture,build,test-report,release}.md`，存在即完成；进度回写 `biz.project_milestone` 状态（`planned/in_progress/achieved`）与 `biz.project.progress`（0–100）。
+- **AC-3** 编码 agent：`build` 与失败修复经 dsh-super-agents 派「OPC 项目开发·<projectId>」角色卡（cwd=检出目录），跨 tick 回收产物；成功才写 `build.md`，`未完成：`/失败/超时（默认 15 分钟，`OPC_AUTOPILOT_AGENT_TIMEOUT_MS` 可调）转 `coding_agent` 裁决。
+- **AC-4** 流水线与发布：`verify` 只跑仓库既有 lint/build/test 脚本（300s/步、默认不装依赖），通过写测试报告；失败派修复 agent 后重跑，仍失败转 `pipeline_failed` 裁决，缺少数据库连接串/环境变量（`pipeline_env`）时不浪费修复 agent、直接转裁决；`release` 发布测试环境（`OPC_TEST_DEPLOY_CMD`，无命令转 `deploy_executor`、失败转 `deploy_failed`），成功后写发布记录并生成 `production_release` 裁决，生产发布永不自动执行。
+- **AC-5** 阻塞口径：每次阻塞都新起一条 pending 裁决（`allowRepeat`），不复用历史上已裁决的同 topic，老板不会漏看新的失败；完成与边界：五类交付物齐备且测试环境发布成功即 `completed=true`（`planExecution.completed`），Git 工作副本提交到本地分支（不推远端）、SVN 只留工作副本；归档项目不推进；同项目已有运行中执行时 409 `ERR-AUTO-001`；无接口/表结构变化，仅扩 `stat.project_autopilot_run.trigger` 到 `manual|idea|api|plan`。
+
+追溯：AC 直验 / `UC-032` / `TC-AUTO-017`、`TC-AUTO-018`、`TC-AUTO-019`
+
 ## 4. 数据对象与视图（需求层）
 
 | 数据对象 | 用途 |
@@ -609,7 +623,7 @@ updated: 2026-11-14
 | `shared_resource` | 公司基础资源目录：六类公用资源的地址、远程管理方式、默认账号与凭据引用 |
 | `shared_setting` | 公司默认口径：默认系统（debian）、远程方式（ssh）、默认账号、凭据引用、SSH 端口 |
 | `project_shared_resource` | 项目与基础资源的绑定：角色、是否由默认选型带来 |
-| `project_autopilot_run` | 项目自动驾驶执行记录：每次 `bootstrap` 一行（`trigger=manual|idea|api`）、状态、当前阶段与 10 步进度、结果与失败原因、起止时间 |
+| `project_autopilot_run` | 项目自动驾驶执行记录：每次 `bootstrap` 或计划自动推进一行（`trigger=manual|idea|api|plan`）、状态、当前阶段与进度（bootstrap 10 阶段 / 计划推进 5 任务）、结果与失败原因、起止时间 |
 
 **视图**：公司档案、项目状态、应收应付、合同索引、OKR、客户基础信息只读；客户敏感字段不进入项目视图；跨域明细经 `need_detail` 或一次性令牌。
 
@@ -621,9 +635,9 @@ updated: 2026-11-14
 
 ## 6. 验收与追溯
 
-- 本文 39 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
+- 本文 40 条功能需求逐条 AC 直验；平台类追溯见 `OPC-SRS-001` §12。
 - 单员工流程：`project_stage_gate`、`project_plan_baseline`、`project_status_review`、`project_closure`、`project_release_flow`、`project_test_review`；跨员工 `project_acceptance_flow` 含验收终审 human gate。
-- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.36（含基础资源配置 §3.23–§3.26、项目自动驾驶与自动化生产 §3.27–§3.34、创意转项目 §3.35、SVN 版本库检出 §3.36、自动驾驶控制台/描述抽取/内容化计划 §3.37–§3.39）。
+- 与 WBS、财税、法务、客户、战略的联动见 §3.3、§3.7、§3.8、§3.10、§3.12；软件研发要素见 §3.16–§3.36（含基础资源配置 §3.23–§3.26、项目自动驾驶与自动化生产 §3.27–§3.34、创意转项目 §3.35、SVN 版本库检出 §3.36、自动驾驶控制台/描述抽取/内容化计划 §3.37–§3.39、按计划自动推进 §3.40）。
 - 版本库/制品库/SSH 环境/测试管理为软件研发项目增量，契约与 DDL 在 Phase 2 落地；落地前 manifest 只声明工具族与写目标，不宣称已实现。
 - 插件可插拔验收：manifest 完整、启用/停用可逆、停用后不派工、卸载不误删项目数据。
 

@@ -312,6 +312,26 @@ window.__ModuleLoader__.load({
       ".ocDescBlock{font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;border-left:3px solid var(--oc-border-strong);padding-left:10px}",
       ".ocRunDetail{display:flex;flex-direction:column;gap:8px;margin-top:8px}",
       "@media (max-width:640px){.ocTimeline{flex-direction:column}.ocTlItem{flex:1 1 auto}.ocOpsStack .ocField{min-width:120px}}",
+      // 新建项目页与执行操作布局
+      ".ocFormGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;align-items:end}",
+      ".ocFormGrid>.ocField{min-width:0}",
+      ".ocCheckRow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px}",
+      ".ocCheckRow label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}",
+      ".ocActionRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}",
+      ".ocActionRow .ocMuted{margin-left:auto;text-align:right}",
+      ".ocModeIntro{display:flex;flex-direction:column;gap:3px;border-left:3px solid var(--oc-accent);border-radius:0 8px 8px 0;background:var(--oc-accent-weak);padding:7px 10px}",
+      ".ocModeIntro b{font-size:12.5px;font-weight:650}",
+      ".ocFileDrop{display:flex;flex-direction:column;gap:6px;border:1px dashed var(--oc-border-strong);border-radius:var(--oc-radius);padding:10px 12px;background:var(--oc-surface)}",
+      ".ocFileDrop input[type=file]{font-size:12px;color:inherit;max-width:100%}",
+      ".ocFileList{display:flex;flex-wrap:wrap;gap:6px}",
+      ".ocFlow{display:flex;flex-direction:column;gap:9px;margin:0;padding:0;list-style:none}",
+      ".ocFlowItem{display:flex;align-items:flex-start;gap:9px;font-size:12px}",
+      ".ocFlowItem>div{display:flex;flex-direction:column;gap:2px;min-width:0}",
+      ".ocFlowItem b{font-weight:600}",
+      ".ocFlowItem>div>span{opacity:.64;font-size:11.5px;line-height:1.45}",
+      ".ocFlowNum{width:20px;height:20px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--oc-accent-weak);color:var(--oc-accent);border:1px solid var(--oc-border)}",
+      ".ocResultCard{border:1px solid var(--oc-ok);border-radius:var(--oc-radius);background:var(--oc-ok-weak);padding:10px 12px;display:flex;flex-direction:column;gap:8px}",
+      "@media (max-width:640px){.ocFormGrid{grid-template-columns:1fr}.ocActionRow .ocMuted{margin-left:0;text-align:left}}",
       // employee directory
       ".ocEmpToolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}",
       ".ocSearch{display:flex;align-items:center;gap:7px;border:1px solid var(--oc-border-strong);border-radius:9px;padding:0 10px;background:var(--oc-surface);flex:1 1 220px;max-width:340px;min-width:180px;transition:border-color .15s ease}",
@@ -383,6 +403,7 @@ window.__ModuleLoader__.load({
       search: [h("circle", { key: "a", cx: 11, cy: 11, r: 6.5 }), h("path", { key: "b", d: "m16 16 4 4" })],
       chevron: [h("path", { key: "a", d: "m9 6 6 6-6 6" })],
       dot: [h("circle", { key: "a", cx: 12, cy: 12, r: 3 })],
+      plus: [h("path", { key: "a", d: "M12 5v14" }), h("path", { key: "b", d: "M5 12h14" })],
     };
     function Icon(props) {
       var size = typeof props.size === "number" && props.size > 0 ? props.size : 16;
@@ -1192,11 +1213,109 @@ window.__ModuleLoader__.load({
     }
 
     // ================= 设置 =================
+    // ---- 公司基础信息（跨模块共用） ----
+    var COMPANY_PROFILE_KEYS = [
+      "name", "entityType", "shortName", "englishName", "creditCode", "legalPerson", "establishedDate", "registeredCapital",
+      "companyType", "industry", "employeeCount", "website", "regAddress", "officeAddress", "postcode", "phone",
+      "email", "contactName", "contactTitle", "taxNumber", "invoiceTitle", "taxpayerType", "bankName",
+      "bankAccount", "invoiceNote", "businessScope",
+    ];
+    // 必填项口径与后端 PUT /admin/company-profile 校验一致：仅公司全称 name 必填，其余字段可选。
+    var COMPANY_PROFILE_REQUIRED = ["name"];
+    var TAXPAYER_OPTIONS = [
+      { value: "", label: "未设置" },
+      { value: "general", label: "一般纳税人" },
+      { value: "small", label: "小规模纳税人" },
+      { value: "other", label: "其他" },
+    ];
+    function profileToDraft(profile) {
+      var draft = {};
+      COMPANY_PROFILE_KEYS.forEach(function (key) {
+        var value = profile ? profile[key] : undefined;
+        draft[key] = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+      });
+      // 主体类型为 NOT NULL 且缺省「服务型」：无档案时给表单真实默认值，避免只显示下拉占位却提交空串。
+      if (!draft.entityType) draft.entityType = "服务型";
+      return draft;
+    }
+    function CompanyProfileCard(props) {
+      var draft = props.draft || {};
+      var defaults = props.defaults || {};
+      var resources = defaults.resources || [];
+      var loadError = props.error || "";
+      function bind(key) { return function (value) { props.onChange(key, value); }; }
+      function text(label, key, placeholder) {
+        return h(Field, { label: label, value: draft[key] === undefined || draft[key] === null ? "" : String(draft[key]), onChange: bind(key), placeholder: placeholder || "", required: COMPANY_PROFILE_REQUIRED.indexOf(key) >= 0 });
+      }
+      return h(Card, null,
+        h("div", { className: "ocH" }, "公司基础信息", h("span", { className: "ocCount" }, props.loading ? "加载中…" : "跨模块共用")),
+        h("div", { className: "ocMuted" }, "这里维护公司唯一主体档案：项目（自动驾驶交付物抬头）、财税（开票抬头/税号/银行）、法务（合同主体）、行政（档案/联系方式）共用同一份，不各页重复填。"),
+        loadError ? h("div", { className: "ocBanner" }, h("span", { className: "ocBannerMsg" }, "公司信息接口暂不可用（服务端需重启加载新 API）：" + loadError)) : null,
+        h("div", { className: "ocH", style: { marginTop: 4 } }, "工商信息"),
+        h("div", { className: "ocFormGrid" },
+          text("公司全称", "name", "必填"),
+          h(Select, { label: "主体类型", value: draft.entityType || "服务型", options: [{ value: "服务型", label: "服务型" }, { value: "贸易型", label: "贸易型" }, { value: "混合型", label: "混合型" }], onChange: bind("entityType") }),
+          text("简称", "shortName", "日常称呼"),
+          text("英文名", "englishName"),
+          text("统一社会信用代码", "creditCode", "18 位"),
+          text("法定代表人", "legalPerson"),
+          text("成立日期", "establishedDate", "YYYY-MM-DD"),
+          text("注册资本", "registeredCapital", "如 100 万元"),
+          text("公司类型", "companyType", "如 有限责任公司"),
+          text("所属行业", "industry", "如 软件和信息技术服务"),
+          text("员工规模", "employeeCount", "人数"),
+          text("官网", "website", "https://…")),
+        h("div", { className: "ocH" }, "地址与联系方式"),
+        h("div", { className: "ocFormGrid" },
+          text("注册地址", "regAddress"),
+          text("办公地址", "officeAddress"),
+          text("邮编", "postcode", "6 位数字"),
+          text("联系电话", "phone"),
+          text("电子邮箱", "email"),
+          text("联系人", "contactName"),
+          text("联系人职务", "contactTitle")),
+        h("div", { className: "ocH" }, "开票与银行"),
+        h("div", { className: "ocFormGrid" },
+          text("税号", "taxNumber"),
+          text("开票抬头", "invoiceTitle"),
+          h(Select, { label: "纳税人类型", value: draft.taxpayerType || "", options: TAXPAYER_OPTIONS, onChange: bind("taxpayerType") }),
+          text("开户银行", "bankName"),
+          text("银行账号", "bankAccount"),
+          text("发票备注", "invoiceNote")),
+        h(Area, { label: "经营范围", value: draft.businessScope === undefined || draft.businessScope === null ? "" : String(draft.businessScope), onChange: bind("businessScope"), rows: 3, placeholder: "营业执照上的经营范围，可复制粘贴" }),
+        h("div", { className: "ocSection" },
+          h("div", { className: "ocH" }, "项目与其他模块共用的默认口径", h("span", { className: "ocCount" }, "只读")),
+          h("div", { className: "ocRow" },
+            h("span", { className: "ocChip" }, "默认系统：" + (defaults.defaultOs || "debian")),
+            h("span", { className: "ocChip" }, "远程方式：" + (defaults.defaultRemoteMethod || "ssh")),
+            h("span", { className: "ocChip" }, "默认账号：" + (defaults.defaultAccount || "-")),
+            h("span", { className: "ocChip" }, "SSH 端口：" + (defaults.defaultSshPort || 22))),
+          resources.length
+            ? h("div", { className: "ocRow" }, resources.map(function (item, index) {
+                return h("span", { key: item.id || index, className: "ocChip" }, (item.kind || "") + "：" + (item.name || item.endpoint || "-"));
+              }))
+            : h("div", { className: "ocMuted" }, "尚未登记默认基础资源；新建项目与自动驾驶会自动复用这里的默认选型。"),
+          h("div", { className: "ocHint" }, "修改默认资源请到「项目管理 → 基础资源」登记；本卡只维护公司主体信息。")),
+        h("div", { className: "ocActionRow" },
+          h(Btn, { kind: "primary", disabled: props.busy || props.loading || !!loadError, onClick: props.onSave }, props.busy ? "保存中…" : "保存公司信息"),
+          h(Btn, { disabled: props.busy || props.loading, onClick: props.onReset }, "放弃修改"),
+          h("span", { className: "ocMuted" }, "保存后项目交付物、开票与合同主体立即使用新信息")));
+    }
+
     function SettingsTab(props) {
       var healthS = useLoad(function () { return apiGet("/agents/health"); }, []);
       var manifestS = useLoad(function () { return apiGet("/web/manifest"); }, []);
+      var profileS = useLoad(function () { return apiGet("/admin/company-profile"); }, []);
+      var draftS = react.useState(null);
+      var draft = draftS[0], setDraft = draftS[1];
       var busyS = react.useState(false);
       var busy = busyS[0], setBusy = busyS[1];
+      var profileData = profileS[0].data || {};
+      var loadedProfile = profileData.profile || null;
+      react.useEffect(function () {
+        if (profileS[0].loading) return;
+        setDraft(profileToDraft(loadedProfile));
+      }, [profileS[0].loading, loadedProfile]);
       var agents = healthS[0].data || {};
       var manifest = manifestS[0].data || {};
       function act(promise, ok) {
@@ -1205,10 +1324,34 @@ window.__ModuleLoader__.load({
           .catch(function (e) { props.flash(String((e && e.message) || e), false); })
           .then(function () { setBusy(false); });
       }
+      function saveProfile() {
+        if (!draft) return;
+        var payload = { updatedBy: "老板" };
+        COMPANY_PROFILE_KEYS.forEach(function (key) {
+          var value = draft[key];
+          payload[key] = typeof value === "string" ? value.trim() : value;
+        });
+        setBusy(true);
+        apiPut("/admin/company-profile", payload)
+          .then(function () { props.flash("公司基础信息已保存", true); profileS[1](); })
+          .catch(function (e) { props.flash(String((e && e.message) || e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function resetProfile() { setDraft(profileToDraft(loadedProfile)); }
       return h(Fragment, null,
-        h(PageHeader, { title: "设置", subtitle: "基础设施健康 · 全局暂停 · 网页表现层 manifest" },
-          h(Btn, { onClick: function () { healthS[1](); manifestS[1](); } }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
-        h(ErrLine, { error: healthS[0].error || manifestS[0].error, onRetry: function () { healthS[1](); manifestS[1](); } }),
+        h(PageHeader, { title: "设置", subtitle: "公司基础信息 · 基础设施健康 · 全局暂停 · 网页表现层 manifest" },
+          h(Btn, { onClick: function () { healthS[1](); manifestS[1](); profileS[1](); } }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
+        h(ErrLine, { error: healthS[0].error || manifestS[0].error, onRetry: function () { healthS[1](); manifestS[1](); profileS[1](); } }),
+        h(CompanyProfileCard, {
+          draft: draft,
+          defaults: profileData.defaults || {},
+          loading: profileS[0].loading,
+          busy: busy,
+          error: profileS[0].error || "",
+          onChange: function (key, value) { var next = Object.assign({}, draft || {}); next[key] = value; setDraft(next); },
+          onSave: saveProfile,
+          onReset: resetProfile,
+        }),
         h(Card, null,
           h("div", { className: "ocH" }, "员工智能体（基础设施层 dsh-super-agents）"),
           h("div", { className: "ocRow" },
@@ -2214,6 +2357,8 @@ window.__ModuleLoader__.load({
     var PROJECT_STATUS_TONE = { ready: "ok", running: "warn", waiting_decision: "warn", failed: "bad", not_started: "mute", archived: "mute" };
     var PROJECT_STATUS_LABEL = { ready: "计划就绪", running: "进行中", waiting_decision: "待裁决", failed: "执行失败", not_started: "未开始", archived: "已归档" };
     var RUN_STATUS_LABEL = { running: "运行中", ok: "成功", failed: "失败" };
+    var TRIGGER_LABEL = { manual: "手动", idea: "创意建项目", api: "接口调用", plan: "计划自动推进" };
+    function triggerLabel(trigger) { return TRIGGER_LABEL[trigger] || textOf(trigger); }
     var STEP_STATUS_LABEL = { pending: "待执行", running: "执行中", ok: "完成", failed: "失败", skipped: "跳过" };
     var PLAN_KIND_TITLE = { dev: "开发计划", test: "测试计划", deploy: "部署计划" };
 
@@ -2321,7 +2466,7 @@ window.__ModuleLoader__.load({
           h("span", { className: "ocMuted" }, "阶段 " + textOf(run.stageLabel || run.stage)),
           h("span", { className: "ocMuted" }, "耗时 " + fmtDuration(run.durationMs)),
           h("span", { className: "ocMuted" }, "开始 " + fmtTime(run.startedAt)),
-          h("span", { className: "ocMono" }, "触发 " + textOf(run.trigger))),
+          h("span", { className: "ocMono" }, "触发 " + triggerLabel(run.trigger))),
         run.error ? h("div", { className: "ocErr" }, h("span", { className: "ocErrMsg" }, "运行错误：" + run.error)) : null,
         h("div", { className: "ocH" }, "步骤明细"),
         h(StepList, { steps: run.steps, empty: "该次运行没有记录步骤" }),
@@ -2341,7 +2486,7 @@ window.__ModuleLoader__.load({
         { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: runStatusTone(r.status) }, runStatusLabel(r.status)); } },
         { key: "stage", label: "阶段", render: function (r) { return h("span", null, textOf(r.stageLabel || r.stage)); } },
         { key: "durationMs", label: "耗时", render: function (r) { return h("span", { className: "ocMono" }, fmtDuration(r.durationMs)); } },
-        { key: "trigger", label: "触发", render: function (r) { return h("span", { className: "ocMono" }, textOf(r.trigger)); } },
+        { key: "trigger", label: "触发", render: function (r) { return h("span", { className: "ocMono" }, triggerLabel(r.trigger)); } },
         { key: "error", label: "错误", render: function (r) { return r.error ? h("span", { className: "ocDangerText", title: r.error }, short(r.error, 42)) : h("span", { className: "ocMuted" }, "-"); } },
         { key: "__ops", label: "操作", render: function (r) {
           var on = String(r.id) === String(open);
@@ -2526,7 +2671,7 @@ window.__ModuleLoader__.load({
           h("div", { className: "ocH" }, "当前执行", h("span", { className: "ocCount" }, "空闲")),
           h("div", { className: "ocMuted" }, last
             ? "最近一次：" + fmtTime(last.startedAt) + " · " + textOf(last.stageLabel || last.stage) + " · " + runStatusLabel(last.status) + " · 耗时 " + fmtDuration(last.durationMs)
-            : "还没有执行记录。填写页面底部的「新建与执行」开始自动生产。"),
+            : "还没有执行记录。点页面顶部「新建项目」，或在「执行操作」里直接执行自动生产。"),
           last ? h("div", { className: "ocStickyActions" },
             h(Badge, { tone: runStatusTone(last.status) }, runStatusLabel(last.status)),
             last.error ? h("span", { className: "ocDangerText" }, short(last.error, 120)) : null) : null);
@@ -2543,7 +2688,7 @@ window.__ModuleLoader__.load({
           h("b", null, textOf(run.stageLabel || run.stage)),
           h("span", { className: "ocMuted" }, "开始 " + fmtTime(run.startedAt)),
           h("span", { className: "ocMuted" }, "耗时 " + fmtDuration(run.durationMs)),
-          h("span", { className: "ocMono" }, "触发 " + textOf(run.trigger))),
+          h("span", { className: "ocMono" }, "触发 " + triggerLabel(run.trigger))),
         h("div", { className: "ocRow" },
           h("span", { className: "ocMuted" }, "进度 " + okCount + "/" + total),
           h("div", { className: "ocProgressWrap" },
@@ -2647,7 +2792,8 @@ window.__ModuleLoader__.load({
         { id: "all", label: "全部" },
       ];
       return h(Card, null,
-        h("div", { className: "ocH" }, "项目状态总览", h("span", { className: "ocCount" }, counts.total === undefined ? "共 " + projects.length + " 条" : "共 " + counts.total + " 个项目")),
+        h("div", { className: "ocH" }, "项目状态总览", h("span", { className: "ocCount" }, counts.total === undefined ? "共 " + projects.length + " 条" : "共 " + counts.total + " 个项目"),
+          props.onNewProject ? h(Btn, { onClick: props.onNewProject }, h(Icon, { name: "plus", size: 14 }), "新建项目") : null),
         h(KpiGrid, { items: [
           { label: "进行中", value: counts.running || 0, tone: (counts.running || 0) > 0 ? "warn" : "" },
           { label: "待裁决", value: counts.waitingDecision || 0, tone: (counts.waitingDecision || 0) > 0 ? "warn" : "" },
@@ -2663,6 +2809,144 @@ window.__ModuleLoader__.load({
         h(Table, { columns: columns, rows: props.rows || [], loading: props.loading, empty: "暂无项目", emptyHint: "新建项目后，这里显示状态、当前执行与归档操作。", emptyIcon: "layers" }));
     }
 
+    // ---- 执行操作 / 详情分栏（状态由 AutopilotTab 持有，子组件只读） ----
+    function OpsCard(props) {
+      var form = props.form || {};
+      function bind(key) { return function (value) { props.onField(key, value); }; }
+      return h(Card, null,
+        h("div", { className: "ocH" }, "执行操作", h("span", { className: "ocCount" }, props.selectedName ? "当前项目：" + props.selectedName : "")),
+        h("div", { className: "ocFormGrid" },
+          h(Select, { label: "版本库类型", value: form.kind, options: REPO_KIND_OPTIONS, onChange: props.onKind }),
+          h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: bind("repositoryUrl"), placeholder: "https://… / file:///… / svn://…" }),
+          h(Field, { label: repoBranchLabel(form.kind), value: form.branch, onChange: bind("branch") }),
+          repoKind(form.kind) === "svn" ? h(Field, { label: "修订号", value: form.revision, onChange: bind("revision"), placeholder: "HEAD 或 12345" }) : null,
+          h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: bind("authRef"), placeholder: "env:GIT_TOKEN" }),
+          h(Field, { label: "健康检查 URL", value: form.healthUrl, onChange: bind("healthUrl"), placeholder: "http://host:port/health" })),
+        h("div", { className: "ocCheckRow" },
+          h("label", null, h("input", { type: "checkbox", checked: !!form.scaffold, onChange: function (e) { props.onField("scaffold", e.target.checked); } }), "生成代码骨架"),
+          h("label", null, h("input", { type: "checkbox", checked: !!form.pipeline, onChange: function (e) { props.onField("pipeline", e.target.checked); } }), "跑测试流水线"),
+          h("label", null, h("input", { type: "checkbox", checked: !!form.deployTest, onChange: function (e) { props.onField("deployTest", e.target.checked); } }), "发测试环境")),
+        h("div", { className: "ocActionRow" },
+          h(Btn, { kind: "primary", disabled: props.busy, onClick: props.onRun }, props.busy ? "执行中…" : "执行自动驾驶"),
+          h(Btn, { disabled: props.busy, onClick: props.onDeploy }, "发布到测试环境"),
+          h("span", { className: "ocMuted" }, "复用已登记版本库与测试环境；重复执行只递增计划版本")),
+        props.repos && props.repos.length
+          ? h("div", { className: "ocHint" }, "已登记版本库：" + props.repos.map(function (repo) {
+              return textOf(repo.name, repo.url) + "（" + repoKindLabel(repo.kind) + " · " + textOf(repo.url) + "）";
+            }).join("；"))
+          : null);
+    }
+
+    function CheckoutCard(props) {
+      var checkout = props.checkout || null;
+      var tech = props.tech || {};
+      var scan = props.scan || {};
+      var pipelineFailed = props.pipelineFailed || 0;
+      return h(Card, null,
+        h("div", { className: "ocH" }, "检出与扫描", h("span", { className: "ocCount" }, checkout ? checkoutRefText(checkout) : "未检出")),
+        h(KpiGrid, { items: [
+          { label: "源码文件", value: (checkout && checkout.file_count) || 0 },
+          { label: "主语言", value: tech.primaryLanguage || "-" },
+          { label: "计划", value: props.planCount || 0 },
+          { label: "流水线失败", value: pipelineFailed, tone: pipelineFailed > 0 ? "bad" : "ok" },
+        ] }),
+        h("div", { className: "ocHint" }, checkout
+          ? "字节 " + textOf(checkout.size_bytes, "0") + " · 分支 " + textOf(checkout.branch)
+          : "尚未检出：执行一次自动驾驶后补齐。"),
+        h("div", { className: "ocHint" }, "语言 " + (Object.keys(scan.languages || {}).join(" / ") || "-") + "；测试 " + asList(scan.tests).length + "；CI " + asList(scan.ci).length));
+    }
+
+    function PipelineCard(props) {
+      var rows = props.rows || [];
+      return h(Card, null,
+        h("div", { className: "ocH" }, "测试流水线与骨架", h("span", { className: "ocCount" }, rows.length + " 阶段")),
+        h(Table, {
+          columns: [
+            { key: "stage", label: "阶段" },
+            { key: "command", label: "命令" },
+            { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, textOf(r.status)); } },
+            { key: "exit_code", label: "退出码" },
+          ],
+          rows: rows,
+          empty: "还没跑过流水线",
+          emptyHint: "自动生产默认会跑仓库既有的 lint/build/test 脚本。",
+          emptyIcon: "flow",
+        }));
+    }
+
+    function DeployCard(props) {
+      var rows = props.rows || [];
+      return h(Card, null,
+        h("div", { className: "ocH" }, "测试环境发布", h("span", { className: "ocCount" }, rows.length + " 次")),
+        h(Table, {
+          columns: [
+            { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, textOf(r.status)); } },
+            { key: "release_id", label: "发布单" },
+            { key: "exit_code", label: "退出码" },
+            { key: "health_url", label: "健康检查" },
+          ],
+          rows: rows,
+          empty: "还没发布过测试环境",
+          emptyHint: "配置 OPC_TEST_DEPLOY_CMD 后可自动发布。",
+          emptyIcon: "layers",
+        }));
+    }
+
+    function DecisionsCard(props) {
+      var items = props.items || [];
+      var openS = react.useState(null);
+      var open = openS[0], setOpen = openS[1];
+      var textS = react.useState("");
+      var text = textS[0], setText = textS[1];
+      return h(Card, null,
+        h("div", { className: "ocH" }, "待裁决", h("span", { className: "ocCount" }, items.length + " 项")),
+        items.length ? h("div", { className: "ocFormStack" }, items.map(function (d) {
+          var editing = !!open && String(open.id) === String(d.id);
+          return h("div", { key: d.id, className: "ocSection" },
+            h("div", { className: "ocRowLine" },
+              h(Badge, { tone: d.risk_level === "high" ? "bad" : d.risk_level === "medium" ? "warn" : "mute" }, textOf(d.risk_level, "low")),
+              h("b", null, textOf(d.topic))),
+            h("div", { className: "ocMuted" }, textOf(d.question)),
+            editing
+              ? h(Fragment, null,
+                  h(Field, { label: "裁决内容", value: text, onChange: setText }),
+                  h("div", { className: "ocStickyActions" },
+                    h(Btn, { kind: "primary", onClick: function () { props.onSubmit(d.id, text); } }, "确认裁决"),
+                    h(Btn, { onClick: function () { setOpen(null); } }, "取消")))
+              : h(Btn, { onClick: function () { setOpen({ id: d.id }); setText(""); } }, "裁决"));
+        })) : h("div", { className: "ocMuted" }, "没有待裁决事项：自动化不需要你拍板。"));
+    }
+
+    // ---- 计划自动推进（后台定时任务，无手动按钮） ----
+    function PlanAutoCard(props) {
+      var exec = props.execution || null;
+      var tasks = exec && exec.tasks ? exec.tasks : [];
+      var steps = tasks.map(function (task) {
+        var status = task.status === "failed" ? "failed" : task.status === "running" ? "running" : task.status === "ok" ? "ok" : "pending";
+        return { stage: task.key, label: task.title, status: status, detail: task.detail };
+      });
+      var percent = exec ? (exec.percent || 0) : 0;
+      var label = exec === null ? "等待首次推进" : exec.status === "running" ? "推进中" : exec.completed ? "已完成" : exec.blocked ? "已阻塞" : "已结束";
+      var tone = exec === null ? "mute" : exec.status === "running" ? "warn" : exec.completed ? "ok" : exec.blocked ? "bad" : "mute";
+      return h(Card, null,
+        h("div", { className: "ocH" }, "计划自动推进", h("span", { className: "ocCount" }, exec === null ? "后台每 15 分钟" : "run #" + exec.id)),
+        h("div", { className: "ocMeta" },
+          h(Badge, { tone: tone }, label),
+          exec === null ? null : h("span", { className: "ocMuted" }, "完成 " + percent + "% · " + fmtTime(exec.startedAt) + (exec.endedAt ? " → " + fmtTime(exec.endedAt) : "")),
+          exec === null ? null : h("span", { className: "ocMono" }, textOf(exec.status))),
+        h("div", { className: "ocProgressWrap" },
+          h("div", { className: "ocBar", role: "progressbar", "aria-valuenow": percent, "aria-valuemin": 0, "aria-valuemax": 100 }, h("i", { style: { width: percent + "%" } })),
+          h("b", null, percent + "%")),
+        exec === null
+          ? h("div", { className: "ocMuted" }, "后台任务启用后按开发计划逐个补齐范围、架构、实现、测试与发布交付物；无需手动点击。")
+          : h(StepList, { steps: steps, empty: "尚无任务明细" }),
+        exec !== null && exec.blocked
+          ? h("div", { className: "ocBanner" }, h("span", { className: "ocBannerMsg" }, "已阻塞" + (exec.blockTopic ? "（" + exec.blockTopic + "）" : "") + "：需要老板裁决后才会继续。"))
+          : null,
+        h("div", { className: "ocHint" }, exec !== null && exec.completed
+          ? "工程交付物已补齐、测试环境已发布；生产发布仍需你确认。"
+          : "自动推进只补齐工程交付物、跑流水线并发布测试环境；生产发布仍需你确认。"));
+    }
     function AutopilotTab(props) {
       var filterS = react.useState("active");
       var filter = filterS[0], setFilter = filterS[1];
@@ -2670,7 +2954,7 @@ window.__ModuleLoader__.load({
       var listData = listS[0].data || {};
       var projects = listData.items || [];
       var counts = listData.counts || {};
-      var selS = react.useState("");
+      var selS = react.useState(props.focusProjectId ? String(props.focusProjectId) : "");
       var selected = selS[0], setSelected = selS[1];
       react.useEffect(function () {
         if (!selected && projects.length) setSelected(String(projects[0].id));
@@ -2695,14 +2979,6 @@ window.__ModuleLoader__.load({
       var form = formS[0], setForm = formS[1];
       var busyS = react.useState(false);
       var busy = busyS[0], setBusy = busyS[1];
-      var decideS = react.useState(null);
-      var deciding = decideS[0], setDeciding = decideS[1];
-      var ideaS = react.useState({ idea: "", repositoryUrl: "", branch: "", kind: "git", revision: "", authRef: "" });
-      var ideaForm = ideaS[0], setIdeaForm = ideaS[1];
-      var filesS = react.useState([]);
-      var ideaFiles = filesS[0], setIdeaFiles = filesS[1];
-      var analysisS = react.useState(null);
-      var ideaResult = analysisS[0], setIdeaResult = analysisS[1];
       var archiveBusyS = react.useState("");
       var archiveBusy = archiveBusyS[0], setArchiveBusy = archiveBusyS[1];
       function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
@@ -2749,7 +3025,6 @@ window.__ModuleLoader__.load({
       var deploy = asList(sum.deploy);
       var checkout = sum.checkout;
       var scan = sum.scan || {};
-      var scanFindings = scan.findings || {};
       var tech = (sum.profile && sum.profile.tech_stack) || {};
       var selectedItem = null;
       for (var pi = 0; pi < projects.length; pi += 1) if (String(projects[pi].id) === String(selected)) selectedItem = projects[pi];
@@ -2762,6 +3037,7 @@ window.__ModuleLoader__.load({
       var description = sum.description !== undefined && sum.description !== null ? sum.description : ((project && project.description) || "");
       var descriptionSource = sum.descriptionSource || "";
       var runs = asList(sum.runs);
+      var planExecution = sum.planExecution || null;
       var currentRun = sum.currentRun || null;
       if (!currentRun) {
         for (var ri = 0; ri < runs.length; ri += 1) if (runs[ri].status === "running") { currentRun = runs[ri]; break; }
@@ -2798,82 +3074,6 @@ window.__ModuleLoader__.load({
         listS[1]();
         if (selected) { sumS[1](); reposS[1](); }
       }
-      function run() {
-        if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
-        setBusy(true);
-        apiPost("/admin/projects", {
-          name: form.name || ("自动生产-" + new Date().toISOString().slice(5, 16)),
-          stage: "planning",
-          repository: repoPayload(form.kind, form.repositoryUrl, form.branch, form.authRef, form.revision),
-          autopilotOptions: { scaffold: form.scaffold, pipeline: form.pipeline, deployTest: form.deployTest, healthUrl: form.healthUrl || undefined },
-        }).then(function (r) {
-          var ap = r.autopilot || {};
-          var parts = [];
-          if (ap.checkout) parts.push("检出 " + checkoutRefText(ap.checkout));
-          if (ap.scaffold) parts.push("骨架 " + ap.scaffold.status);
-          if (ap.pipeline) parts.push("流水线 " + ap.pipeline.status);
-          if (ap.deploy) parts.push("测试环境 " + ap.deploy.status);
-          props.flash("自动生产完成：" + (parts.join(" · ") || "已创建"));
-          if (r.id) setSelected(String(r.id));
-          refreshAll();
-        }).catch(function (e) { props.flash(e.message || String(e), false); })
-          .then(function () { setBusy(false); });
-      }
-      function upIdea(key, value) { var next = Object.assign({}, ideaForm); next[key] = value; setIdeaForm(next); }
-      function upIdeaRepoKind(value) {
-        var next = Object.assign({}, ideaForm);
-        var wasSvn = repoKind(next.kind) === "svn";
-        next.kind = repoKind(value);
-        if (next.kind !== "svn") next.revision = "";
-        if (next.kind === "svn" && !wasSvn && /^(main|master)$/i.test(String(next.branch || "").trim())) next.branch = "";
-        setIdeaForm(next);
-      }
-      function pickIdeaFiles(event) {
-        var list = Array.prototype.slice.call(event.target.files || []);
-        event.target.value = "";
-        var allowed = /[.](txt|md|markdown|csv|tsv|json|yml|yaml|log|docx|xlsx|pdf)$/i;
-        var next = ideaFiles.slice();
-        list.forEach(function (file) {
-          if (!allowed.test(file.name)) { props.flash("不支持的格式：" + file.name, false); return; }
-          if (file.size > 10 * 1024 * 1024) { props.flash("单个文档不能超过 10MB：" + file.name, false); return; }
-          var reader = new FileReader();
-          reader.onload = function () {
-            var dataUrl = String(reader.result || "");
-            var comma = dataUrl.indexOf(",");
-            next.push({ name: file.name, contentBase64: comma >= 0 ? dataUrl.slice(comma + 1) : "" });
-            setIdeaFiles(next.slice());
-          };
-          reader.readAsDataURL(file);
-        });
-      }
-      function submitIdea(create) {
-        if (!ideaForm.idea && ideaFiles.length === 0) { props.flash("请填写创意或上传文档", false); return; }
-        setBusy(true);
-        var ideaKind = repoKind(ideaForm.kind);
-        var payload = {
-          idea: ideaForm.idea,
-          files: ideaFiles.map(function (file) { return { name: file.name, contentBase64: file.contentBase64 }; }),
-          repositoryUrl: ideaForm.repositoryUrl || undefined,
-          branch: ideaForm.branch || undefined,
-          authRef: ideaForm.authRef || undefined,
-          repository: { kind: ideaKind },
-        };
-        if (ideaKind === "svn") payload.repository.revision = ideaForm.revision || "HEAD";
-        apiPost(create ? "/admin/projects/from-idea" : "/admin/ideas/analyze", payload)
-          .then(function (r) {
-            setIdeaResult(r.analysis || null);
-            if (create) {
-              var analysis = r.analysis || {};
-              props.flash("已创建「" + ((r.project && r.project.name) || analysis.name) + "」· " + r.status + "（解析来源 " + (analysis.source || "rule") + "）");
-              if (r.project && r.project.id) setSelected(String(r.project.id));
-              refreshAll();
-            } else {
-              props.flash("解析完成：" + (((r.analysis || {}).name) || "创意") + "（来源 " + (((r.analysis || {}).source) || "rule") + "）");
-            }
-          })
-          .catch(function (e) { props.flash(e.message || String(e), false); })
-          .then(function () { setBusy(false); });
-      }
       function runExisting() {
         if (!selected) { props.flash("先选一个项目", false); return; }
         if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
@@ -2901,11 +3101,10 @@ window.__ModuleLoader__.load({
           .catch(function (e) { props.flash(e.message || String(e), false); })
           .then(function () { setBusy(false); });
       }
-      function submitDecision(decisionId) {
-        var text = deciding && deciding.text ? deciding.text : "";
+      function submitDecision(decisionId, text) {
         if (!text) { props.flash("请填写裁决内容", false); return; }
-        apiPost("/admin/projects/" + selected + "/decisions/" + decisionId + "/decide", { decision: text, decidedBy: "老板" })
-          .then(function () { props.flash("已裁决"); setDeciding(null); refreshAll(); })
+        return apiPost("/admin/projects/" + selected + "/decisions/" + decisionId + "/decide", { decision: text, decidedBy: "老板" })
+          .then(function () { props.flash("已裁决"); refreshAll(); })
           .catch(function (e) { props.flash(e.message || String(e), false); });
       }
       function archiveProject(row, reason) {
@@ -2922,10 +3121,13 @@ window.__ModuleLoader__.load({
           .catch(function (e) { props.flash(e.message || String(e), false); })
           .then(function () { setArchiveBusy(""); });
       }
+      var opsName = (project && project.name) || "";
+      var pipelineFailed = pipeline.filter(function (r) { return r.status === "failed"; }).length;
       return h(Fragment, null,
-        h(PageHeader, { title: "自动驾驶", subtitle: "项目状态 · 当前执行 · 路线图 · 执行记录 · 归档" },
+        h(PageHeader, { title: "自动驾驶", subtitle: "项目状态 · 当前执行 · 路线图 · 执行记录 · 待裁决" },
           h(Select, { label: "当前项目", value: selected, options: projectOptions, onChange: setSelected }),
-          h(Btn, { onClick: refreshAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh"))),
+          h(Btn, { onClick: refreshAll }, h(Icon, { name: "refresh", size: 14 }), t("panel.refresh")),
+          h(Btn, { kind: "primary", onClick: props.onNewProject }, h(Icon, { name: "plus", size: 14 }), "新建项目")),
         h(ErrLine, { error: listS[0].error || sumS[0].error, onRetry: refreshAll }),
         h(ProjectOverviewCard, {
           projects: projects,
@@ -2939,144 +3141,314 @@ window.__ModuleLoader__.load({
           onSelect: function (row) { setSelected(String(row.id)); },
           onArchive: archiveProject,
           onUnarchive: unarchiveProject,
+          onNewProject: props.onNewProject,
         }),
         !selected
-          ? h(EmptyState, { title: "先选择一个项目", hint: "在上方项目表格点击项目名或「查看」，即可查看项目信息、当前执行、路线图与执行记录。", icon: "target" })
+          ? h(EmptyState, {
+              title: "先选择一个项目",
+              hint: "在上方项目表格选择项目；也可以从「新建项目」开始，建好后自动回到这里。",
+              icon: "target",
+              action: props.onNewProject ? h(Btn, { kind: "primary", onClick: props.onNewProject }, "新建项目") : null,
+            })
           : !detailReady
             ? h(Card, null,
                 h("div", { className: "ocH" }, "项目详情", h("span", { className: "ocCount" }, sumS[0].error ? "加载失败" : "加载中…")),
                 h(SkeletonTable, { columns: [{ key: "a" }, { key: "b" }, { key: "c" }, { key: "d" }], rows: 4 }),
                 sumS[0].error ? h("div", { className: "ocStickyActions" }, h(Btn, { onClick: sumS[1] }, t("panel.retry"))) : null)
             : h(Fragment, null,
-                h(ProjectInfoCard, {
-                  project: project || { id: selected },
-                  status: status,
-                  statusLabel: statusLabel,
-                  archived: archived,
-                  archivedAt: archivedAt,
-                  archiveReason: archiveReason,
-                  description: description,
-                  descriptionSource: descriptionSource,
-                  tech: tech,
-                  repository: repository,
-                  busy: String(archiveBusy) === String(selected),
-                  onArchive: function (reason) { archiveProject({ id: selected, name: project && project.name }, reason); },
-                  onUnarchive: function () { unarchiveProject({ id: selected, name: project && project.name }); },
-                  onRefresh: refreshAll,
+                h(OpsCard, {
+                  form: form,
+                  busy: busy,
+                  selectedName: opsName,
+                  repos: repos,
+                  onField: up,
+                  onKind: upRepoKind,
+                  onRun: runExisting,
+                  onDeploy: rerunDeploy,
                 }),
-                h(CurrentRunCard, { run: currentRun, last: lastRun }),
-                h(RoadmapCard, { roadmap: roadmap, plans: plans }),
-                h(RunsCard, { runs: runs, loading: false }),
-                h(Card, null,
-                  h("div", { className: "ocH" }, "检出与扫描"),
-                  h(KpiGrid, { items: [
-                    { label: "检出", value: checkout && checkout.status === "ok" ? 1 : 0, unit: checkout && checkout.status === "ok" ? "ok" : "", tone: checkout && checkout.status === "ok" ? "ok" : "warn" },
-                    { label: "源码文件", value: (checkout && checkout.file_count) || 0 },
-                    { label: "主语言", value: tech.primaryLanguage || "-" },
-                    { label: "计划", value: plans.length },
-                    { label: "待裁决", value: pending.length, tone: pending.length > 0 ? "warn" : "ok" },
-                    { label: "流水线失败", value: pipeline.filter(function (r) { return r.status === "failed"; }).length, tone: pipeline.some(function (r) { return r.status === "failed"; }) ? "bad" : "ok" },
-                    { label: "测试环境", value: deploy.length ? deploy[0].status : "-", tone: deploy.length && deploy[0].status === "ok" ? "ok" : "warn" },
-                  ] }),
-                  h("div", { className: "ocMuted" }, checkout ? (checkoutRefText(checkout) + " · 文件 " + (checkout.file_count || 0) + " · 字节 " + (checkout.size_bytes || 0) + " · 分支 " + (checkout.branch || "-")) : "尚未检出"),
-                  h("div", { className: "ocMuted" }, "语言：" + Object.keys(scan.languages || {}).join(" / ") + "；测试：" + (asList(scan.tests).length) + "；CI：" + (asList(scan.ci).length)),
-                  h("div", { className: "ocMuted" }, "缓存排除：" + Object.keys(scanFindings).length + " 项扫描证据")),
-                h(Card, null,
-                  h("div", { className: "ocH" }, "待裁决（" + pending.length + "）"),
-                  pending.length ? pending.map(function (d) {
-                    var editing = deciding && deciding.id === d.id;
-                    return h("div", { key: d.id, className: "ocSection" },
-                      h("div", { className: "ocRow" },
-                        h(Badge, { tone: d.risk_level === "high" ? "bad" : d.risk_level === "medium" ? "warn" : "mute" }, d.risk_level || "low"),
-                        h("b", null, d.topic),
-                        h("span", { style: { flex: 1 } }, d.question),
-                        h(Btn, { onClick: function () { setDeciding(editing ? null : { id: d.id, text: "" }); } }, editing ? "取消" : "裁决")),
-                      editing ? h("div", { className: "ocFormRow" },
-                        h(Field, { label: "裁决内容", value: deciding.text, onChange: function (v) { setDeciding({ id: d.id, text: v }); } }),
-                        h(Btn, { kind: "primary", onClick: function () { submitDecision(d.id); } }, "确认裁决")) : null);
-                  }) : h("div", { className: "ocMuted" }, "没有待裁决事项：自动化不需要你拍板。"))),
-                h(Card, null,
-                  h("div", { className: "ocH" }, "测试流水线与骨架"),
-                  h(Table, { columns: [
-                    { key: "stage", label: "阶段" },
-                    { key: "command", label: "命令" },
-                    { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
-                    { key: "exit_code", label: "退出码" },
-                  ], rows: pipeline, empty: "还没跑过流水线", emptyHint: "自动生产默认会跑仓库既有的 lint/build/test 脚本。", emptyIcon: "flow" })),
-                h(Card, null,
-                  h("div", { className: "ocH" }, "测试环境发布"),
-                  h("div", { className: "ocRow" },
-                    h(Btn, { kind: "primary", disabled: busy, onClick: rerunDeploy }, "发布到测试环境")),
-                  h(Table, { columns: [
-                    { key: "status", label: "状态", render: function (r) { return h(Badge, { tone: r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "mute" }, r.status); } },
-                    { key: "release_id", label: "发布单" },
-                    { key: "exit_code", label: "退出码" },
-                    { key: "health_url", label: "健康检查" },
-                  ], rows: deploy, empty: "还没发布过测试环境", emptyHint: "配置 OPC_TEST_DEPLOY_CMD 后可自动发布。", emptyIcon: "layers" })),
-        h("div", { className: "ocH", style: { marginTop: 4 } }, "新建与执行"),
-        h(Card, null,
-          h("div", { className: "ocH" }, "新建项目并自动生产"),
-          h("div", { className: "ocFormRow" },
-            h(Field, { label: "项目名称", value: form.name, onChange: function (v) { up("name", v); } }),
-            h(Select, { label: "版本库类型", value: form.kind, options: REPO_KIND_OPTIONS, onChange: upRepoKind }),
-            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///… / svn://…" }),
-            h(Field, { label: repoBranchLabel(form.kind), value: form.branch, onChange: function (v) { up("branch", v); } }),
-            form.kind === "svn" ? h(Field, { label: "修订号", value: form.revision, onChange: function (v) { up("revision", v); }, placeholder: "HEAD 或 12345" }) : null,
-            h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
-            h(Field, { label: "健康检查 URL", value: form.healthUrl, onChange: function (v) { up("healthUrl", v); }, placeholder: "http://host:port/health" })),
-          h("div", { className: "ocRow" },
-            h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.scaffold, onChange: function (e) { up("scaffold", e.target.checked); } }), " 生成代码骨架"),
-            h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.pipeline, onChange: function (e) { up("pipeline", e.target.checked); } }), " 跑测试流水线"),
-            h("label", { className: "ocMuted" }, h("input", { type: "checkbox", checked: form.deployTest, onChange: function (e) { up("deployTest", e.target.checked); } }), " 发测试环境"),
-            h(Btn, { kind: "primary", disabled: busy, onClick: run }, busy ? "执行中…" : "开始自动生产"))),
-        h(Card, null,
-          h("div", { className: "ocH" }, "从创意新建项目（AI 解析 → 建项目 → 自动驾驶）"),
-          h("div", { className: "ocMuted" }, "直接写创意，或上传文档（txt/md/docx/xlsx/pdf，可多选，单文件 ≤10MB、总量 ≤20MB）；AI 解析出项目名、范围、目标、风险与待确认问题后自动建项目并进入自动驾驶。"),
-          h(Area, { label: "创意文本", value: ideaForm.idea, onChange: function (v) { upIdea("idea", v); }, rows: 4, placeholder: "一句话或一段创意……" }),
-          h("div", { className: "ocFormRow" },
-            h("label", { className: "ocField" },
-              h("span", { className: "ocFieldLabel" }, "上传文档（可多选）"),
-              h("input", { type: "file", multiple: true, accept: ".txt,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.log,.docx,.xlsx,.pdf", onChange: pickIdeaFiles })),
-            h(Field, { label: "项目名称（可选）", value: ideaForm.name || "", onChange: function (v) { upIdea("name", v); }, placeholder: "留空由 AI 命名" }),
-            h(Select, { label: "版本库类型", value: ideaForm.kind, options: REPO_KIND_OPTIONS, onChange: upIdeaRepoKind }),
-            h(Field, { label: "版本库（可选）", value: ideaForm.repositoryUrl, onChange: function (v) { upIdea("repositoryUrl", v); }, placeholder: "https://… / file:///… / svn://…；留空则建项目后转裁决等仓库" }),
-            h(Field, { label: repoBranchLabel(ideaForm.kind), value: ideaForm.branch, onChange: function (v) { upIdea("branch", v); } }),
-            ideaForm.kind === "svn" ? h(Field, { label: "修订号", value: ideaForm.revision, onChange: function (v) { upIdea("revision", v); }, placeholder: "HEAD 或 12345" }) : null),
-          ideaFiles.length ? h("div", { className: "ocRow" }, ideaFiles.map(function (file, index) {
-            return h("span", { key: file.name + index, className: "ocChip" },
-              file.name,
-              h(Btn, { onClick: function () { var next = ideaFiles.slice(); next.splice(index, 1); setIdeaFiles(next); } }, "移除"));
-          })) : null,
-          h("div", { className: "ocRow" },
-            h(Btn, { onClick: function () { submitIdea(false); }, disabled: busy }, "仅解析预览"),
-            h(Btn, { kind: "primary", onClick: function () { submitIdea(true); }, disabled: busy }, busy ? "执行中…" : "AI 解析并创建")),
-          ideaResult ? h("div", { className: "ocSection" },
-            h("div", { className: "ocMeta" },
-              h(Badge, { tone: ideaResult.source === "ai" ? "ok" : "mute" }, "解析：" + (ideaResult.source === "ai" ? "AI" : "规则")),
-              h("b", null, ideaResult.name || "创意项目"),
-              h("span", { className: "ocMuted" }, "类型 " + (ideaResult.projectType || "-") + " · 置信度 " + Math.round((ideaResult.confidence || 0) * 100) + "% · 工期约 " + (ideaResult.weeks || "-") + " 周")),
-            h("div", { className: "ocMuted" }, "范围：" + (ideaResult.scope || "-")),
-            (ideaResult.goals || []).length ? h("div", { className: "ocMuted" }, "目标：" + ideaResult.goals.join("；")) : null,
-            (ideaResult.risks || []).length ? h("div", { className: "ocMuted" }, "风险：" + ideaResult.risks.join("；")) : null,
-            (ideaResult.openQuestions || []).length ? h("div", { className: "ocMuted" }, "待裁决问题：" + ideaResult.openQuestions.join("；")) : null) : null),
-        selected ? h(Card, null,
-          h("div", { className: "ocH" }, "对已选项目执行自动驾驶"),
-          h("div", { className: "ocMuted" }, "已建项目也能走同一条流水线：检出 → 扫描 → 回填档案 → 计划（版本递增）→ 可选骨架/流水线/测试环境发布；不会重复建版本库、里程碑、测试计划与裁决。"),
-          h("div", { className: "ocFormRow" },
-            h(Select, { label: "版本库类型", value: form.kind, options: REPO_KIND_OPTIONS, onChange: upRepoKind }),
-            h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///… / svn://…" }),
-            h(Field, { label: repoBranchLabel(form.kind), value: form.branch, onChange: function (v) { up("branch", v); } }),
-            form.kind === "svn" ? h(Field, { label: "修订号", value: form.revision, onChange: function (v) { up("revision", v); }, placeholder: "HEAD 或 12345" }) : null,
-            h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
-            h(Btn, { kind: "primary", disabled: busy, onClick: runExisting }, busy ? "执行中…" : "在现有项目执行")),
-          repos.length > 0 ? h("div", { className: "ocMuted" }, "已登记版本库：" + repos.map(function (r) { return r.name + "（" + repoKindLabel(r.kind) + " · " + r.url + "）"; }).join("；")) : null) : null);
+                h("div", { className: "ocSplit" },
+                  h("div", { className: "ocSplitMain" },
+                    h(ProjectInfoCard, {
+                      project: project || { id: selected },
+                      status: status,
+                      statusLabel: statusLabel,
+                      archived: archived,
+                      archivedAt: archivedAt,
+                      archiveReason: archiveReason,
+                      description: description,
+                      descriptionSource: descriptionSource,
+                      tech: tech,
+                      repository: repository,
+                      busy: String(archiveBusy) === String(selected),
+                      onArchive: function (reason) { archiveProject({ id: selected, name: project && project.name }, reason); },
+                      onUnarchive: function () { unarchiveProject({ id: selected, name: project && project.name }); },
+                      onRefresh: refreshAll,
+                    }),
+                    h(CurrentRunCard, { run: currentRun, last: lastRun }),
+                    h(RoadmapCard, { roadmap: roadmap, plans: plans }),
+                    h(RunsCard, { runs: runs, loading: false })),
+                  h("div", { className: "ocSplitSide" },
+                    h(PlanAutoCard, { execution: planExecution }),
+                    h(DecisionsCard, { items: pending, onSubmit: submitDecision }),
+                    h(CheckoutCard, { checkout: checkout, tech: tech, scan: scan, planCount: plans.length, pipelineFailed: pipelineFailed }),
+                    h(PipelineCard, { rows: pipeline }),
+                    h(DeployCard, { rows: deploy })))));
     }
+
+    // ================= 新建项目（独立页面） =================
+    var CREATE_STEPS = [
+      { title: "填写起点", detail: "已有代码仓库填版本库地址；只有想法就写创意或上传文档。" },
+      { title: "自动生产", detail: "检出 → 静态扫描 → 回填项目档案 → 生成开发/测试/部署计划。" },
+      { title: "待裁决入队", detail: "只有需要老板拍板的事项（许可证/测试/CI/服务器）进裁决队列。" },
+      { title: "去自动驾驶查看", detail: "建好后自动跳到「自动驾驶」，看状态、路线图与执行记录，随时再执行。" },
+    ];
+    function CreateFlow() {
+      return h("ol", { className: "ocFlow" }, CREATE_STEPS.map(function (step, index) {
+        return h("li", { className: "ocFlowItem", key: step.title },
+          h("span", { className: "ocFlowNum", "aria-hidden": "true" }, String(index + 1)),
+          h("div", null,
+            h("b", null, step.title),
+            h("span", null, step.detail)));
+      }));
+    }
+
+    function IdeaAnalysis(props) {
+      var analysis = props.data || {};
+      return h("div", { className: "ocSection" },
+        h("div", { className: "ocMeta" },
+          h(Badge, { tone: analysis.source === "ai" ? "ok" : "mute" }, "解析：" + (analysis.source === "ai" ? "AI" : "规则")),
+          h("b", null, textOf(analysis.name, "创意项目")),
+          h("span", { className: "ocMuted" }, "类型 " + textOf(analysis.projectType) + " · 置信度 " + Math.round((analysis.confidence || 0) * 100) + "% · 工期约 " + textOf(analysis.weeks) + " 周")),
+        h("div", { className: "ocMuted" }, "范围：" + textOf(analysis.scope)),
+        asList(analysis.goals).length ? h("div", { className: "ocMuted" }, "目标：" + asList(analysis.goals).join("；")) : null,
+        asList(analysis.risks).length ? h("div", { className: "ocMuted" }, "风险：" + asList(analysis.risks).join("；")) : null,
+        asList(analysis.openQuestions).length ? h("div", { className: "ocMuted" }, "待裁决问题：" + asList(analysis.openQuestions).join("；")) : null);
+    }
+
+    function CreateResultCard(props) {
+      var created = props.created || {};
+      return h("div", { className: "ocResultCard" },
+        h("div", { className: "ocH" },
+          h(Icon, { name: "check", size: 16 }),
+          "已创建「" + textOf(created.name, "新项目") + "」",
+          created.status ? h(Badge, { tone: "ok" }, textOf(created.status)) : null),
+        (created.parts || []).length
+          ? h("div", { className: "ocMeta" }, created.parts.map(function (part, index) { return h("span", { key: index, className: "ocChip" }, part); }))
+          : null,
+        created.analysis ? h(IdeaAnalysis, { data: created.analysis }) : null,
+        h("div", { className: "ocActionRow" },
+          h(Btn, { kind: "primary", onClick: function () { props.onOpen(created.id); } }, "去自动驾驶查看"),
+          h(Btn, { onClick: props.onAgain }, "再建一个")));
+    }
+
+    function NewProjectTab(props) {
+      var modeS = react.useState("repo");
+      var mode = modeS[0], setMode = modeS[1];
+      var formS = react.useState({ name: "", repositoryUrl: "", branch: "main", kind: "git", revision: "", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true });
+      var form = formS[0], setForm = formS[1];
+      var busyS = react.useState(false);
+      var busy = busyS[0], setBusy = busyS[1];
+      var createdS = react.useState(null);
+      var created = createdS[0], setCreated = createdS[1];
+      var ideaS = react.useState({ idea: "", name: "", repositoryUrl: "", branch: "", kind: "git", revision: "", authRef: "" });
+      var ideaForm = ideaS[0], setIdeaForm = ideaS[1];
+      var ideaBusyS = react.useState(false);
+      var ideaBusy = ideaBusyS[0], setIdeaBusy = ideaBusyS[1];
+      var filesS = react.useState([]);
+      var ideaFiles = filesS[0], setIdeaFiles = filesS[1];
+      var analysisS = react.useState(null);
+      var analysis = analysisS[0], setAnalysis = analysisS[1];
+      function up(key, value) { var next = Object.assign({}, form); next[key] = value; setForm(next); }
+      function upRepoKind(value) {
+        var next = Object.assign({}, form);
+        var wasSvn = repoKind(next.kind) === "svn";
+        next.kind = repoKind(value);
+        if (next.kind !== "svn") next.revision = "";
+        if (next.kind === "svn" && !wasSvn && /^(main|master)$/i.test(String(next.branch || "").trim())) next.branch = "";
+        setForm(next);
+      }
+      function upIdea(key, value) { var next = Object.assign({}, ideaForm); next[key] = value; setIdeaForm(next); }
+      function upIdeaRepoKind(value) {
+        var next = Object.assign({}, ideaForm);
+        var wasSvn = repoKind(next.kind) === "svn";
+        next.kind = repoKind(value);
+        if (next.kind !== "svn") next.revision = "";
+        if (next.kind === "svn" && !wasSvn && /^(main|master)$/i.test(String(next.branch || "").trim())) next.branch = "";
+        setIdeaForm(next);
+      }
+      function openCreated(id) {
+        if (props.onOpenProject && id) props.onOpenProject(String(id));
+      }
+      function resetRepoForm() {
+        setForm({ name: "", repositoryUrl: "", branch: "main", kind: "git", revision: "", authRef: "", healthUrl: "", scaffold: true, pipeline: true, deployTest: true });
+      }
+      function resetIdeaForm() {
+        setIdeaForm({ idea: "", name: "", repositoryUrl: "", branch: "", kind: "git", revision: "", authRef: "" });
+        setIdeaFiles([]);
+        setAnalysis(null);
+      }
+      function pickIdeaFiles(event) {
+        var list = Array.prototype.slice.call(event.target.files || []);
+        event.target.value = "";
+        var allowed = /[.](txt|md|markdown|csv|tsv|json|yml|yaml|log|docx|xlsx|pdf)$/i;
+        var next = ideaFiles.slice();
+        list.forEach(function (file) {
+          if (!allowed.test(file.name)) { props.flash("不支持的格式：" + file.name, false); return; }
+          if (file.size > 10 * 1024 * 1024) { props.flash("单个文档不能超过 10MB：" + file.name, false); return; }
+          var reader = new FileReader();
+          reader.onload = function () {
+            var dataUrl = String(reader.result || "");
+            var comma = dataUrl.indexOf(",");
+            next.push({ name: file.name, contentBase64: comma >= 0 ? dataUrl.slice(comma + 1) : "" });
+            setIdeaFiles(next.slice());
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+      function submitRepo() {
+        if (!form.repositoryUrl) { props.flash("请先填写版本库地址", false); return; }
+        setBusy(true);
+        apiPost("/admin/projects", {
+          name: form.name || ("自动生产-" + new Date().toISOString().slice(5, 16)),
+          stage: "planning",
+          repository: repoPayload(form.kind, form.repositoryUrl, form.branch, form.authRef, form.revision),
+          autopilotOptions: { scaffold: form.scaffold, pipeline: form.pipeline, deployTest: form.deployTest, healthUrl: form.healthUrl || undefined },
+        }).then(function (r) {
+          var ap = r.autopilot || {};
+          var parts = [];
+          if (ap.checkout) parts.push("检出 " + checkoutRefText(ap.checkout));
+          if (ap.scaffold) parts.push("骨架 " + ap.scaffold.status);
+          if (ap.pipeline) parts.push("流水线 " + ap.pipeline.status);
+          if (ap.deploy) parts.push("测试环境 " + ap.deploy.status);
+          setCreated({ id: r.id, name: r.name || form.name, status: "已创建", parts: parts, source: "repo", analysis: null });
+          props.flash("自动生产完成：" + (parts.join(" · ") || "已创建"));
+          resetRepoForm();
+        }).catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setBusy(false); });
+      }
+      function submitIdea(create) {
+        if (!ideaForm.idea && ideaFiles.length === 0) { props.flash("请填写创意或上传文档", false); return; }
+        setIdeaBusy(true);
+        var ideaKind = repoKind(ideaForm.kind);
+        var payload = {
+          idea: ideaForm.idea,
+          name: ideaForm.name || undefined,
+          files: ideaFiles.map(function (file) { return { name: file.name, contentBase64: file.contentBase64 }; }),
+          repositoryUrl: ideaForm.repositoryUrl || undefined,
+          branch: ideaForm.branch || undefined,
+          authRef: ideaForm.authRef || undefined,
+          repository: { kind: ideaKind },
+        };
+        if (ideaKind === "svn") payload.repository.revision = ideaForm.revision || "HEAD";
+        apiPost(create ? "/admin/projects/from-idea" : "/admin/ideas/analyze", payload)
+          .then(function (r) {
+            setAnalysis(r.analysis || null);
+            if (create) {
+              var project = r.project || {};
+              var ap = r.autopilot || {};
+              var parts = [];
+              if (ap.checkout) parts.push("检出 " + checkoutRefText(ap.checkout));
+              if (ap.repository && ap.repository.reused) parts.push("复用已登记版本库");
+              setCreated({ id: project.id, name: project.name || (r.analysis && r.analysis.name), status: r.status || "已创建", parts: parts, source: "idea", analysis: r.analysis || null });
+              props.flash("已创建「" + textOf(project.name, "新项目") + "」· " + textOf(r.status, "已创建"));
+              resetIdeaForm();
+            } else {
+              props.flash("解析完成：" + textOf((r.analysis || {}).name, "创意") + "（来源 " + textOf((r.analysis || {}).source, "rule") + "）");
+            }
+          }).catch(function (e) { props.flash(e.message || String(e), false); })
+          .then(function () { setIdeaBusy(false); });
+      }
+
+      var modeOptions = [
+        { id: "repo", label: "版本库直建" },
+        { id: "idea", label: "创意 / 文档解析" },
+      ];
+      var repoCard = h(Card, null,
+        h("div", { className: "ocH" }, "版本库直建并自动生产", h("span", { className: "ocCount" }, "已有代码仓库")),
+        h("div", { className: "ocModeIntro" },
+          h("b", null, "填地址 → 一键自动生产"),
+          h("span", { className: "ocMuted" }, "自动检出、静态扫描、回填项目档案并生成三份计划；勾选项可附带骨架、流水线与测试环境发布。")),
+        h("div", { className: "ocFormGrid" },
+          h(Field, { label: "项目名称（可选）", value: form.name, onChange: function (v) { up("name", v); }, placeholder: "留空自动命名" }),
+          h(Select, { label: "版本库类型", value: form.kind, options: REPO_KIND_OPTIONS, onChange: upRepoKind }),
+          h(Field, { label: "版本库地址", value: form.repositoryUrl, onChange: function (v) { up("repositoryUrl", v); }, placeholder: "https://… / file:///… / svn://…" }),
+          h(Field, { label: repoBranchLabel(form.kind), value: form.branch, onChange: function (v) { up("branch", v); } }),
+          form.kind === "svn" ? h(Field, { label: "修订号", value: form.revision, onChange: function (v) { up("revision", v); }, placeholder: "HEAD 或 12345" }) : null,
+          h(Field, { label: "凭据引用（env:）", value: form.authRef, onChange: function (v) { up("authRef", v); }, placeholder: "env:GIT_TOKEN" }),
+          h(Field, { label: "健康检查 URL（可选）", value: form.healthUrl, onChange: function (v) { up("healthUrl", v); }, placeholder: "http://host:port/health" })),
+        h("div", { className: "ocCheckRow" },
+          h("label", null, h("input", { type: "checkbox", checked: form.scaffold, onChange: function (e) { up("scaffold", e.target.checked); } }), "生成代码骨架"),
+          h("label", null, h("input", { type: "checkbox", checked: form.pipeline, onChange: function (e) { up("pipeline", e.target.checked); } }), "跑测试流水线"),
+          h("label", null, h("input", { type: "checkbox", checked: form.deployTest, onChange: function (e) { up("deployTest", e.target.checked); } }), "发测试环境")),
+        h("div", { className: "ocActionRow" },
+          h(Btn, { kind: "primary", disabled: busy, onClick: submitRepo }, busy ? "执行中…" : "开始自动生产"),
+          h("span", { className: "ocMuted" }, "创建后自动跳到「自动驾驶」查看进度")));
+      var ideaCard = h(Card, null,
+        h("div", { className: "ocH" }, "从创意或文档新建项目", h("span", { className: "ocCount" }, "AI 解析 → 建项目 → 自动驾驶")),
+        h("div", { className: "ocModeIntro" },
+          h("b", null, "先写想法，或直接传文档"),
+          h("span", { className: "ocMuted" }, "AI 解析出项目名、范围、目标、风险与待确认问题；可先「仅解析预览」再创建。")),
+        h(Area, { label: "创意文本", value: ideaForm.idea, onChange: function (v) { upIdea("idea", v); }, rows: 4, placeholder: "一句话或一段创意……" }),
+        h("label", { className: "ocFileDrop" },
+          h("span", { className: "ocFieldLabel" }, "上传文档（可多选）"),
+          h("input", { type: "file", multiple: true, accept: ".txt,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.log,.docx,.xlsx,.pdf", onChange: pickIdeaFiles }),
+          h("span", { className: "ocHint" }, "支持 txt/md/docx/xlsx/pdf 等；单文件 ≤10MB、总量 ≤20MB。")),
+        ideaFiles.length ? h("div", { className: "ocFileList" }, ideaFiles.map(function (file, index) {
+          return h("span", { key: file.name + index, className: "ocChip" },
+            file.name,
+            h(Btn, { onClick: function () { var next = ideaFiles.slice(); next.splice(index, 1); setIdeaFiles(next); } }, "移除"));
+        })) : null,
+        h("div", { className: "ocFormGrid" },
+          h(Field, { label: "项目名称（可选）", value: ideaForm.name || "", onChange: function (v) { upIdea("name", v); }, placeholder: "留空由 AI 命名" }),
+          h(Select, { label: "版本库类型", value: ideaForm.kind, options: REPO_KIND_OPTIONS, onChange: upIdeaRepoKind }),
+          h(Field, { label: "版本库（可选）", value: ideaForm.repositoryUrl, onChange: function (v) { upIdea("repositoryUrl", v); }, placeholder: "https://… / svn://…；留空则建项目后转裁决等仓库" }),
+          h(Field, { label: repoBranchLabel(ideaForm.kind), value: ideaForm.branch, onChange: function (v) { upIdea("branch", v); } }),
+          ideaForm.kind === "svn" ? h(Field, { label: "修订号", value: ideaForm.revision, onChange: function (v) { upIdea("revision", v); }, placeholder: "HEAD 或 12345" }) : null),
+        h("div", { className: "ocActionRow" },
+          h(Btn, { onClick: function () { submitIdea(false); }, disabled: ideaBusy }, "仅解析预览"),
+          h(Btn, { kind: "primary", onClick: function () { submitIdea(true); }, disabled: ideaBusy }, ideaBusy ? "执行中…" : "AI 解析并创建"),
+          h("span", { className: "ocMuted" }, "没有仓库也能建：创建后转「版本库」裁决")),
+        analysis ? h(IdeaAnalysis, { data: analysis }) : null);
+
+      return h(Fragment, null,
+        h(PageHeader, { title: "新建项目", subtitle: "从版本库直建，或从创意/文档解析；建好自动进入自动驾驶" },
+          h("div", { className: "ocSeg", role: "group", "aria-label": "创建方式" },
+            modeOptions.map(function (option) {
+              var on = mode === option.id;
+              return h("button", {
+                key: option.id,
+                type: "button",
+                className: "ocSegItem" + (on ? " on" : ""),
+                "aria-pressed": on ? "true" : "false",
+                onClick: function () { setMode(option.id); },
+              }, option.label);
+            }))),
+        created ? h(CreateResultCard, { created: created, onOpen: openCreated, onAgain: function () { setCreated(null); } }) : null,
+        h("div", { className: "ocSplit" },
+          h("div", { className: "ocSplitMain" }, mode === "repo" ? repoCard : ideaCard),
+          h("div", { className: "ocSplitSide" },
+            h(Card, null,
+              h("div", { className: "ocH" }, "创建后会发生什么"),
+              h(CreateFlow, null)),
+            h(Card, null,
+              h("div", { className: "ocH" }, "填写提示"),
+              h("ul", { className: "ocBullets" },
+                h("li", null, "Git 支持 https / ssh / git@ / file:// 与本地路径；SVN 支持 svn://、svn+ssh://、http(s)://、file://。"),
+                h("li", null, "SVN 的「分支」填主干/分支路径（trunk、branches/x），留空=仓库根目录；修订号填 HEAD 或 12345。"),
+                h("li", null, "凭据只填引用（env:XXX），口令不入库、不写前端。"),
+                h("li", null, "文档支持 txt / md / docx / xlsx / pdf，可多选；单文件 ≤10MB、总量 ≤20MB。"),
+                h("li", null, "没有版本库也能建：建项目后转「版本库」裁决，补齐地址再执行。"))),
+            h(Card, null,
+              h("div", { className: "ocH" }, "建好之后"),
+              h("div", { className: "ocMuted" }, "随时可在「自动驾驶」重新执行：会复用已登记版本库与测试环境，计划版本递增，不重复建里程碑与裁决。")))));
+    }
+
 
     // ================= 主控制台 =================
     // 导航按“概览 / 经营 / 治理 / 知识 / 系统”分组，降低 12 个页签的认知负担。
     var NAV_GROUPS = [
       { title: "概览", items: [{ id: "cockpit", label: "驾驶舱", icon: "gauge" }, { id: "domains", label: "业务域", icon: "grid" }] },
-      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "projects", label: "项目管理", icon: "layers" }, { id: "autopilot", label: "自动驾驶", icon: "target" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
+      { title: "经营", items: [{ id: "employees", label: "员工矩阵", icon: "users" }, { id: "projects", label: "项目管理", icon: "layers" }, { id: "autopilot", label: "自动驾驶", icon: "target" }, { id: "newproject", label: "新建项目", icon: "plus" }, { id: "workflows", label: "流程", icon: "flow" }, { id: "tasks", label: "任务", icon: "clock" }] },
       { title: "治理", items: [{ id: "audits", label: "审计", icon: "shield" }, { id: "conflicts", label: "冲突", icon: "alert" }, { id: "inbox", label: "收件箱", icon: "inbox" }] },
       { title: "知识", items: [{ id: "memory", label: "记忆", icon: "book" }, { id: "hindsight", label: "记忆同步", icon: "sync" }, { id: "radar", label: "雷达", icon: "radar" }, { id: "intel", label: "情报管理", icon: "target" }] },
       { title: "系统", items: [{ id: "settings", label: "设置", icon: "settings" }] },
@@ -3089,6 +3461,8 @@ window.__ModuleLoader__.load({
       var tab = tabS[0], setTab = tabS[1];
       var flashS = react.useState({ msg: "", ok: true });
       var flash = flashS[0], setFlash = flashS[1];
+      var focusS = react.useState("");
+      var focus = focusS[0], setFocus = focusS[1];
       var timerRef = react.useRef(null);
       function dismiss() {
         if (timerRef.current) clearTimeout(timerRef.current);
@@ -3124,7 +3498,8 @@ window.__ModuleLoader__.load({
       if (tab === "cockpit") body = h(CockpitTab, { flash: flashMsg });
       else if (tab === "employees") body = h(EmployeesTab, { flash: flashMsg });
       else if (tab === "projects") body = h(ProjectsTab, { flash: flashMsg });
-      else if (tab === "autopilot") body = h(AutopilotTab, { flash: flashMsg });
+      else if (tab === "newproject") body = h(NewProjectTab, { flash: flashMsg, onOpenProject: function (id) { setFocus(String(id || "")); setTab("autopilot"); } });
+      else if (tab === "autopilot") body = h(AutopilotTab, { flash: flashMsg, focusProjectId: focus, onNewProject: function () { setTab("newproject"); } });
       else if (tab === "intel") body = h(IntelTab, { flash: flashMsg });
       else if (tab === "domains") body = h(DomainsTab, { flash: flashMsg });
       else if (tab === "workflows") body = h(WorkflowsTab, { flash: flashMsg });

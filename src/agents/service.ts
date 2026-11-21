@@ -19,6 +19,14 @@ export function renderAgentRole(manifest: EmployeeManifest): string {
   ].join("\n");
 }
 
+/** 编码 agent 人设：只在项目检出目录里按计划补代码，不推远端、不碰凭据。 */
+export const CODING_AGENT_ROLE = [
+  "你是「OPC 项目开发工程师」，只在一个项目检出目录里工作，按开发计划补齐欠缺的实现与测试。",
+  "边界：只改当前工作目录内的文件；不执行 git push / svn commit；不引入新依赖；不删除现有文件；不读凭据；不写数据库。",
+  "优先最小改动与复用现有结构；改动后用仓库既有命令自检（如 npm test / npm run build）。",
+  "交付：Markdown；第一行一句话结论；随后列改动文件与验证结果；无法完成时第一行以「未完成：」开头并说明卡点。",
+].join("\n");
+
 export interface DeployResult {
   pluginId: string;
   agent: BridgeAgentRow;
@@ -92,6 +100,56 @@ export class SuperAgentService {
   /** 运行记录列表（只读）。 */
   async runs(agentId?: string): Promise<unknown[]> {
     return this.bridge.runs(agentId);
+  }
+
+  /** 计划的编码 agent：按项目检出目录 upsert 角色卡（幂等），供自动推进派活。 */
+  async ensureCodingAgent(input: { projectId: number; cwd: string }): Promise<{ agentId: string }> {
+    const agent = await this.bridge.upsertAgent({
+      name: "OPC 项目开发·" + input.projectId,
+      systemRole: CODING_AGENT_ROLE,
+      cwd: input.cwd,
+      learn: false,
+    });
+    await this.audit.record({
+      actor: "hub",
+      action: "agent.coding.ensure",
+      result: "ok",
+      objectType: "employee_agent",
+      objectId: agent.id,
+      payload: { projectId: input.projectId, cwd: input.cwd },
+    });
+    return { agentId: agent.id };
+  }
+
+  /** 派编码任务（不等待）：返回 runId，由计划执行器跨 tick 回收。 */
+  async dispatchCoding(agentId: string, prompt: string): Promise<{ runId: string }> {
+    const { runId } = await this.bridge.dispatch(agentId, prompt);
+    await this.audit.record({
+      actor: "hub",
+      action: "agent.coding.dispatch",
+      result: "ok",
+      objectType: "agent_run",
+      objectId: runId,
+      payload: { agentId },
+    });
+    return { runId };
+  }
+
+  /** 回收编码任务产物（同结果接口，语义独立便于审计与替换）。 */
+  async codingResult(runId: string): Promise<{ status: string; head: string; artifact: string }> {
+    return this.result(runId);
+  }
+
+  /** 取消编码任务（超时兜底，避免后台继续改工作副本）。 */
+  async cancelCoding(runId: string): Promise<void> {
+    await this.bridge.cancelRun(runId);
+    await this.audit.record({
+      actor: "hub",
+      action: "agent.coding.cancel",
+      result: "ok",
+      objectType: "agent_run",
+      objectId: runId,
+    });
   }
 
   /** 认知调度登记说明：调度本体在基础设施层（cron + tz），中枢只做语义包装与审计。 */

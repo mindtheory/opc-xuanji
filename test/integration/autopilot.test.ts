@@ -689,3 +689,193 @@ test("TC-AUTO-016 同项目并发执行被拒：已有 running 记录时返回 4
   await pool.query("UPDATE stat.project_autopilot_run SET status = 'failed' WHERE project_id = $1", [projectId]);
 });
 
+test("TC-AUTO-017 计划自动推进：按计划生成范围与验收、架构说明", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "计划推进项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+  const audit = new AuditService(pool, { schemaVersion: "1" });
+  const autopilot = new ProjectAutopilotService(pool, audit);
+  const first = await autopilot.advancePlan(projectId);
+  assert.equal(first.advanced, 1);
+  assert.equal(first.task, "freeze");
+  const second = await autopilot.advancePlan(projectId);
+  assert.equal(second.task, "design");
+
+  const checkout = await pool.query("SELECT workspace_path FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]);
+  const dir = String(checkout.rows[0].workspace_path);
+  const scope = await readFile(join(dir, "docs/autopilot/scope.md"), "utf8");
+  assert.match(scope, /范围与验收/);
+  assert.match(scope, /生产发布需老板审批/);
+  const architecture = await readFile(join(dir, "docs/autopilot/architecture.md"), "utf8");
+  assert.match(architecture, /架构说明/);
+  assert.match(architecture, /主语言：javascript/);
+
+  const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  const execution = summary.json.data.planExecution;
+  assert.equal(execution.tasks.filter((task: any) => task.status === "ok").length, 2);
+  assert.equal(execution.percent, 40);
+  const runs = await pool.query("SELECT trigger, status FROM stat.project_autopilot_run WHERE project_id = $1 AND trigger = 'plan'", [projectId]);
+  assert.equal(runs.rows.length, 1);
+  assert.equal(runs.rows[0].status, "running");
+  const planRow = await pool.query("SELECT status FROM stat.project_plan WHERE project_id = $1 AND plan_kind = 'dev' ORDER BY version DESC LIMIT 1", [projectId]);
+  assert.equal(planRow.rows[0].status, "active");
+  assert.equal(execution.tasks.filter((task: any) => task.status === "pending").length, 3);
+});
+
+test("TC-AUTO-018 编码 agent 补齐实现、流水线通过、发布测试环境后完成", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "自动完成项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+  const audit = new AuditService(pool, { schemaVersion: "1" });
+  let polls = 0;
+  const agents = {
+    ensureCodingAgent: async () => ({ agentId: "a-fake" }),
+    dispatchCoding: async () => ({ runId: "run-fake-1" }),
+    codingResult: async () => {
+      polls += 1;
+      return polls === 1
+        ? { status: "running", head: "", artifact: "" }
+        : { status: "done", head: "已完成：补齐入口", artifact: "已完成：补齐入口\n\n- src/index.js" };
+    },
+    cancelCoding: async () => undefined,
+  };
+  const autopilot = new ProjectAutopilotService(pool, audit, undefined, agents);
+  await autopilot.advancePlan(projectId);
+  await autopilot.advancePlan(projectId);
+  const build = await autopilot.advancePlan(projectId);
+  assert.equal(build.waiting, true);
+  assert.equal(build.task, "build");
+  const pollWaiting = await autopilot.advancePlan(projectId);
+  assert.equal(pollWaiting.waiting, true);
+  const pollDone = await autopilot.advancePlan(projectId);
+  assert.equal(pollDone.agentReclaimed, true);
+  assert.equal(pollDone.nextTask, "verify");
+  const verified = await autopilot.advancePlan(projectId);
+  assert.equal(verified.task, "verify");
+  assert.equal(verified.nextTask, "release");
+  const blocked = await autopilot.advancePlan(projectId);
+  assert.equal(blocked.blocked, true);
+  assert.equal(blocked.blockTopic, "deploy_executor");
+
+  process.env.OPC_TEST_DEPLOY_CMD = "node -e \"process.exit(0)\"";
+  try {
+    const done = await autopilot.advancePlan(projectId);
+    assert.equal(done.completed, true);
+  } finally {
+    delete process.env.OPC_TEST_DEPLOY_CMD;
+  }
+
+  const summary = await call("GET", `/api/v1/admin/projects/${projectId}/autopilot`);
+  const execution = summary.json.data.planExecution;
+  assert.equal(execution.completed, true);
+  assert.equal(execution.percent, 100);
+  const projectRow = await pool.query("SELECT progress FROM biz.project WHERE id = $1", [projectId]);
+  assert.equal(projectRow.rows[0].progress, 100);
+  const milestones = await pool.query("SELECT status FROM biz.project_milestone WHERE project_id = $1", [projectId]);
+  assert.equal(milestones.rows.every((row: any) => row.status === "achieved"), true);
+  const decisions = await call("GET", `/api/v1/admin/projects/${projectId}/decisions?status=pending`);
+  assert.equal(decisions.json.data.items.some((item: any) => item.topic === "production_release"), true);
+  const checkout = await pool.query("SELECT workspace_path FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]);
+  const dir = String(checkout.rows[0].workspace_path);
+  const report = await readFile(join(dir, "docs/autopilot/test-report.md"), "utf8");
+  assert.match(report, /流水线结论：ok/);
+  const release = await readFile(join(dir, "docs/autopilot/release.md"), "utf8");
+  assert.match(release, /测试环境发布状态：ok/);
+});
+
+test("TC-AUTO-020 发布裁决「内置执行器」：老板拍板后自动 rsync 发布并继续完成", async () => {
+  const deployRoot = await mkdtemp(join(tmpdir(), "opc-deploy-root-"));
+  process.env.OPC_DEPLOY_ROOT = deployRoot;
+  try {
+    const created = await call("POST", "/api/v1/admin/projects", {
+      name: "内置执行器发布项目",
+      stage: "planning",
+      repository: { url: `file://${fixtureRepo}` },
+      autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+    });
+    const projectId = created.json.data.id;
+    const audit = new AuditService(pool, { schemaVersion: "1" });
+    const agents = {
+      ensureCodingAgent: async () => ({ agentId: "a-fake" }),
+      dispatchCoding: async () => ({ runId: "run-fake-1" }),
+      codingResult: async () => ({ status: "done", head: "已完成：补齐入口", artifact: "已完成：补齐入口\n\n- src/index.js" }),
+      cancelCoding: async () => undefined,
+    };
+    const autopilot = new ProjectAutopilotService(pool, audit, undefined, agents);
+    // 推进到 release：未配置命令 → 阻塞转裁决（带可执行选项）
+    let blocked: any = null;
+    for (let i = 0; i < 8 && blocked === null; i += 1) {
+      const step = await autopilot.advancePlan(projectId);
+      if (step.blocked === true && step.blockTopic === "deploy_executor") blocked = step;
+    }
+    assert.ok(blocked !== null, "应阻塞在 deploy_executor");
+    const pending = await call("GET", `/api/v1/admin/projects/${projectId}/decisions?status=pending`);
+    const decision = pending.json.data.items.find((item: any) => item.topic === "deploy_executor");
+    assert.ok(decision !== undefined);
+    // 裁决项必须给出可执行方案（内置执行器为推荐项）
+    assert.ok(JSON.stringify(decision.options).includes("内置执行器"), "裁决应包含内置执行器选项");
+    // 老板拍板「内置执行器」→ 下一轮自动推进即自动发布（本机 rsync 到 OPC_DEPLOY_ROOT）
+    await call("POST", `/api/v1/admin/projects/${projectId}/decisions/${decision.id}/decide`, { decision: "内置执行器（推荐）：rsync 制品到测试服务器", decidedBy: "老板" });
+    let done: any = null;
+    for (let i = 0; i < 8 && done === null; i += 1) {
+      const step = await autopilot.advancePlan(projectId);
+      if (step.completed === true) done = step;
+    }
+    assert.ok(done !== null, "裁决内置执行器后应能完成计划");
+    const runs = await pool.query("SELECT status, command FROM stat.project_deploy_run WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]);
+    assert.equal(runs.rows[0].status, "ok");
+    assert.equal(runs.rows[0].command, "builtin:builtin");
+    // 制品已同步到发布目录（fixture 无 opc-deploy.sh → 仅同步）
+    const synced = await pool.query("SELECT version FROM biz.release_order WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId]);
+    const version = String(synced.rows[0].version).replace(/[^A-Za-z0-9._-]/g, "_");
+    const pkg = await readFile(join(deployRoot, `opc-deploy/project-${projectId}/v-${version}`, "package.json"), "utf8");
+    assert.match(pkg, /fixture-app/);
+  } finally {
+    delete process.env.OPC_DEPLOY_ROOT;
+    await rm(deployRoot, { recursive: true, force: true });
+  }
+});
+
+test("TC-AUTO-019 后台推进：挑未完成项目，阻塞后不重复推进", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "后台推进项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+  const audit = new AuditService(pool, { schemaVersion: "1" });
+  const autopilot = new ProjectAutopilotService(pool, audit);
+  const picked = await autopilot.autoAdvanceNext();
+  assert.equal(picked.advanced, 1);
+  assert.equal(picked.projectId, Number(projectId));
+  const second = await autopilot.autoAdvanceNext();
+  assert.equal(second.projectId, Number(projectId));
+  assert.equal(second.task, "design");
+  const third = await autopilot.autoAdvanceNext();
+  assert.equal(third.blocked, true);
+  assert.equal(third.blockTopic, "coding_agent");
+  const blocked = await autopilot.autoAdvanceNext();
+  assert.equal(blocked.advanced, 0);
+  const decisions = await call("GET", `/api/v1/admin/projects/${projectId}/decisions?status=pending`);
+  assert.equal(decisions.json.data.items.some((item: any) => item.topic === "coding_agent"), true);
+
+  // 阻塞是「新事件」：裁决后重试再次阻塞，应新起一条 pending 裁决（不复用已裁决的同 topic）
+  const first = decisions.json.data.items.find((item: any) => item.topic === "coding_agent");
+  await call("POST", `/api/v1/admin/projects/${projectId}/decisions/${first.id}/decide`, { decision: "人工接手", decidedBy: "老板" });
+  const retried = await autopilot.advancePlan(projectId);
+  assert.equal(retried.blocked, true);
+  assert.equal(retried.blockTopic, "coding_agent");
+  const reopened = await call("GET", `/api/v1/admin/projects/${projectId}/decisions?status=pending`);
+  assert.equal(reopened.json.data.items.some((item: any) => item.topic === "coding_agent"), true);
+  const all = await pool.query("SELECT count(*)::int AS n FROM stat.project_decision WHERE project_id = $1 AND topic = 'coding_agent'", [projectId]);
+  assert.equal(all.rows[0].n, 2);
+});

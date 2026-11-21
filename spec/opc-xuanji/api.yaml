@@ -1615,6 +1615,21 @@ paths:
       responses:
         '200': { description: OK }
 
+  /api/v1/admin/company-profile:
+    get:
+      operationId: getCompanyProfile
+      tags: [admin]
+      summary: 公司基础信息（单行档案）+ 项目/财税/法务/行政复用的默认口径
+      responses:
+        '200': { description: OK }
+    put:
+      operationId: updateCompanyProfile
+      tags: [admin]
+      summary: 更新公司基础信息（逐字段校验、单行 upsert、写审计；银行账号等敏感值不进审计正文）
+      responses:
+        '200': { description: OK }
+        '400': { description: 'ERR-RES-001 参数非法（名称必填、信用代码 18 位、邮箱/官网/邮编格式）' }
+
   /api/v1/admin/shared-resources:
     get:
       operationId: listSharedResources

@@ -63,7 +63,7 @@ updated: 2026-11-14
 cd /path/to/opc-xuanji
 set -a; . ./.env; set +a      # 把 .env 载入当前 shell；下文 psql 用 $OPC_PG_DSN 与 $OPC_TEST_DSN
 
-# 1) 迁移链是否已全部应用（应输出 0001–0007 七条）
+# 1) 迁移链是否已全部应用（应输出 0001–0017 十七条）
 node scripts/migrate.ts --test
 
 # 2) 表数（应输出 biz 44 / ref 15 / audit 6 / stat 26 / vec 1，合计 92）
@@ -229,7 +229,7 @@ flowchart LR
 | 89 | `stat.issue_filing` | Issue 草稿与投递 | 14 | `fingerprint` 唯一；`source/status/severity` CHECK；`index(status,created_at)` |
 | 90 | `stat.project_idea` | 项目创意记录 | 8 | `source/status` CHECK；`index(project_id,created_at)` |
 | 91 | `stat.wechat_push` | 微信推送队列 | 12 | `kind/status` CHECK；`dedupe_key` 唯一；`index(status,next_attempt_at)` |
-| 92 | `stat.project_autopilot_run` | 自动驾驶执行记录 | 12 | `trigger/status` CHECK（manual/idea/api、running/ok/failed）；`index(project_id,id DESC)`；`status='running'` 部分索引 |
+| 92 | `stat.project_autopilot_run` | 自动驾驶执行记录 | 12 | `trigger/status` CHECK（manual/idea/api/plan、running/ok/failed）；`index(project_id,id DESC)`；`status='running'` 部分索引 |
 
 清单可直接对着库核一遍（基线 272 列 / 37 表；v2.10 Web 层另增 8 表，v2.11 员工线 9 表，v2.12 项目研发 12 表，v2.13 情报 10 表，v2.15 基础资源 3 表，v2.16 项目自动驾驶 4 表，v2.17 自动化生产 3 表，v2.18 运维闭环 3 表，v2.20 创意转项目 1 表，v2.21 微信推送 1 表，v2.22 SVN 检出不增表（仅加列），v2.23 自动驾驶控制台 1 表，明细见 3.6–3.16）：
 
@@ -249,7 +249,7 @@ GROUP BY table_schema ORDER BY table_schema;
 
 ### 3.1 biz 层（21 张，业务实体）
 
-#### 3.1.1 biz.company_profile（公司档案）
+#### 3.1.1 biz.company_profile（公司档案，v2.26 扩 26 列）
 
 | 列 | 类型 | 空 | 默认 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -259,6 +259,25 @@ GROUP BY table_schema ORDER BY table_schema;
 | `tax_types` | jsonb | NULL | — | 税种集合 |
 | `bank_accounts` | jsonb | NULL | — | 银行账户集合 |
 | `owner_preferences` | jsonb | NULL | — | 老板偏好画像（一人一助理的上下文来源） |
+| `short_name` / `english_name` | varchar(64/128) | NULL | — | 简称 / 英文名（v2.26） |
+| `credit_code` | varchar(32) | NULL | — | 统一社会信用代码（18 位校验） |
+| `legal_person` | varchar(64) | NULL | — | 法定代表人 |
+| `established_date` | date | NULL | — | 成立日期 |
+| `registered_capital` | varchar(64) | NULL | — | 注册资本（文本，保留单位） |
+| `company_type` / `industry` | varchar(64) | NULL | — | 公司类型 / 所属行业 |
+| `business_scope` | text | NULL | — | 经营范围 |
+| `employee_count` | integer | NULL | — | 员工规模 |
+| `website` | varchar(200) | NULL | — | 官网（http/https 校验） |
+| `reg_address` / `office_address` | text | NULL | — | 注册地址 / 办公地址 |
+| `postcode` | varchar(16) | NULL | — | 邮编（6 位校验） |
+| `phone` / `email` | varchar(64/128) | NULL | — | 联系电话 / 电子邮箱 |
+| `contact_name` / `contact_title` | varchar(64) | NULL | — | 联系人 / 职务 |
+| `tax_number` / `invoice_title` | varchar(64/128) | NULL | — | 税号 / 开票抬头 |
+| `taxpayer_type` | varchar(32) | NULL | — | 纳税人类型：general/small/other |
+| `bank_name` / `bank_account` | varchar(128/64) | NULL | — | 开户银行 / 银行账号（敏感，不进审计正文） |
+| `invoice_note` | varchar(200) | NULL | — | 发票备注 |
+| `extra` | jsonb | NULL | — | 扩展字段（预留） |
+| `updated_by` | varchar(64) | NULL | — | 最后修改人（默认 boss） |
 | `updated_at` | timestamptz | NOT NULL | `now()` | 档案版本时间 |
 
 索引与约束：主键 `company_profile_pkey (id)`。档案只有一份，行数恒为 1，不加额外索引。
@@ -945,7 +964,7 @@ GROUP BY table_schema ORDER BY table_schema;
 
 | 表 | 主要列 | 约束/索引 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `stat.project_autopilot_run` | `project_id, checkout_id, trigger, status, stage, stage_label, steps, result, error, started_at, ended_at, created_at` | `trigger varchar(16) NOT NULL DEFAULT 'manual'` CHECK（manual/idea/api）；`status varchar(16) NOT NULL DEFAULT 'running'` CHECK（running/ok/failed）；`project_autopilot_run_project_idx(project_id,id DESC)`；`project_autopilot_run_running_idx(project_id) WHERE status='running'` | 每次 `bootstrap` 追加一行：`steps` jsonb 记录 10 阶段进度 `[{stage,label,status,startedAt,endedAt,durationMs,detail}]`；当前执行 = `status='running'` 的行；失败保留失败阶段与 `error`；同项目已有 running 时 409 `ERR-AUTO-001` |
+| `stat.project_autopilot_run` | `project_id, checkout_id, trigger, status, stage, stage_label, steps, result, error, started_at, ended_at, created_at` | `trigger varchar(16) NOT NULL DEFAULT 'manual'` CHECK（manual/idea/api/plan）；`status varchar(16) NOT NULL DEFAULT 'running'` CHECK（running/ok/failed）；`project_autopilot_run_project_idx(project_id,id DESC)`；`project_autopilot_run_running_idx(project_id) WHERE status='running'` | 每次 `bootstrap` 或计划自动推进追加一行：bootstrap `steps` jsonb 记录 10 阶段进度，计划推进记录 freeze/design/build/verify/release 5 任务进度（含 `data.agentRunId` 等待编码 agent 的机器状态）；当前执行 = `status='running'` 的行；失败保留失败阶段与 `error`；同项目已有 running 时 409 `ERR-AUTO-001`；`trigger=plan` 的悬挂清理阈值放宽到 6 小时（跨 tick 续跑） |
 
 **口径**：执行记录只追加、不覆盖历史，`runs` 读取按 `id DESC` 限 10 条；归档只写 `biz.project.archived_at`/`archive_reason`，不删检出（`ref.project_checkout`）、计划（`stat.project_plan`）、执行记录与裁决（`stat.project_decision`）；描述只填空值，人工编辑后不覆盖。
 
@@ -1054,7 +1073,7 @@ SELECT extname, extversion FROM pg_extension ORDER BY 1;
 
 没有 `vector` 扩展时，`vec.embedding` 建表会直接失败；没有 `pgcrypto` 时，`gen_random_uuid()` 在 PG 13 之后已内置，但保留扩展可兼容更老的运行环境。
 
-### 5.2 迁移链（七条，只增不改）
+### 5.2 迁移链（0001–0017，只增不改）
 
 | 版本文件 | 内容 | 引入的变更 |
 | :--- | :--- | :--- |
@@ -1065,6 +1084,9 @@ SELECT extname, extversion FROM pg_extension ORDER BY 1;
 | `0005_employee_lines.sql` | `biz` 新增 7 张 WBS/外宣表；`ref` 新增 2 张员工包表；`employee_plugin` 扩展 manifest/生命周期列 | WBS、外宣、员工包导入导出 |
 | `0006_project_software.sql` | `biz` 新增 9 张项目研发表并扩展 `project` 8 列；`ref` 新增 3 张版本库/制品库/环境表 | 软件研发项目管理（SRS-105 REQ-PRJ-016..022） |
 | `0007_intel_daily.sql` | `biz` 新增 7 张情报空间/来源/关键词标签/条目/日报表；`stat` 新增 3 张采集/流水线/推送运行表 | 情报日报与数据源管理（SRS-106 REQ-INT-011..018） |
+| `0008`–`0015` | 基础资源、项目自动驾驶、自动化生产、运维反馈、创意转项目、微信推送、SVN 检出、自动驾驶控制台 | 依次见 SRS-105 REQ-PRJ-023..039（明细见 `docs/过程资产/PA-OPC-024..032`） |
+| `0016_plan_execution.sql` | 仅重建 `stat.project_autopilot_run.trigger` CHECK 并加注释（不新增表/列） | 计划自动推进（SRS-105 REQ-PRJ-040）；表数仍 92 |
+| `0017_company_profile.sql` | `biz.company_profile` 扩 26 列（工商/地址联系/开票银行/经营范围/extra/updated_by，不新增表） | 公司基础信息（SRS-103 REQ-ADM-013）；表数仍 92 |
 
 ```mermaid
 flowchart TB
@@ -1234,7 +1256,7 @@ psql "$OPC_PG_DSN" -Atc \
 - [x] 五个 schema 的职责、禁止项与当前表数（biz 44 / ref 11 / audit 6 / stat 14 / vec 1）已写明。
 - [x] 关键索引四类（复合主键、HNSW、token_code、幂等键）各有 SQL 原文与选择理由。
 - [x] 扩展版本（vector 0.8.0 / pgcrypto 1.3 / unaccent 1.1）与“由 DBA 预装”的边界已写明。
-- [x] 迁移链七条、checksum 不可变语义与可复制的迁移命令已给出。
+- [x] 迁移链 0001–0017、checksum 不可变语义与可复制的迁移命令已给出。
 - [x] 审计归档的 JSONL 字段（12 个）、SHA-256、`prev_export_hash` 链、链头与游标已写明。
 - [x] 30 年保留、分区触发条件与分区键前置设计（复合主键）已写明。
 - [x] 数据字典口径（金额、时间、JSON、枚举、对外标识）逐条有库内例证。

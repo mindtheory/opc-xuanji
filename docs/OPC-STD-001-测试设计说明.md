@@ -12,7 +12,7 @@ updated: 2026-11-14
 
 # OPC-STD-001 · OPC-玄机 · 一人公司中枢 测试设计说明
 
-本说明解决“每条 TC 到底由哪段代码验证、断言了什么、为什么这样断言”的问题：把 `usecases.yaml` 中 21 个用例的全部 31 条 TC 逐条落到仓库里真实存在的测试文件与测试标题，给出前置条件、步骤、输入数据、期望结果与需求/接口追溯，并把没有自动化覆盖的部分单独立册。**读者与使用时点**：测试执行者在 G4 复跑时按第 4 章逐条核对；开发接到失败单时按第 5 章定位断言与期望值；评审人判断“TC 是否真的被验证”时看第 5、7、8 章；新人接手测试时先读第 2、3 章再进第 4 章。
+本说明解决“每条 TC 到底由哪段代码验证、断言了什么、为什么这样断言”的问题：把 `usecases.yaml` 中 33 个用例的全部 70 条 TC 逐条落到仓库里真实存在的测试文件与测试标题，给出前置条件、步骤、输入数据、期望结果与需求/接口追溯，并把没有自动化覆盖的部分单独立册。**读者与使用时点**：测试执行者在 G4 复跑时按第 4 章逐条核对；开发接到失败单时按第 5 章定位断言与期望值；评审人判断“TC 是否真的被验证”时看第 5、7、8 章；新人接手测试时先读第 2、3 章再进第 4 章。
 
 ## 目录
 
@@ -728,6 +728,42 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.23 增量；`autopilot.test.ts` 用例数 11→16，基线核算（5.1）仍只统计基线 68 例。
 
+### 4.34 TC-RENDER-001 … TC-RENDER-003 · 渲染冒烟（v2.23/v2.24 增量）
+
+**追溯**：REQ-PRJ-037（自动驾驶控制台 UI）、REQ-PRJ-035（创意转项目 UI）；`test/unit/client-render.test.ts`；不新增实体、不改契约。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-RENDER-001 | 自动驾驶展示组件 | `ProjectOverviewCard`、`ProjectInfoCard`、`CurrentRunCard`、`RoadmapCard`、`RunsCard` 在已加载数据下渲染不抛错（防白屏回归；只构造元素树，不做样式断言） |
+| TC-RENDER-002 | 自动驾驶页签初始化 | 空列表与已加载（当前项目 3、summary 命中）两种 useState 快照下 `AutopilotTab` 渲染不抛错；`执行操作` 卡与右栏卡片（待裁决/检出与扫描/流水线/测试环境）在已加载路径中渲染 |
+| TC-RENDER-003 | 新建项目独立页 | 「版本库直建」默认态与「创意 / 文档解析」+已上传文档+解析结果+已创建态均渲染不抛错；页头分段控件、表单栅格、右侧流程说明与结果卡结构完整 |
+
+**结论口径**：本章为 v2.23/v2.24 增量；渲染冒烟只验证「能渲染、不抛错、分支被覆盖」，不做样式与交互断言，不计入 5.1 基线核算。
+
+### 4.35 TC-AUTO-017 … TC-AUTO-019 · 计划自动推进（v2.25 增量）
+
+**追溯**：REQ-PRJ-040 / UC-032；`test/integration/autopilot.test.ts`；实体 Project、ProjectPlan、ProjectAutopilotRun、ProjectMilestone、ProjectDecision。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-AUTO-017 | 范围/架构交付物自动生成 | 连续推进两次：`task=freeze`→`design`；检出目录出现 `docs/autopilot/scope.md`（含验收标准与「生产发布需老板审批」）与 `architecture.md`（含主语言 javascript）；summary `planExecution.percent=40`、2 个 ok/3 个 pending；`stat.project_autopilot_run` 恰 1 行 `trigger=plan,status=running`；计划 `status=active` |
+| TC-AUTO-018 | 编码 agent 补齐实现→流水线→发布→完成 | 假编码 agent：派单后第一次回收 `running`、第二次 `done`；`build` 完成后 `nextTask=verify`；流水线 `npm test` 通过并生成 `test-report.md`；无 `OPC_TEST_DEPLOY_CMD` 时 `release` 阻塞转 `deploy_executor`；配置命令后完成：`planExecution.completed=true`、`percent=100`、`biz.project.progress=100`、5 个里程碑全 `achieved`、生成 `production_release` 裁决、`release.md` 记录发布状态 ok |
+| TC-AUTO-019 | 后台选择与阻塞后不重复推进 | `autoAdvanceNext` 首次选中该项目并推进 freeze；第二次续跑推进 design；第三次 build 无编码 agent → `blocked=true`、`blockTopic=coding_agent` 并登记 pending 裁决；第四次返回 `advanced=0`（阻塞未满 30 分钟且同 topic 裁决待处理） |
+
+**结论口径**：本章为 v2.25 增量；`autopilot.test.ts` 16→19，`scheduler.test.ts` 新增 1 条任务用例；渲染冒烟不增用例。
+
+### 4.36 TC-ADM-001 … TC-ADM-003 · 公司基础信息（v2.26 增量）
+
+**追溯**：REQ-ADM-013 / UC-033；`test/integration/company-profile.test.ts`；实体 CompanyProfile、AuditLog。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-ADM-001 | 读取→校验→保存→审计 | 空档案 GET `profile=null` 且默认口径（debian/ssh）返回；缺 name、信用代码 3 位、邮箱非法均 400 `ERR-RES-001`；合法保存后 GET 回读名称/简称/信用代码/纳税人类型/员工规模；审计 `company.profile.update` 的 `fields` 含 `bank_account`，但 payload 不含账号值 |
+| TC-ADM-002 | 跨模块共用：员工只读视图 | 保存后 `view_company_profile` 经授权员工读取返回 `name/short_name/credit_code/industry/employee_count`，且行内不含 `bank_account`；未授权仍 403（平台既有用例覆盖） |
+| TC-ADM-003 | 跨模块共用：项目交付物抬头 | 保存公司后创建项目+开发计划+检出，`advancePlan` 生成 `docs/autopilot/scope.md`，正文含「公司：<全称>（统一社会信用代码：<代码>）」 |
+
+**结论口径**：本章为 v2.26 增量；`company-profile.test.ts` 新增 3 例；渲染冒烟新增 `CompanyProfileCard` 两态（不增用例数）。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -782,6 +818,12 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-AUTO-014 | UC-025 / REQ-PRJ-039 | `test/integration/autopilot.test.ts` | roadmap 5 阶段/3 计划/5 里程碑；三份计划 content 基于检出内容 |
 | TC-AUTO-015 | UC-024 / REQ-PRJ-037 | `test/integration/autopilot.test.ts` | 归档/恢复只改标记；active/archived/all 过滤；执行记录与计划不删 |
 | TC-AUTO-016 | UC-024 / REQ-PRJ-037 | `test/integration/autopilot.test.ts` | 已有 running 时 409 `ERR-AUTO-001`，不并跑 |
+| TC-AUTO-017 | UC-032 / REQ-PRJ-040 | `test/integration/autopilot.test.ts` | 计划推进生成 scope/architecture 交付物；planExecution 40%；计划转 active |
+| TC-AUTO-018 | UC-032 / REQ-PRJ-040 | `test/integration/autopilot.test.ts` | 编码 agent 回收→流水线→发布；完成判定与生产裁决 |
+| TC-AUTO-019 | UC-032 / REQ-PRJ-040 | `test/integration/autopilot.test.ts` | autoAdvanceNext 选项目；无 agent 阻塞裁决；阻塞后不重复推进 |
+| TC-ADM-001 | UC-033 / REQ-ADM-013 | `test/integration/company-profile.test.ts` | 公司档案读取/校验/保存/审计（不落银行账号） |
+| TC-ADM-002 | UC-033 / REQ-ADM-013 | `test/integration/company-profile.test.ts` | 员工只读视图扩展字段，不出口银行账号 |
+| TC-ADM-003 | UC-033 / REQ-ADM-013 | `test/integration/company-profile.test.ts` | 项目自动驾驶交付物抬头带公司主体 |
 | TC-IDEA-001 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 文本创意 AI 解析 |
 | TC-IDEA-002 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | txt/docx/xlsx/pdf 多文件解析 |
 | TC-IDEA-003 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 建项目并进自动驾驶 |
@@ -810,7 +852,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | `test/integration/web.test.ts` | 5 | TC-WEB-001 … TC-WEB-005 | — |
 | `test/integration/employees.test.ts` | 3 | TC-EMP-002、TC-EMP-003 | — |
 | `test/integration/spec.test.ts` | 4 | — | 4 条全部 |
-| 合计 | 75 | 67 个承载 31 条 TC | 8 条横切 |
+| 合计 | 75 | 67 个承载 70 条 TC | 8 条横切 |
 
 结论：24/24 TC 均有主用例，无 TC 只靠横切用例；8 个横切用例不进入 TC 计数，避免“把健康检查算作业务验收”的虚高覆盖。
 
@@ -904,7 +946,7 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 ## 自检清单
 
-- [x] 31 条 TC 与 `usecases.yaml` 的 `tests` 字段逐一对应（员工分册 AC 直验另计），无遗漏、无自造编号。
+- [x] 70 条 TC 与 `usecases.yaml` 的 `tests` 字段逐一对应（员工分册 AC 直验另计），无遗漏、无自造编号。
 - [x] 每条 TC 均给出前置条件、步骤、输入数据、期望结果、覆盖的需求与接口、对应用例。
 - [x] 所有测试文件路径指向仓库真实文件，测试标题与代码原文一致。
 - [x] 第 5 章总表 24 行齐全，覆盖核算 60 + 8 = 68 可复算，与 `npm test` 用例总数一致。

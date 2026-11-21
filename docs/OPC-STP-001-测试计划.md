@@ -12,7 +12,7 @@ updated: 2026-11-14
 
 # OPC-STP-001 · OPC-玄机 · 一人公司中枢 测试计划
 
-本计划解决“验证到底要验什么、验到什么程度算过、谁来验”的问题：把上游规格（31 个用例、64 条 TC、117 个 HTTP 接口、35 个错误码）与仓库里真实存在的 136 个自动化用例对账，定出级别、环境、数据、准入准出与缺陷回流规则。**读者与使用时点**：测试执行者在 G4（D4 验证门禁）复跑与签收前逐章核对；开发在失败定位与修复回流时看第 8 章；评审人在判断“能不能过门禁”时只看第 7、9 章；发布/归档者按第 7、11 章取证据。
+本计划解决“验证到底要验什么、验到什么程度算过、谁来验”的问题：把上游规格（33 个用例、70 条 TC、119 个 HTTP 接口、35 个错误码）与仓库里真实存在的 144 个自动化用例对账，定出级别、环境、数据、准入准出与缺陷回流规则。**读者与使用时点**：测试执行者在 G4（D4 验证门禁）复跑与签收前逐章核对；开发在失败定位与修复回流时看第 8 章；评审人在判断“能不能过门禁”时只看第 7、9 章；发布/归档者按第 7、11 章取证据。
 
 ## 目录
 
@@ -118,7 +118,7 @@ updated: 2026-11-14
 | 集成（契约层） | HTTP 状态码/错误码/结构化返回；DSH 工具可执行 | `test/integration/api.test.ts`、`plugin.test.ts` | 12 | `opc_test` + 127.0.0.1 随机端口 | 12/12，0 失败 |
 | 集成（规格） | spec ↔ DDL/路由/错误码/追溯 | `test/integration/spec.test.ts` | 4 | `opc_test` + `spec/` | 4/4，0 失败 |
 | 系统 | 独立进程常驻（`npm run serve`）+ DSH 插件装配冒烟 | `scripts/serve.ts`、`cordis.patch.yml` | 手工 3 项 | 进程 + PG | 手工记录入 G4 归档，不并入 61 计数 |
-| 验收 | 21 个 UC 的主路径与异常路径可复述、可演示 | `OPC-STD-001` 第 4 章 | 31 条 TC | 全部级别通过 | 31/31 TC 有通过证据 |
+| 验收 | 33 个 UC 的主路径与异常路径可复述、可演示 | `OPC-STD-001` 第 4 章 | 70 条 TC | 全部级别通过 | 70/70 TC 有通过证据 |
 
 分层理由：单元层只放“无副作用、可穷举边界”的纯函数，任何需要真实 SQL 行为的断言一律下沉到集成层——视图授权依赖 `ref.view_grant` 行状态、幂等依赖唯一键冲突、审计链依赖链头行，mock 掉这些等于没测。
 
@@ -188,7 +188,7 @@ updated: 2026-11-14
 
 进入 G4 执行前，以下 8 项全部满足，缺一项则退回准备阶段：
 
-- [ ] `spec/opc-xuanji/` 四份 YAML 已冻结在基线标签 `v2.11-20261106`，`usecases.yaml` 的 21 个 UC 与 31 条 TC 无未决变更。
+- [ ] `spec/opc-xuanji/` 四份 YAML 已冻结在基线标签 `v2.11-20261106`，`usecases.yaml` 的 33 个 UC 与 70 条 TC 无未决变更。
 - [ ] `npm install` 完成，`node_modules` 就绪；`node -v` ≥ 24.9。
 - [ ] 测试库 `opc_test` 可达，`vector`/`pgcrypto`/`unaccent` 已安装（pgvector 0.8.0）。
 - [ ] `npm run migrate:test` 已应用 `0001`–`0005`，`_opc_migrations` 台账与迁移文件一致。
@@ -398,14 +398,55 @@ updated: 2026-11-14
 
 **前置**：TC-AUTO-012/014 依赖本地 `file://` git 夹具（含 README、`package.json`、`Dockerfile`、`test/` 目录）；TC-AUTO-015/016 直接读写 `stat.project_autopilot_run`，需测试库已应用 `0015`；不得为通过测试而放宽归档/并发断言。
 
+## 21. v2.24 新建项目独立界面增量测试项（2026-11-14）
+
+本轮增量：管理面把「新建项目」从自动驾驶页底部拆为独立页签，并按「创建方式 → 表单 → 选项/动作 → 结果跳转」重排；自动驾驶页重排为「总览 → 执行操作 → 详情分栏」。无后端契约、表结构与错误码变化，验证以渲染冒烟 + 全量回归为主。
+
+| TC | 测试文件 | 复现命令 | 通过判据 |
+| :--- | :--- | :--- | :--- |
+| TC-RENDER-001..003 | `test/unit/client-render.test.ts` | `node --test test/unit/client-render.test.ts` | 3/3 pass（已实测） |
+| 语法/静态 | `client.js` | `node --check client.js` | exit 0 |
+| 类型/规格/文档 | 全仓 | `npm run typecheck && npm run spec:check && npm run docs:check` | 全 PASS（92 实体 / 31 用例 / 21 模块；28 份文档，不含 `docs/过程资产/`） |
+| 全量回归 | `npm test` | 串行执行 | 137/137 pass（2026-11-14 实测） |
+
+**前置**：渲染冒烟用假 React 递归构造元素树，不启动浏览器、不依赖宿主；只覆盖「不抛错 + 分支被覆盖」，视觉与交互由人工浏览器验收。不得为通过测试而删减断言或跳过分支。
+
+## 22. v2.25 计划自动推进增量测试项（2026-11-14）
+
+本轮增量：后台定时任务按开发计划推进项目（文档交付物/编码 agent/流水线/测试环境发布），阻塞转裁决，生产发布不自动执行。无新增 HTTP operation、不新增表，仅扩 `stat.project_autopilot_run.trigger` 到 `plan`。
+
+| TC | 测试文件 | 复现命令 | 通过判据 |
+| :--- | :--- | :--- | :--- |
+| TC-AUTO-017..019 | `test/integration/autopilot.test.ts` | `NODE_ENV=test node --test --test-concurrency=1 test/integration/autopilot.test.ts` | 19/19 pass（已实测） |
+| 定时任务 | `test/integration/scheduler.test.ts` | `node --test --test-concurrency=1 test/integration/scheduler.test.ts` | 7/7 pass；任务集含 `project_plan_auto` |
+| 迁移 `0016_plan_execution.sql` | 业务库 + 测试库 | `npm run migrate && npm run migrate:test` | 各 applied 1、exit 0（表数仍 92） |
+| 契约 | `spec/opc-xuanji/usecases.yaml` | `npm run spec:check` | PASS（92 实体 / 32 用例 / 21 模块，117 operation） |
+| 全量回归 | `npm test` | 串行执行 | 141/141 pass（2026-11-14 实测） |
+
+**前置**：TC-AUTO-017/018 用本地 `file://` git 夹具；编码 agent 用假实现注入（不启动真实 DSH agent），真实 agent 派活与 cwd 写入属未覆盖项，需在装配 dsh-super-agents 的环境验收；TC-AUTO-019 依赖迁移 0016 的 `trigger=plan`。不得为通过测试而放宽阻塞/完成断言。
+
+## 23. v2.26 公司基础信息增量测试项（2026-11-14）
+
+本轮增量：设置页新增公司基础信息卡，`biz.company_profile` 扩 26 列，新增 `GET/PUT /admin/company-profile`；信息被项目交付物抬头与员工只读视图共用。表数仍 92，错误码不新增（复用 `ERR-RES-001`）。
+
+| TC | 测试文件 | 复现命令 | 通过判据 |
+| :--- | :--- | :--- | :--- |
+| TC-ADM-001..003 | `test/integration/company-profile.test.ts` | `NODE_ENV=test node --test --test-concurrency=1 test/integration/company-profile.test.ts` | 3/3 pass（已实测） |
+| 渲染冒烟 | `test/unit/client-render.test.ts` | `node --test test/unit/client-render.test.ts` | 3/3 pass；`CompanyProfileCard` 两态渲染 |
+| 迁移 `0017_company_profile.sql` | 业务库 + 测试库 | `npm run migrate && npm run migrate:test` | 各 applied 1、exit 0（表数仍 92） |
+| 契约 | `spec/opc-xuanji/api.yaml` | `npm run spec:check` | PASS（92 实体 / 33 用例 / 21 模块，119 operation） |
+| 全量回归 | `npm test` | 串行执行 | 144/144 pass（2026-11-14 实测） |
+
+**前置**：TC-ADM-002 需播种 `opc_project` 员工与 `view_company_profile` 授权；TC-ADM-003 需迁移 0017 与临时检出目录；不得为通过测试而放宽校验（信用代码 18 位、邮箱/官网/邮编格式）或把银行账号写进审计断言。
+
 ## 自检清单
 
-- [x] 目标与范围已对齐 `usecases.yaml` 的 31 个 UC、64 条 TC，数量与规格一致。
-- [x] 四个测试级别均有资产文件、用例数、依赖与通过判据，136 = 单元 44 + 集成 92 可复算（基线 68 + v2.12–v2.23 增量 68）。
+- [x] 目标与范围已对齐 `usecases.yaml` 的 33 个 UC、70 条 TC，数量与规格一致。
+- [x] 四个测试级别均有资产文件、用例数、依赖与通过判据，144 = 单元 45 + 集成 99 可复算（基线 68 + v2.12–v2.26 增量 76）。
 - [x] 环境表列出 Node ≥24.9、PostgreSQL 17.11、pgvector 0.8.0、`opc_test` 与 `opc` 隔离及校验命令。
 - [x] 数据策略覆盖 `resetDb`（92 表 + advisory lock）、`seedEmployee`、固定时钟三件套。
 - [x] 进入准则 8 项可勾选、可命令化验证，无“视情况而定”表述。
-- [x] 通过标准含 136/136、`typecheck` exit 0、`check-spec` PASS，并声明硬/软门禁差异。
+- [x] 通过标准含 144/144、`typecheck` exit 0、`check-spec` PASS，并声明硬/软门禁差异。
 - [x] 缺陷分级 P0–P3 均有定义、示例、回流路径与门禁影响；规格变更走契约流程。
 - [x] 风险表覆盖真实 LLM 桩替代、共享测试库并发、时区抖动、环境不可达、错误码归属不一致等 9 项。
 - [x] 进度表含 5 个阶段、责任角色、交付物、完成判据与时点，责任边界写清。
@@ -417,7 +458,7 @@ updated: 2026-11-14
 
 | 文档 | 关系 | 说明 |
 | :--- | :--- | :--- |
-| [spec/opc-xuanji/usecases.yaml](../spec/opc-xuanji/usecases.yaml) | 上游（唯一 TC 来源） | 21 个 UC 的 `tests` 字段决定本计划与 STD 的 31 条 TC 清单（员工分册 AC 直验另计） |
+| [spec/opc-xuanji/usecases.yaml](../spec/opc-xuanji/usecases.yaml) | 上游（唯一 TC 来源） | 33 个 UC 的 `tests` 字段决定本计划与 STD 的 70 条 TC 清单（员工分册 AC 直验另计） |
 | [spec/opc-xuanji/api.yaml](../spec/opc-xuanji/api.yaml) | 上游 | 117 个 operation 与 35 个错误码构成契约层判据 |
 | [spec/opc-xuanji/entities.yaml](../spec/opc-xuanji/entities.yaml) | 上游 | 92 张表的列级对账依据 |
 | `OPC-玄机 · 一人公司中枢-产品设计.md` | 上游 | 8.6.9.2 三关测试、8.6.3 评判、8.6.9.5 守卫与风险规则的本计划依据 |

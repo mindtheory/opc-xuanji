@@ -146,6 +146,11 @@ export class SuperAgentsBridge {
     });
   }
 
+  /** 取消运行中/排队的 agent run（计划推进超时回收用）。 */
+  async cancelRun(runId: string): Promise<void> {
+    await this.request("/api/dsh-super-agents/run-cancel", { method: "POST", body: { runId } });
+  }
+
   async runDetail(runId: string): Promise<BridgeRunDetail> {
     return this.request<BridgeRunDetail>(`/api/dsh-super-agents/run-detail?runId=${encodeURIComponent(runId)}`);
   }

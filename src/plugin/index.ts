@@ -130,13 +130,13 @@ export function createHub(options: HubConfig = {}): Hub {
   const employees = new EmployeePackageService(pool, audit, { hubVersion: options.version ?? "0.2.1" });
   const software = new ProjectSoftwareService(pool, audit);
   const wechat = new WechatPushService(pool, audit);
-  const autopilot = new ProjectAutopilotService(pool, audit, wechat);
+  const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
+  const agents = new SuperAgentService(bridge, audit, { archiveDir });
+  const autopilot = new ProjectAutopilotService(pool, audit, wechat, agents);
   const usage = new UsageService(pool);
   const issues = new IssueReporter(pool, audit);
   const intelPipeline = new IntelPipelineService(pool);
   const admin = new AdminService(pool, audit, software, intelPipeline, autopilot, wechat);
-  const bridge = new SuperAgentsBridge({ baseUrl: options.superAgentsUrl ?? (process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined) });
-  const agents = new SuperAgentService(bridge, audit, { archiveDir });
   const hindsight = new HindsightBridge({
     baseUrl: options.hindsightUrl ?? (process.env.OPC_HINDSIGHT_URL?.trim() || undefined),
     bankId: options.hindsightBank ?? (process.env.OPC_HINDSIGHT_BANK?.trim() || undefined),

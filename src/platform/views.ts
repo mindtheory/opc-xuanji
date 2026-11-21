@@ -35,11 +35,14 @@ function assertKeys(filter: Record<string, unknown>, allowed: string[]): void {
 export const VIEWS: Record<string, ViewDefinition> = {
   view_company_profile: {
     id: "view_company_profile",
-    description: "公司档案（非敏感字段），全部员工可读",
-    columns: ["id", "name", "entity_type", "tax_types", "updated_at"],
+    description: "公司档案（非敏感字段：主体、行业、规模、官网；银行账号/联系方式明细不出口），全部员工可读",
+    columns: ["id", "name", "short_name", "credit_code", "entity_type", "industry", "employee_count", "website", "updated_at"],
     build(filter, limit) {
       assertKeys(filter, []);
-      return { text: "SELECT id, name, entity_type, tax_types, updated_at FROM biz.company_profile ORDER BY id LIMIT $1", params: [clampLimit(limit)] };
+      return {
+        text: "SELECT id, name, short_name, credit_code, entity_type, industry, employee_count, website, updated_at FROM biz.company_profile ORDER BY id LIMIT $1",
+        params: [clampLimit(limit)],
+      };
     },
   },
   view_ar_ap: {

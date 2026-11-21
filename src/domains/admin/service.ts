@@ -460,6 +460,42 @@ const INTEL_RESOURCES: Record<string, ResourceDef> = {
   },
 };
 
+/** 公司基础信息字段（设置页维护，跨模块共用）。 */
+const COMPANY_TEXT_FIELDS: Array<{ key: string; column: string; max: number; required?: boolean; pattern?: RegExp; message?: string }> = [
+  { key: "name", column: "name", max: 128, required: true },
+  { key: "entityType", column: "entity_type", max: 32, pattern: /^(服务型|贸易型|混合型)$/, message: "主体类型只支持 服务型/贸易型/混合型" },
+  { key: "shortName", column: "short_name", max: 64 },
+  { key: "englishName", column: "english_name", max: 128 },
+  { key: "creditCode", column: "credit_code", max: 32, pattern: /^[0-9A-Z]{18}$/i, message: "统一社会信用代码必须是 18 位数字/大写字母" },
+  { key: "legalPerson", column: "legal_person", max: 64 },
+  { key: "registeredCapital", column: "registered_capital", max: 64 },
+  { key: "companyType", column: "company_type", max: 64 },
+  { key: "industry", column: "industry", max: 64 },
+  { key: "website", column: "website", max: 200, pattern: /^https?:\/\/\S+$/i, message: "官网必须以 http:// 或 https:// 开头" },
+  { key: "regAddress", column: "reg_address", max: 500 },
+  { key: "officeAddress", column: "office_address", max: 500 },
+  { key: "postcode", column: "postcode", max: 16, pattern: /^\d{6}$/, message: "邮编必须是 6 位数字" },
+  { key: "phone", column: "phone", max: 64 },
+  { key: "email", column: "email", max: 128, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "邮箱格式非法" },
+  { key: "contactName", column: "contact_name", max: 64 },
+  { key: "contactTitle", column: "contact_title", max: 64 },
+  { key: "taxNumber", column: "tax_number", max: 64 },
+  { key: "invoiceTitle", column: "invoice_title", max: 128 },
+  { key: "taxpayerType", column: "taxpayer_type", max: 32, pattern: /^(general|small|other)$/, message: "纳税人类型只支持 general/small/other" },
+  { key: "bankName", column: "bank_name", max: 128 },
+  { key: "bankAccount", column: "bank_account", max: 64 },
+  { key: "invoiceNote", column: "invoice_note", max: 200 },
+  { key: "businessScope", column: "business_scope", max: 4000 },
+];
+const COMPANY_JSON_FIELDS: Array<{ key: string; column: string }> = [
+  { key: "taxTypes", column: "tax_types" },
+  { key: "bankAccounts", column: "bank_accounts" },
+  { key: "ownerPreferences", column: "owner_preferences" },
+  { key: "extra", column: "extra" },
+];
+const COMPANY_DATE_FIELDS: Array<{ key: string; column: string }> = [{ key: "establishedDate", column: "established_date" }];
+const COMPANY_INT_FIELDS: Array<{ key: string; column: string; min: number; max: number }> = [{ key: "employeeCount", column: "employee_count", min: 0, max: 1_000_000 }];
+
 /** 公司级基础资源（跨项目共享，不属于单项目）。 */
 const SHARED_KINDS = ["code_repo", "artifact_repo", "test_server", "nas", "public_server", "domain"] as const;
 const SHARED_ACCESS = ["ssh", "rdp", "sunlogin", "https", "console", "smb", "nfs", "api"] as const;
@@ -658,6 +694,108 @@ export class AdminService {
     sql += ` ORDER BY ${def.orderBy} LIMIT 500`;
     const result = await this.pool.query(sql, params);
     return result.rows.map((row) => camelize(row as Row));
+  }
+
+  // ---------------- 公司基础信息（跨模块共用） ----------------
+
+  /** 公司基础信息：单行档案 + 项目/财税/法务/行政复用的默认口径。 */
+  async companyProfile(): Promise<Row> {
+    const [rows, defaults] = await Promise.all([
+      this.pool.query("SELECT * FROM biz.company_profile ORDER BY id LIMIT 1"),
+      this.sharedDefaults(),
+    ]);
+    const profile = rows.rows.length > 0 ? camelize(rows.rows[0] as Row) : null;
+    return { profile, defaults, updatedAt: rows.rows.length > 0 ? (rows.rows[0] as Row).updated_at ?? null : null };
+  }
+
+  /** 更新（或首建）公司基础信息：逐字段校验 → 单行 upsert → 审计（只记字段名，不记银行账号等敏感值）。 */
+  async updateCompanyProfile(input: Row): Promise<Row> {
+    const values: Record<string, unknown> = {};
+    const jsonColumns = new Set(COMPANY_JSON_FIELDS.map((field) => field.column));
+    const updated: string[] = [];
+    for (const field of COMPANY_TEXT_FIELDS) {
+      if (input[field.key] === undefined) continue;
+      const raw = input[field.key];
+      if (raw === null || raw === "") {
+        if (field.required) throw invalid("admin", `${field.key} 为必填项`);
+        // entity_type 为 NOT NULL 且缺省「服务型」：表单整体提交的空串不覆盖既有值，首建交给下方缺省逻辑。
+        if (field.key === "entityType") continue;
+        values[field.column] = null;
+        updated.push(field.column);
+        continue;
+      }
+      if (typeof raw !== "string" && typeof raw !== "number") throw invalid("admin", `${field.key} 必须是字符串`);
+      const text = String(raw).trim();
+      if (text.length > field.max) throw invalid("admin", `${field.key} 长度不能超过 ${field.max}`);
+      if (field.pattern !== undefined && !field.pattern.test(text)) throw invalid("admin", field.message ?? `${field.key} 格式非法`);
+      values[field.column] = text;
+      updated.push(field.column);
+    }
+    for (const field of COMPANY_DATE_FIELDS) {
+      if (input[field.key] === undefined) continue;
+      const raw = input[field.key];
+      if (raw === null || raw === "") {
+        values[field.column] = null;
+        updated.push(field.column);
+        continue;
+      }
+      const text = String(raw).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(text))) throw invalid("admin", `${field.key} 必须是 YYYY-MM-DD`);
+      values[field.column] = text;
+      updated.push(field.column);
+    }
+    for (const field of COMPANY_INT_FIELDS) {
+      if (input[field.key] === undefined) continue;
+      const raw = input[field.key];
+      if (raw === null || raw === "") {
+        values[field.column] = null;
+        updated.push(field.column);
+        continue;
+      }
+      values[field.column] = asInt(raw, field.key, "admin", field.min, field.max);
+      updated.push(field.column);
+    }
+    for (const field of COMPANY_JSON_FIELDS) {
+      if (input[field.key] === undefined) continue;
+      const raw = input[field.key];
+      if (raw === null || raw === "") {
+        values[field.column] = null;
+      } else if (typeof raw === "object") {
+        values[field.column] = raw;
+      } else {
+        try {
+          values[field.column] = JSON.parse(String(raw));
+        } catch {
+          throw invalid("admin", `${field.key} 不是合法 JSON`);
+        }
+      }
+      updated.push(field.column);
+    }
+    if (input.updatedBy !== undefined && input.updatedBy !== null) {
+      values.updated_by = String(input.updatedBy).slice(0, 64);
+      updated.push("updated_by");
+    }
+    if (Object.keys(values).length === 0) throw invalid("admin", "没有可更新的字段");
+    const existing = await this.pool.query<{ id: number }>("SELECT id FROM biz.company_profile ORDER BY id LIMIT 1");
+    let id: number;
+    if (existing.rows.length === 0) {
+      if (values.name === undefined || values.name === null) throw invalid("admin", "新建公司档案必须填写公司全称 name");
+      if (values.entity_type === undefined) {
+        values.entity_type = "服务型";
+        updated.push("entity_type");
+      }
+      const cols = Object.keys(values);
+      const placeholders = cols.map((column, index) => "$" + (index + 1) + (jsonColumns.has(column) ? "::jsonb" : ""));
+      const inserted = await this.pool.query(`INSERT INTO biz.company_profile (${cols.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING id`, cols.map((column) => values[column]));
+      id = Number((inserted.rows[0] as Row).id);
+    } else {
+      id = Number(existing.rows[0].id);
+      const cols = Object.keys(values);
+      const assignments = cols.map((column, index) => column + " = $" + (index + 1) + (jsonColumns.has(column) ? "::jsonb" : ""));
+      await this.pool.query("UPDATE biz.company_profile SET " + assignments.join(", ") + ", updated_at = now() WHERE id = $" + (cols.length + 1), [...cols.map((column) => values[column]), id]);
+    }
+    await this.record("company.profile.update", "CompanyProfile", id, { fields: updated });
+    return this.companyProfile();
   }
 
   // ---------------- 公司基础资源（跨项目共享） ----------------

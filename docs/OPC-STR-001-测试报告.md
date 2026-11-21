@@ -300,6 +300,46 @@ node scripts/check-spec.mjs --dir spec
 
 **结论**：v2.23 的自动驾驶控制台、描述抽取与内容化计划已验证（`autopilot.test.ts` 16/16、全量 `npm test` 136/136、`typecheck` / `spec:check` / `docs:check` 均通过）。
 
+## 20. v2.24 新建项目独立界面增量验证（2026-11-14）
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 渲染冒烟（`client-render.test.ts`） | **3/3 pass**（已实测） | TC-RENDER-001..003：自动驾驶组件、自动驾驶页签（空/已加载）与新建项目页（默认/创意+解析/已创建） |
+| 全量测试（`npm test`） | **137/137 pass**（2026-11-14 实测，单元 45 + 集成 92） | 136→137（+1：新建项目页渲染冒烟）；与 §19 基线串行执行一致 |
+| 类型检查 / 规格 / 文档 | PASS | `tsc --noEmit` 0 错误；`spec:check` 92 实体 / 31 用例 / 21 模块；`docs:check` 28 份（不含过程资产，新增 PA-OPC-033） |
+| 结构核验 | 自动驾驶页：总览 → 执行操作 → 详情分栏；新建项目页：页头分段控件 + 左表单/右说明 + 结果卡 | 渲染树核验（无浏览器）：`ocSplit/ocFormGrid/ocCheckRow/ocActionRow/ocFlow/ocResultCard` 等类名与关键文案出现 |
+| 行为不变项 | 无接口、表结构、错误码变化；创建与执行仍走既有端点 | `git diff --stat` 仅 `client.js`、渲染冒烟与文档 |
+
+**结论**：v2.24 的界面拆分与重排已验证（渲染冒烟 3/3、全量 137/137、`typecheck`/`spec:check`/`docs:check` 全绿）；浏览器视觉验收由人工完成。
+
+## 21. v2.25 计划自动推进增量验证（2026-11-14）
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0016_plan_execution.sql` | 业务库 applied 1 / 测试库 applied 1 | 仅重建 `stat.project_autopilot_run.trigger` CHECK（manual/idea/api → manual/idea/api/plan）；表数仍 92、无新列 |
+| 新增用例 | **4/4 pass**（已实测） | TC-AUTO-017/018/019（计划推进）+ scheduler「项目计划自动推进：无候选项目时跳过且不报错」 |
+| 自动驾驶用例（`autopilot.test.ts`） | **19/19 pass** | 16→19 增量，TC-AUTO-001..016 无回归 |
+| 全量测试（`npm test`） | **141/141 pass**（2026-11-14 实测，单元 45 + 集成 96） | 137→141（+3 自动驾驶 + 1 调度任务） |
+| 类型检查 / 规格 / 文档 | PASS | `tsc --noEmit` 0 错误；`spec:check` 92 实体 / 32 用例 / 21 模块；`docs:check` 28 份（不含过程资产，新增 PA-OPC-034） |
+| 观测口径 | `planExecution{completed,percent,blocked,blockTopic,tasks}`、`trigger=plan` 运行记录、里程碑 `achieved`、`biz.project.progress` | TC-AUTO-017/018 断言 |
+| 阻塞语义 | 编码 agent 不可用/失败/超时、流水线失败、部署未配置/失败分别转 `coding_agent`/`pipeline_failed`/`deploy_executor`/`deploy_failed`，生产发布只生成 `production_release` 裁决 | TC-AUTO-018/019 断言 |
+| 未覆盖项 | 真实 DSH 编码 agent 的派活、cwd 写入与沙箱授权；真实部署命令与健康检查；浏览器视觉验收 | 需装配 dsh-super-agents 与可写工作副本的环境复验 |
+
+**结论**：v2.25 的计划自动推进在迁移、任务判定、编码 agent 回收、流水线、发布与完成判定六个层面已验证（渲染冒烟 3/3、全量 141/141、`typecheck`/`spec:check`/`docs:check` 全绿）；真实编码 agent 与生产发布仍需人工环境验收。
+
+## 22. v2.26 公司基础信息增量验证（2026-11-14）
+
+| 项 | 结果 | 证据/说明 |
+| :--- | :--- | :--- |
+| 迁移 `0017_company_profile.sql` | 业务库 applied 1 / 测试库 applied 1 | `biz.company_profile` 扩 26 列；表数仍 92、无新表 |
+| 新增用例（`company-profile.test.ts`） | **3/3 pass**（已实测） | TC-ADM-001 读取/校验/保存/审计；002 员工只读视图共用；003 项目交付物抬头共用 |
+| 全量测试（`npm test`） | **144/144 pass**（2026-11-14 实测，单元 45 + 集成 99） | 141→144（+3 公司基础信息） |
+| 类型检查 / 规格 / 文档 | PASS | `tsc --noEmit` 0 错误；`spec:check` 92 实体 / 33 用例 / 21 模块 / 119 operation；`docs:check` 28 份（新增 PA-OPC-035） |
+| 共用口径 | 项目 scope/architecture/test-report/release 抬头带公司名与信用代码；`view_company_profile` 返回主体/行业/规模/官网 | TC-ADM-002/003 断言 |
+| 敏感值 | 审计只记字段名（`bank_account`），payload 不含账号值 | TC-ADM-001 断言 |
+
+**结论**：v2.26 公司基础信息在迁移、单行档案读写、校验、审计与跨模块共用五个层面已验证（全量 144/144，`typecheck`/`spec:check`/`docs:check` 全绿）；浏览器视觉验收由人工完成。
+
 ## 自检清单
 
 - [x] 用例总数与通过数以 `npm test` 输出为准，未手工改写

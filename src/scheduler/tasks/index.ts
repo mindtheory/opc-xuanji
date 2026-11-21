@@ -15,6 +15,9 @@ import { IntelPipelineService, type RawIntelItem } from "../../domains/intel/dai
 import type { PluginCandidate } from "../../web/plugin-score.ts";
 import { IssueReporter, UsageService } from "../../ops/feedback.ts";
 import { WechatPushService } from "../../notify/wechat.ts";
+import { ProjectAutopilotService } from "../../domains/project/autopilot.ts";
+import { SuperAgentsBridge } from "../../agents/bridge.ts";
+import { SuperAgentService } from "../../agents/service.ts";
 
 function monthPath(now: Date): string {
   const year = now.getUTCFullYear();
@@ -31,6 +34,20 @@ export function defaultTasks(): TaskDefinition[] {
       async handler(ctx) {
         const wechat = new WechatPushService(ctx.pool, ctx.audit);
         return wechat.deliverPending(20);
+      },
+    },
+    {
+      id: "project_plan_auto",
+      name: "项目计划自动推进（每 15 分钟，一个项目一步）",
+      defaults: { cron: "*/15 * * * *", timezone: "Asia/Shanghai", enabled: true },
+      async handler(ctx) {
+        const bridge = new SuperAgentsBridge({ baseUrl: process.env.OPC_SUPER_AGENTS_URL?.trim() || undefined });
+        const agents = new SuperAgentService(bridge, ctx.audit, { archiveDir: ctx.archiveDir });
+        const autopilot = new ProjectAutopilotService(ctx.pool, ctx.audit, undefined, agents);
+        const result = await autopilot.autoAdvanceNext(ctx.now);
+        if (result.completed === true) await ctx.notify("project_plan_completed", "digest", { projectId: result.projectId, runId: result.runId });
+        if (result.blocked === true) await ctx.notify("project_plan_blocked", "digest", { projectId: result.projectId, topic: result.blockTopic });
+        return { ...result };
       },
     },
     {

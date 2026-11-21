@@ -817,3 +817,54 @@ usecases:
       - 后台任务每分钟经 /api/dsh-im/delivery/messages 投递到期消息，失败按 2s→300s 退避重试 5 次
       - 未绑定微信时只排队不报错，绑定后自动补发
       - 老板在微信里对话即进入 DSH 会话，可直接调用全部 opc_* 工具（查健康/裁决/任务/项目/创意等）
+  - id: UC-032
+    title: 按计划自动推进项目并补齐交付物
+    requirement: REQ-PRJ-040
+    actors:
+      - 中枢
+      - 老板
+    goal: 后台定时按开发计划逐步补齐范围/架构/实现/测试/发布交付物，跑通流水线并发布测试环境；需拍板项转裁决，生产发布永不自动执行
+    entities:
+      - Project
+      - ProjectPlan
+      - ProjectAutopilotRun
+      - ProjectMilestone
+      - ProjectDecision
+      - AuditLog
+    api:
+      - getProjectAutopilot
+      - listAutopilotProjects
+    tests:
+      - TC-AUTO-017
+      - TC-AUTO-018
+      - TC-AUTO-019
+    preconditions: 迁移 0016 已应用（plan_execution）；项目已有开发计划与成功检出；编码 agent 依赖 dsh-super-agents（不可达时转裁决）
+    steps:
+      - 定时任务 project_plan_auto（默认每 15 分钟）挑选未完成项目，一次只推进一个单元
+      - 按 freeze/design/build/verify/release 顺序检查交付物：文档直接生成，实现派编码 agent（cwd=检出目录）跨 tick 回收
+      - 流水线只跑仓库既有 lint/build/test 脚本；失败派修复 agent 后重跑，仍失败转 pipeline_failed 裁决
+      - 测试环境发布成功写发布记录并生成 production_release 裁决；生产发布永不自动执行
+      - 交付物齐备即 completed，里程碑 achieved、项目进度 100；阻塞项转裁决并暂停该项目自动推进
+  - id: UC-033
+    title: 公司基础信息维护与跨模块共用
+    requirement: REQ-ADM-013
+    actors:
+      - 老板
+      - 中枢
+    goal: 设置页维护公司唯一主体档案（工商/地址联系/开票银行/经营范围），项目交付物、员工只读视图与财税/法务/行政共用同一份
+    entities:
+      - CompanyProfile
+      - AuditLog
+    api:
+      - getCompanyProfile
+      - updateCompanyProfile
+    tests:
+      - TC-ADM-001
+      - TC-ADM-002
+      - TC-ADM-003
+    preconditions: 迁移 0017 已应用；设置页已加载公司基础信息卡
+    steps:
+      - 设置页读取 GET /admin/company-profile（单行档案 + 公司默认口径）
+      - 老板维护字段并保存；中枢逐字段校验（名称必填、信用代码 18 位、邮箱/官网/邮编格式）后单行 upsert
+      - 写审计 company.profile.update，只记字段名不记银行账号/税号值
+      - 项目自动驾驶交付物带公司主体抬头；员工经 view_company_profile 只读主体/行业/规模/官网（银行账号与联系方式明细不出视图）

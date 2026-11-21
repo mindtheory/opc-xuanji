@@ -14,7 +14,7 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, readdir, readFile, rm, writeFile, stat as fsStat } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir, hostname, networkInterfaces, tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import type { Pool } from "../../db/pool.ts";
 import type { AuditService } from "../../audit/audit.ts";
@@ -60,6 +60,14 @@ export interface RepositoryInput {
   kind?: string;
   revision?: string;
   name?: string;
+}
+
+/** 计划执行器对「编码 agent」的最小端口（SuperAgentService 实现；测试可注入假实现）。 */
+export interface CodingAgentPort {
+  ensureCodingAgent(input: { projectId: number; cwd: string }): Promise<{ agentId: string }>;
+  dispatchCoding(agentId: string, prompt: string): Promise<{ runId: string }>;
+  codingResult(runId: string): Promise<{ status: string; head: string; artifact: string }>;
+  cancelCoding(runId: string): Promise<void>;
 }
 
 type VcsKind = "git" | "svn";
@@ -147,6 +155,39 @@ const AUTOPILOT_STAGES: ReadonlyArray<{ key: string; label: string }> = [
   { key: "done", label: "完成" },
 ];
 
+// 计划自动推进的任务清单与交付物（写入检出目录 docs/autopilot/，存在即视为该任务完成）
+const PLAN_TASK_STAGES: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "freeze", label: "需求与范围冻结" },
+  { key: "design", label: "架构与接口设计" },
+  { key: "build", label: "开发实现（编码 agent）" },
+  { key: "verify", label: "联调与测试" },
+  { key: "release", label: "发布上线" },
+];
+const PLAN_ARTIFACT: Record<string, string> = {
+  freeze: "docs/autopilot/scope.md",
+  design: "docs/autopilot/architecture.md",
+  build: "docs/autopilot/build.md",
+  verify: "docs/autopilot/test-report.md",
+  release: "docs/autopilot/release.md",
+};
+const PLAN_MILESTONE_NAME: Record<string, string> = {
+  freeze: "需求与范围冻结",
+  design: "架构与接口设计",
+  build: "开发实现",
+  verify: "联调与测试",
+  release: "发布上线",
+};
+
+async function fileExists(path: string): Promise<boolean> {
+  return fsStat(path).then(() => true).catch(() => false);
+}
+
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => (item !== null && typeof item === "object" ? JSON.stringify(item) : String(item))).filter((item) => item !== "")
+    : [];
+}
+
 const STATUS_LABELS: Record<string, string> = {
   not_started: "未接入",
   running: "运行中",
@@ -166,6 +207,8 @@ interface AutopilotStep {
   endedAt: string | null;
   durationMs: number | null;
   detail: string | null;
+  /** 计划推进的机器可读状态（如等待中的编码 agent runId）；展示仍用 detail。 */
+  data?: Row;
 }
 
 function stageLabelOf(stage: string): string {
@@ -213,6 +256,30 @@ function mapRunRow(row: Row): Row {
     startedAt,
     endedAt,
     durationMs: durationBetween(startedAt, endedAt),
+  };
+}
+
+/** 计划自动推进的执行摘要（result.tasks 优先，运行中回退 steps；供 summary 展示）。 */
+function planExecutionOf(row: Row): Row {
+  const result = (row.result ?? {}) as Row;
+  const steps = Array.isArray(row.steps) ? (row.steps as AutopilotStep[]) : [];
+  const tasks = Array.isArray(result.tasks)
+    ? (result.tasks as Row[])
+    : steps
+        .filter((step) => PLAN_ARTIFACT[step.stage] !== undefined)
+        .map((step) => ({ key: step.stage, title: step.label, status: step.status, detail: step.detail }));
+  const okCount = tasks.filter((task) => task.status === "ok").length;
+  return {
+    id: Number(row.id),
+    status: row.status ?? "running",
+    startedAt: row.started_at ?? null,
+    endedAt: row.ended_at ?? null,
+    completed: result.completed === true,
+    blocked: result.blocked === true,
+    blockTopic: result.blockTopic ?? null,
+    nextTask: result.nextTask ?? null,
+    percent: tasks.length === 0 ? 0 : Math.round((okCount / tasks.length) * 100),
+    tasks,
   };
 }
 
@@ -289,11 +356,13 @@ export class ProjectAutopilotService {
   private readonly pool: Pool;
   private readonly audit: AuditService;
   private readonly wechat: WechatPushService | undefined;
+  private readonly agents: CodingAgentPort | undefined;
 
-  constructor(pool: Pool, audit: AuditService, wechat?: WechatPushService) {
+  constructor(pool: Pool, audit: AuditService, wechat?: WechatPushService, agents?: CodingAgentPort) {
     this.pool = pool;
     this.audit = audit;
     this.wechat = wechat;
+    this.agents = agents;
   }
 
   private async record(action: string, projectId: number, payload: unknown): Promise<void> {
@@ -368,10 +437,17 @@ export class ProjectAutopilotService {
         svnRev = svn.revision;
       } else {
         const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" };
+        let token: string | null = null;
         if (authRef !== null) {
           if (!authRef.startsWith("env:")) throw new OpcError(ERR.AUTO_CRED, "自动检出暂只支持 env: 凭据引用", 400);
-          const token = process.env[authRef.slice("env:".length)];
-          if (!token) throw new OpcError(ERR.AUTO_CRED, `凭据环境变量未设置：${authRef}`, 400);
+          token = process.env[authRef.slice("env:".length)] ?? null;
+          if (token === null || token === "") throw new OpcError(ERR.AUTO_CRED, `凭据环境变量未设置：${authRef}`, 400);
+        } else if (/github\.com/i.test(url)) {
+          // 未显式给凭据的 GitHub 仓库（私有仓常见）：回退用服务自带的运维 token，
+          // 避免 git 在无 TTY 下报 "could not read Username"（新建 git 项目 502 的根因）。
+          token = process.env.OPC_GITHUB_TOKEN?.trim() || null;
+        }
+        if (token !== null) {
           askpass = join(tmpdir(), `opc-askpass-${Date.now()}-${Math.random().toString(36).slice(2)}.sh`);
           await writeFile(askpass, '#!/bin/sh\ncase "$1" in *[Uu]sername*) echo "x-access-token";; *) echo "${OPC_CLONE_TOKEN}";; esac\n', { mode: 0o700 });
           env.GIT_ASKPASS = askpass;
@@ -424,6 +500,8 @@ export class ProjectAutopilotService {
   private runSvn(args: string[], options: { env: NodeJS.ProcessEnv; timeoutMs: number; stdin?: string }): Promise<void> {
     return new Promise((resolve, reject) => {
       const child = spawn("svn", args, { env: options.env, stdio: ["pipe", "pipe", "pipe"] });
+      // svn checkout 会把每个文件的 "A path" 写到 stdout；不排空会写满 64KB 管道缓冲而阻塞，大仓库必然超时
+      child.stdout.resume();
       let stderr = "";
       const timer = setTimeout(() => {
         child.kill("SIGKILL");
@@ -466,7 +544,7 @@ export class ProjectAutopilotService {
       throw new OpcError(ERR.AUTO_CHECKOUT, `检出失败：svn 客户端不可用（${detail}）`, 502);
     }
     const checkoutUrl = svnCheckoutUrl(repo.url, branch);
-    const args = ["checkout", "--non-interactive", "--no-auth-cache"];
+    const args = ["checkout", "--quiet", "--non-interactive", "--no-auth-cache"];
     if (revision !== "HEAD") args.push("--revision", revision);
     let stdin: string | undefined;
     const authRef = this.svnAuthRef(repo, checkoutUrl);
@@ -965,7 +1043,7 @@ export class ProjectAutopilotService {
       findings.push({ topic: "pipeline_failed", riskLevel: "high", question: "自动测试流水线未通过：先修代码还是调整流水线？", options: [{ label: "修复后重跑", impact: "阻塞发布" }, { label: "调整为人工验收", impact: "风险由老板承担" }] });
     }
     if (deploy !== undefined && deploy.status === "pending") {
-      findings.push({ topic: "deploy_executor", riskLevel: "high", question: "测试环境发布未配置执行命令：如何自动发布？", options: [{ label: "配置 OPC_TEST_DEPLOY_CMD", impact: "后续自动发布测试环境" }, { label: "人工发布", impact: "自动化止步于发布单" }] });
+      findings.push({ topic: "deploy_executor", riskLevel: "high", question: "测试环境发布未配置执行命令：如何自动发布？", options: [{ label: "内置执行器（推荐）：rsync 制品到测试服务器，仓库含 opc-deploy.sh 时自动执行", impact: "下一轮自动推进即自动发布，无需配置" }, { label: "配置 OPC_TEST_DEPLOY_CMD", impact: "后续自动发布测试环境" }, { label: "人工发布", impact: "自动化止步于发布单" }] });
     }
     if (deploy !== undefined && deploy.status === "failed") {
       findings.push({ topic: "deploy_failed", riskLevel: "high", question: "测试环境发布失败：回滚还是修复后重发？", options: [{ label: "修复后重发", impact: "保留发布单记录" }, { label: "回滚上一版本", impact: "按部署计划回滚" }] });
@@ -1096,7 +1174,9 @@ export class ProjectAutopilotService {
       );
       return row.rows[0] as Row;
     } catch (err) {
-      const detail = (err instanceof Error ? err.message : String(err)).slice(-2000);
+      const stderr = (err as { stderr?: string }).stderr ?? "";
+      const stdout = (err as { stdout?: string }).stdout ?? "";
+      const detail = ((err instanceof Error ? err.message : String(err)) + "\n" + stdout + "\n" + stderr).slice(-2000);
       const row = await this.pool.query(
         `INSERT INTO stat.project_pipeline_run (project_id, checkout_id, stage, command, exit_code, status, log_tail, duration_ms)
          VALUES ($1,$2,$3,$4,$5,'failed',$6,$7) RETURNING id, stage, command, status, exit_code`,
@@ -1137,16 +1217,122 @@ export class ProjectAutopilotService {
     };
   }
 
+  /**
+   * 发布执行方式：显式命令 > 老板裁决（内置执行器/人工/等 OPC_TEST_DEPLOY_CMD）> 未裁决则挂起转裁决。
+   * 内置执行器 = rsync 工作副本到目标机 + 执行仓库内 opc-deploy.sh（若有），无需额外配置。
+   */
+  private async resolveDeployExecutor(projectId: number, input: Row): Promise<{ kind: "command" | "builtin" | "manual" | "await-cmd" | "undecided"; command?: string }> {
+    const command = typeof input.command === "string" && input.command.trim() !== "" ? input.command.trim() : (process.env.OPC_TEST_DEPLOY_CMD?.trim() || null);
+    if (command !== null) return { kind: "command", command };
+    const decided = await this.pool.query<{ decision: string | null }>(
+      "SELECT decision FROM stat.project_decision WHERE project_id = $1 AND topic = 'deploy_executor' AND status = 'decided' ORDER BY id DESC LIMIT 1",
+      [projectId],
+    );
+    const text = String(decided.rows[0]?.decision ?? "");
+    if (text === "") return { kind: "undecided" };
+    if (/内置执行器/.test(text)) return { kind: "builtin" };
+    if (/人工/.test(text)) return { kind: "manual" };
+    if (/OPC_TEST_DEPLOY_CMD/.test(text)) return { kind: "await-cmd" };
+    // 历史裁决文本无法识别时按内置执行器处理（旧选项「放宽限制后重试」的语义即继续自动推进）
+    return { kind: "builtin" };
+  }
+
+  /** 目标机是否本机：本机直接 rsync 本地路径，跳过 SSH。 */
+  private isLocalHost(host: string): boolean {
+    if (/^(127\.0\.0\.1|localhost|::1)$/.test(host)) return true;
+    const names = new Set<string>([hostname().toLowerCase()]);
+    for (const list of Object.values(networkInterfaces())) {
+      for (const item of list ?? []) if (item.family === "IPv4") names.add(item.address);
+    }
+    return names.has(host.toLowerCase());
+  }
+
+  /**
+   * 内置发布执行器：把工作副本 rsync 到目标机 ~/opc-deploy/project-<id>/v-<version>/，
+   * 仓库内如有 opc-deploy.sh 则执行（注入 OPC_DEPLOY_DIR / OPC_DEPLOY_VERSION）。
+   * 远程主机走 SSH：口令取 env: 引用或 OPC_DEFAULT_SSH_PASSWORD，经 askpass 传入，不出现在 argv/日志。
+   */
+  private async deployViaBuiltin(projectId: number, envRow: Row, dir: string | null, version: string): Promise<{ status: "ok" | "failed" | "pending"; exitCode: number | null; log: string }> {
+    if (dir === null) return { status: "pending", exitCode: null, log: "内置执行器：没有可用工作副本（检出缺失或已被清理），请重新执行一次自动驾驶后再发布" };
+    const host = String(envRow.host ?? "");
+    const user = String(envRow.ssh_user ?? "canetwork");
+    const port = Number(envRow.port ?? 22);
+    const rel = `opc-deploy/project-${projectId}/v-${version.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+    const local = this.isLocalHost(host);
+    if (!local && host === "") return { status: "pending", exitCode: null, log: "内置执行器：测试环境未登记主机地址，请在公司基础资源补齐" };
+    const log: string[] = [];
+    let askpass: string | null = null;
+    try {
+      const env: NodeJS.ProcessEnv = this.deployEnv();
+      let target: string;
+      if (local) {
+        // OPC_DEPLOY_ROOT：测试/特殊环境覆盖发布根目录（默认用户主目录）
+        target = join(process.env.OPC_DEPLOY_ROOT?.trim() || homedir(), rel);
+        await mkdir(target, { recursive: true });
+        await exec("rsync", ["-a", "--delete", "--exclude", ".git", "--exclude", ".svn", "--exclude", "node_modules", `${dir}/`, `${target}/`], { timeout: 300_000, maxBuffer: 4 * 1024 * 1024 });
+        log.push(`[sync] 本机 rsync → ${target}`);
+      } else {
+        target = `~/opc-deploy/project-${projectId}/v-${version.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+        const authRef = envRow.auth_ref === null || envRow.auth_ref === undefined ? null : String(envRow.auth_ref);
+        let password: string | null = null;
+        if (authRef !== null && authRef.startsWith("env:")) password = process.env[authRef.slice("env:".length)] ?? null;
+        else password = process.env.OPC_DEFAULT_SSH_PASSWORD?.trim() || null;
+        const sshCommon = ["-p", String(port), "-o", "StrictHostKeyChecking=accept-new", "-o", "NumberOfPasswordPrompts=1"];
+        if (password !== null) {
+          askpass = join(tmpdir(), `opc-sshpass-${Date.now()}-${Math.random().toString(36).slice(2)}.sh`);
+          await writeFile(askpass, '#!/bin/sh\nprintf "%s\\n" "$OPC_SSH_PASSWORD"\n', { mode: 0o700 });
+          env.SSH_ASKPASS = askpass;
+          env.SSH_ASKPASS_REQUIRE = "force";
+          env.OPC_SSH_PASSWORD = password;
+        } else {
+          env.SSH_AUTH_SOCK = process.env.SSH_AUTH_SOCK ?? "";
+        }
+        await exec("ssh", [...sshCommon, `${user}@${host}`, `mkdir -p '${target}'`], { env, timeout: 60_000 });
+        await exec("rsync", ["-a", "--delete", "--exclude", ".git", "--exclude", ".svn", "--exclude", "node_modules", "-e", `ssh -p ${port} -o StrictHostKeyChecking=accept-new`, `${dir}/`, `${user}@${host}:${target}/`], { env, timeout: 300_000, maxBuffer: 4 * 1024 * 1024 });
+        log.push(`[sync] rsync → ${user}@${host}:${target}`);
+      }
+      const scriptPath = join(dir, "opc-deploy.sh");
+      let hasScript = false;
+      try { await fsStat(scriptPath); hasScript = true; } catch { hasScript = false; }
+      if (!hasScript) {
+        log.push("[script] 仓库无 opc-deploy.sh：仅同步制品（如需构建/重启请在仓库添加 opc-deploy.sh）");
+        return { status: "ok", exitCode: 0, log: log.join("\n").slice(-2000) };
+      }
+      if (local) {
+        const out = await exec("bash", [join(target, "opc-deploy.sh")], {
+          cwd: target, timeout: 300_000, maxBuffer: 4 * 1024 * 1024,
+          env: { ...this.deployEnv(), OPC_DEPLOY_DIR: target, OPC_DEPLOY_VERSION: version },
+        });
+        log.push(`[script] opc-deploy.sh 完成\n${out.stdout}\n${out.stderr}`.slice(-1800));
+        return { status: "ok", exitCode: 0, log: log.join("\n").slice(-2000) };
+      }
+      const out = await exec("ssh", [...this.sshCommonFor(envRow), `${user}@${host}`, `cd ${target} && OPC_DEPLOY_DIR=${target} OPC_DEPLOY_VERSION='${version}' bash opc-deploy.sh`], { env, timeout: 300_000, maxBuffer: 4 * 1024 * 1024 });
+      log.push(`[script] opc-deploy.sh 完成\n${out.stdout}\n${out.stderr}`.slice(-1800));
+      return { status: "ok", exitCode: 0, log: log.join("\n").slice(-2000) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { status: "failed", exitCode: typeof (error as { code?: number }).code === "number" ? (error as { code: number }).code : null, log: `${log.join("\n")}\n[error] ${message.split("\n").slice(-3).join(" ")}`.slice(-2000) };
+    } finally {
+      if (askpass !== null) await rm(askpass, { force: true });
+    }
+  }
+
+  /** 远程脚本执行用的 ssh 公共参数（与 deployViaBuiltin 内一致，口令仍走 askpass 环境）。 */
+  private sshCommonFor(envRow: Row): string[] {
+    return ["-p", String(Number(envRow.port ?? 22)), "-o", "StrictHostKeyChecking=accept-new", "-o", "NumberOfPasswordPrompts=1"];
+  }
+
   async deployTestEnvironment(projectId: number, input: Row = {}): Promise<Row> {
     await this.assertProject(projectId);
-    const env = await this.pool.query<{ id: string; name: string; host: string }>(
-      "SELECT id, name, host FROM ref.deploy_environment WHERE project_id = $1 AND env_type = 'test' ORDER BY id DESC LIMIT 1",
+    const env = await this.pool.query<Row>(
+      "SELECT id, name, host, port, ssh_user, auth_ref FROM ref.deploy_environment WHERE project_id = $1 AND env_type = 'test' ORDER BY id DESC LIMIT 1",
       [projectId],
     );
     if (env.rows.length === 0) throw new OpcError(ERR.AUTO_INVALID, "项目还没有测试环境：先执行自动驾驶生成部署计划", 400);
-    const envId = env.rows[0].id;
-    const checkout = await this.pool.query<{ commit_sha: string | null; revision: string | null }>(
-      "SELECT commit_sha, revision FROM ref.project_checkout WHERE project_id = $1 ORDER BY id DESC LIMIT 1",
+    const envRow = env.rows[0];
+    const envId = envRow.id;
+    const checkout = await this.pool.query<{ commit_sha: string | null; revision: string | null; workspace_path: string | null }>(
+      "SELECT commit_sha, revision, workspace_path FROM ref.project_checkout WHERE project_id = $1 AND status = 'ok' ORDER BY id DESC LIMIT 1",
       [projectId],
     );
     // 发布版本号：Git 取 commit SHA 前 12 位，SVN 取修订号；都缺失时兜底 0
@@ -1157,15 +1343,17 @@ export class ProjectAutopilotService {
       [projectId, Number(envId), version],
     );
     const releaseId = Number((release.rows[0] as Row).id);
-    const command = typeof input.command === "string" && input.command.trim() !== "" ? input.command : (process.env.OPC_TEST_DEPLOY_CMD?.trim() || null);
+    const executor = await this.resolveDeployExecutor(projectId, input);
     const healthUrl = typeof input.healthUrl === "string" && input.healthUrl.trim() !== "" ? input.healthUrl : (process.env.OPC_TEST_DEPLOY_HEALTH_URL?.trim() || null);
     const started = new Date();
     let exitCode: number | null = null;
     let status = "pending";
-    let log = command === null ? "未配置部署命令（OPC_TEST_DEPLOY_CMD 或 command），已转裁决等待执行方式" : "";
-    if (command !== null) {
+    let log = "";
+    let executed = false;
+    if (executor.kind === "command") {
+      executed = true;
       try {
-        const out = await exec("bash", ["-c", command], { cwd: this.workspaceRoot(), timeout: 300_000, maxBuffer: 4 * 1024 * 1024, env: this.deployEnv() });
+        const out = await exec("bash", ["-c", executor.command as string], { cwd: this.workspaceRoot(), timeout: 300_000, maxBuffer: 4 * 1024 * 1024, env: this.deployEnv() });
         status = "ok";
         exitCode = 0;
         log = `${out.stdout}\n${out.stderr}`.trim().slice(-2000);
@@ -1175,16 +1363,30 @@ export class ProjectAutopilotService {
         exitCode = typeof code === "number" ? code : null;
         log = (err instanceof Error ? err.message : String(err)).slice(-2000);
       }
-      if (status === "ok" && healthUrl !== null) {
-        try {
-          const response = await fetch(healthUrl, { signal: AbortSignal.timeout(10_000) });
-          if (!response.ok) status = "failed";
-          log = `${log}\n[health] ${healthUrl} -> ${response.status}`.slice(-2000);
-        } catch (err) {
-          status = "failed";
-          log = `${log}\n[health] ${healthUrl} 不可达：${err instanceof Error ? err.message : String(err)}`.slice(-2000);
-        }
+    } else if (executor.kind === "builtin") {
+      executed = true;
+      const result = await this.deployViaBuiltin(projectId, envRow, checkout.rows[0]?.workspace_path ?? null, version);
+      status = result.status;
+      exitCode = result.exitCode;
+      log = result.log;
+    } else if (executor.kind === "await-cmd") {
+      log = "等待 OPC_TEST_DEPLOY_CMD：已按裁决选择自定义发布命令，在服务环境配置后下一轮自动推进即执行";
+    } else if (executor.kind === "undecided") {
+      log = "未配置部署命令（OPC_TEST_DEPLOY_CMD 或 command），已转裁决等待执行方式";
+    } else {
+      log = "已按裁决选择人工发布：自动化止步于发布单";
+    }
+    if (executed && status === "ok" && healthUrl !== null) {
+      try {
+        const response = await fetch(healthUrl, { signal: AbortSignal.timeout(10_000) });
+        if (!response.ok) status = "failed";
+        log = `${log}\n[health] ${healthUrl} -> ${response.status}`.slice(-2000);
+      } catch (err) {
+        status = "failed";
+        log = `${log}\n[health] ${healthUrl} 不可达：${err instanceof Error ? err.message : String(err)}`.slice(-2000);
       }
+    }
+    if (executed) {
       await this.pool.query(
         "UPDATE biz.release_order SET executed_at = now(), health_check = $2::jsonb WHERE id = $1",
         [releaseId, JSON.stringify({ status, healthUrl })],
@@ -1193,7 +1395,7 @@ export class ProjectAutopilotService {
     const row = await this.pool.query(
       `INSERT INTO stat.project_deploy_run (project_id, release_id, environment_id, command, health_url, exit_code, status, log_tail, started_at, ended_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, status, exit_code, release_id, command, health_url`,
-      [projectId, releaseId, Number(envId), command, healthUrl, exitCode, status, log, started, new Date()],
+      [projectId, releaseId, Number(envId), executor.kind === "command" ? (executor.command as string) : `builtin:${executor.kind}`, healthUrl, exitCode, status, log, started, new Date()],
     );
     await this.record("project.autopilot.deploy-test", projectId, { releaseId, environmentId: envId, status, exitCode });
     return { id: String((row.rows[0] as Row).id), releaseId, environmentId: envId, status, exitCode, healthUrl, logTail: log.slice(-500) };
@@ -1203,19 +1405,6 @@ export class ProjectAutopilotService {
 
   /** 每次 bootstrap 追加一行执行记录；同项目已有 running 行时拒绝并发执行（409）。 */
   private async startRun(projectId: number, trigger: string): Promise<number> {
-    // 进程重启/任务中断会留下 running 悬挂记录：超过 30 分钟视为中断，避免永久阻塞后续执行
-    const stale = await this.pool.query(
-      `UPDATE stat.project_autopilot_run
-       SET status = 'failed', error = '执行中断（进程重启或超时）', ended_at = now()
-       WHERE project_id = $1 AND status = 'running' AND started_at < now() - interval '30 minutes'
-       RETURNING id`,
-      [projectId],
-    );
-    if (stale.rows.length > 0) await this.record("project.autopilot.run.stale", projectId, { ids: stale.rows.map((row) => Number((row as Row).id)) });
-    const running = await this.pool.query("SELECT id FROM stat.project_autopilot_run WHERE project_id = $1 AND status = 'running' ORDER BY id DESC LIMIT 1", [projectId]);
-    if (running.rows.length > 0) {
-      throw new OpcError(ERR.AUTO_INVALID, "该项目已有自动驾驶正在执行，请等它完成后再看结果", 409);
-    }
     const startedAt = new Date().toISOString();
     const steps: AutopilotStep[] = AUTOPILOT_STAGES.map((item) => ({
       stage: item.key,
@@ -1228,10 +1417,30 @@ export class ProjectAutopilotService {
     }));
     steps[0].status = "running";
     steps[0].startedAt = startedAt;
+    return this.startRunWithSteps(projectId, trigger, steps, "register", "登记版本库");
+  }
+
+  /** 以自定义阶段列表起一次运行（bootstrap 10 阶段 / 计划推进 5 任务共用同一套生命周期与并发保护）。 */
+  private async startRunWithSteps(projectId: number, trigger: string, steps: AutopilotStep[], stage: string, stageLabel: string): Promise<number> {
+    // 进程重启/任务中断会留下 running 悬挂记录：bootstrap 超过 30 分钟视为中断；计划推进跨 tick，放宽到 6 小时
+    const stale = await this.pool.query(
+      `UPDATE stat.project_autopilot_run
+       SET status = 'failed', error = '执行中断（进程重启或超时）', ended_at = now()
+       WHERE project_id = $1 AND status = 'running'
+         AND ((trigger <> 'plan' AND started_at < now() - interval '30 minutes')
+           OR (trigger = 'plan' AND started_at < now() - interval '6 hours'))
+       RETURNING id`,
+      [projectId],
+    );
+    if (stale.rows.length > 0) await this.record("project.autopilot.run.stale", projectId, { ids: stale.rows.map((row) => Number((row as Row).id)) });
+    const running = await this.pool.query("SELECT id FROM stat.project_autopilot_run WHERE project_id = $1 AND status = 'running' ORDER BY id DESC LIMIT 1", [projectId]);
+    if (running.rows.length > 0) {
+      throw new OpcError(ERR.AUTO_INVALID, "该项目已有自动驾驶正在执行，请等它完成后再看结果", 409);
+    }
     const inserted = await this.pool.query(
       `INSERT INTO stat.project_autopilot_run (project_id, trigger, status, stage, stage_label, steps)
-       VALUES ($1,$2,'running','register','登记版本库',$3::jsonb) RETURNING id`,
-      [projectId, trigger, JSON.stringify(steps)],
+       VALUES ($1,$2,'running',$3,$4,$5::jsonb) RETURNING id`,
+      [projectId, trigger, stage, stageLabel, JSON.stringify(steps)],
     );
     await this.record("project.autopilot.run.start", projectId, { trigger });
     return Number((inserted.rows[0] as Row).id);
@@ -1281,7 +1490,7 @@ export class ProjectAutopilotService {
   }
 
   /** 收尾：成功时标记 done；失败保留失败阶段并写入错误摘要；未执行阶段记 skipped。 */
-  private async finishRun(runId: number, status: "ok" | "failed", result: Row | null, error: string | null): Promise<void> {
+  private async finishRun(runId: number, status: "ok" | "failed", result: Row | null, error: string | null, options: { skipPending?: boolean } = {}): Promise<void> {
     const at = new Date().toISOString();
     await this.updateRunSteps(runId, (steps) => {
       for (const step of steps) {
@@ -1289,7 +1498,7 @@ export class ProjectAutopilotService {
           step.status = status === "ok" ? "ok" : "failed";
           step.endedAt = at;
           step.durationMs = durationBetween(step.startedAt, at);
-        } else if (step.status === "pending") {
+        } else if (step.status === "pending" && options.skipPending !== false) {
           step.status = "skipped";
           step.endedAt = at;
           step.durationMs = 0;
@@ -1325,6 +1534,544 @@ export class ProjectAutopilotService {
     if (extra.endedAt !== undefined) { params.push(extra.endedAt); sets.push(`ended_at = $${params.length}`); }
     await this.pool.query(`UPDATE stat.project_autopilot_run SET ${sets.join(", ")} WHERE id = $1`, params);
   }
+
+  // ---------------------------------------------------------------- 计划自动推进（REQ-PRJ-040）
+
+  private planArtifact(key: string): string {
+    return PLAN_ARTIFACT[key] ?? "docs/autopilot/" + key + ".md";
+  }
+
+  /** 计划任务的当前状态：交付物存在即完成；等待编码 agent 的任务保持 running。 */
+  private async planTaskStates(dir: string, steps: AutopilotStep[]): Promise<Row[]> {
+    const tasks: Row[] = [];
+    for (const task of PLAN_TASK_STAGES) {
+      const artifact = this.planArtifact(task.key);
+      const exists = await fileExists(join(dir, artifact));
+      const step = steps.find((item) => item.stage === task.key);
+      const status = exists
+        ? "ok"
+        : step === undefined || step.status === "pending" || step.status === "skipped"
+          ? "pending"
+          : step.status;
+      tasks.push({ key: task.key, title: task.label, status, artifact, detail: step?.detail ?? null, data: step?.data ?? null });
+    }
+    return tasks;
+  }
+
+  private async writePlanArtifact(dir: string, key: string, content: string): Promise<string> {
+    const rel = this.planArtifact(key);
+    const full = join(dir, rel);
+    await mkdir(dirname(full), { recursive: true });
+    await writeFile(full, content, "utf8");
+    return rel;
+  }
+
+  private async readPlanRun(runId: number): Promise<{ steps: AutopilotStep[]; result: Row | null }> {
+    const row = (await this.pool.query("SELECT steps, result FROM stat.project_autopilot_run WHERE id = $1", [runId])).rows[0] as Row | undefined;
+    const steps = row !== undefined && Array.isArray(row.steps) ? (row.steps as AutopilotStep[]).map((item) => ({ ...item })) : [];
+    return { steps, result: row === undefined ? null : ((row.result ?? null) as Row | null) };
+  }
+
+  private async latestScan(projectId: number): Promise<Row | null> {
+    const row = (await this.pool.query("SELECT languages, manifests, tests, ci, findings, status FROM stat.project_scan WHERE project_id = $1 ORDER BY id DESC LIMIT 1", [projectId])).rows[0] as Row | undefined;
+    return row ?? null;
+  }
+
+  private planAgentTimeoutMs(): number {
+    const raw = Number(process.env.OPC_AUTOPILOT_AGENT_TIMEOUT_MS ?? "");
+    return Number.isFinite(raw) && raw >= 60_000 ? raw : 15 * 60_000;
+  }
+
+  private async startPlanRun(projectId: number): Promise<number> {
+    const steps: AutopilotStep[] = PLAN_TASK_STAGES.map((task) => ({
+      stage: task.key,
+      label: task.label,
+      status: "pending",
+      startedAt: null,
+      endedAt: null,
+      durationMs: null,
+      detail: null,
+    }));
+    return this.startRunWithSteps(projectId, "plan", steps, "plan", "按计划自动推进");
+  }
+
+  private async markPlanStep(runId: number, stage: string, status: AutopilotStep["status"], detail: string | null, data?: Row): Promise<void> {
+    const at = new Date().toISOString();
+    const label = PLAN_TASK_STAGES.find((item) => item.key === stage)?.label ?? stage;
+    await this.updateRunSteps(runId, (steps) => {
+      for (const step of steps) {
+        if (step.status === "running" && step.stage !== stage) {
+          step.status = "ok";
+          step.endedAt = at;
+          step.durationMs = durationBetween(step.startedAt, at);
+        }
+      }
+      const target = steps.find((step) => step.stage === stage);
+      if (target === undefined) return;
+      target.status = status;
+      target.detail = detail;
+      if (status === "running") {
+        target.startedAt = target.startedAt ?? at;
+        target.endedAt = null;
+        target.durationMs = null;
+      } else {
+        target.startedAt = target.startedAt ?? at;
+        target.endedAt = at;
+        target.durationMs = durationBetween(target.startedAt, at);
+      }
+      if (data !== undefined) target.data = data;
+    }, { stage, stageLabel: label });
+  }
+
+  private async dispatchCodingSafe(projectId: number, dir: string, prompt: string): Promise<{ agentId: string; runId: string } | null> {
+    if (this.agents === undefined) return null;
+    try {
+      const { agentId } = await this.agents.ensureCodingAgent({ projectId, cwd: dir });
+      const { runId } = await this.agents.dispatchCoding(agentId, prompt);
+      await this.record("project.autopilot.plan.agent", projectId, { agentId, runId });
+      return { agentId, runId };
+    } catch (error) {
+      await this.record("project.autopilot.plan.agent.error", projectId, { error: (error instanceof Error ? error.message : String(error)).slice(0, 300) });
+      return null;
+    }
+  }
+
+  private async codingResultSafe(runId: string): Promise<{ status: string; head: string; artifact: string } | null> {
+    if (this.agents === undefined) return null;
+    try {
+      return await this.agents.codingResult(runId);
+    } catch {
+      return null;
+    }
+  }
+
+  private async cancelCodingSafe(runId: string): Promise<void> {
+    if (this.agents === undefined) return;
+    await this.agents.cancelCoding(runId).catch(() => undefined);
+  }
+
+  /** 回收等待中的编码 agent：完成则写交付物，失败/超时则阻塞并转裁决。 */
+  private async pollPlanAgent(projectId: number, runId: number, stage: string, dir: string, checkout: Row, planRow: Row, data: Row): Promise<{ status: "waiting" | "ok" | "failed"; blocked?: Row }> {
+    const agentRunId = String(data.agentRunId);
+    const startedMs = Date.parse(String(data.agentStartedAt ?? ""));
+    const started = Number.isFinite(startedMs) ? startedMs : Date.now();
+    const outcome = await this.codingResultSafe(agentRunId);
+    const status = outcome?.status ?? "failed";
+    if (status === "queued" || status === "running") {
+      if (Date.now() - started > this.planAgentTimeoutMs()) {
+        await this.cancelCodingSafe(agentRunId);
+        const steps = (await this.readPlanRun(runId)).steps;
+        const blocked = await this.blockPlan(projectId, runId, dir, checkout, planRow, steps, stage, "coding_agent", "编码 agent 超过 " + Math.round(this.planAgentTimeoutMs() / 60_000) + " 分钟未完成，已取消：是否改人工实现或缩小任务范围？");
+        return { status: "failed", blocked };
+      }
+      return { status: "waiting" };
+    }
+    const artifact = outcome?.artifact ?? "";
+    const head = (outcome?.head ?? artifact.split("\n")[0] ?? "").trim();
+    const incomplete = outcome === null || artifact.trim() === "" || status === "failed" || status === "timeout" || head.startsWith("未完成：");
+    if (incomplete) {
+      const steps = (await this.readPlanRun(runId)).steps;
+      const blocked = await this.blockPlan(projectId, runId, dir, checkout, planRow, steps, stage, "coding_agent", "编码 agent 未能完成（" + (head === "" ? status : head).slice(0, 160) + "）：是否改人工实现？");
+      return { status: "failed", blocked };
+    }
+    if (stage === "build") {
+      await this.writePlanArtifact(dir, "build", this.buildDoc(planRow, head, artifact));
+      await this.markPlanStep(runId, "build", "ok", "编码 agent 已完成：" + head.slice(0, 120));
+    } else {
+      // 修复成功：清空等待标记，下一轮重新跑流水线确认
+      await this.markPlanStep(runId, "verify", "running", "修复 agent 已完成：" + head.slice(0, 120), {});
+    }
+    return { status: "ok" };
+  }
+
+  private async syncPlanMilestones(projectId: number, tasks: Row[], runId: number): Promise<number> {
+    for (const task of tasks) {
+      const name = PLAN_MILESTONE_NAME[String(task.key)];
+      if (name === undefined) continue;
+      const status = task.status === "ok" ? "achieved" : task.status === "failed" || task.status === "running" ? "in_progress" : "planned";
+      await this.pool.query(
+        "UPDATE biz.project_milestone SET status = $3::varchar, actual_date = CASE WHEN $3::varchar = 'achieved' THEN current_date ELSE NULL END, evidence = $4 WHERE project_id = $1 AND name = $2",
+        [projectId, name, status, "autopilot plan run #" + runId + " · " + String(task.status)],
+      );
+    }
+    const okCount = tasks.filter((task) => task.status === "ok").length;
+    const progress = tasks.length === 0 ? 0 : Math.round((okCount / tasks.length) * 100);
+    await this.pool.query("UPDATE biz.project SET progress = $2 WHERE id = $1", [projectId, progress]);
+    return progress;
+  }
+
+  /** 交付物落到 Git 工作副本后提交到本地（不推远端）；SVN 只留工作副本，不写远端。 */
+  private async commitPlanWorkspace(projectId: number, dir: string, checkout: Row): Promise<Row> {
+    if (String(checkout.vcs_kind ?? "git") !== "git") return { committed: false, reason: "svn_workcopy" };
+    try {
+      const inside = await exec("git", ["-C", dir, "rev-parse", "--is-inside-work-tree"], { timeout: 15_000 });
+      if (String(inside.stdout).trim() !== "true") return { committed: false, reason: "not_git" };
+      await exec("git", ["-C", dir, "add", "-A"], { timeout: 30_000 });
+      await exec("git", ["-C", dir, "-c", "user.name=opc-autopilot", "-c", "user.email=autopilot@opc.local", "commit", "-q", "-m", "chore(autopilot): 按计划补齐交付物"], { timeout: 60_000 });
+      const head = await exec("git", ["-C", dir, "rev-parse", "HEAD"], { timeout: 15_000 });
+      const sha = String(head.stdout).trim().slice(0, 40);
+      await this.record("project.autopilot.plan.commit", projectId, { sha });
+      return { committed: true, sha };
+    } catch (error) {
+      return { committed: false, reason: (error instanceof Error ? error.message : String(error)).split("\n")[0]?.slice(0, 200) ?? "" };
+    }
+  }
+
+  private async finishPlan(projectId: number, runId: number, dir: string, checkout: Row, planRow: Row, steps: AutopilotStep[], outcome: { completed: boolean; blockedTopic?: string | null; nextTask?: string | null }, tasksInput?: Row[]): Promise<Row> {
+    const tasks = tasksInput ?? (await this.planTaskStates(dir, steps));
+    const progress = await this.syncPlanMilestones(projectId, tasks, runId);
+    if (outcome.completed) {
+      await this.pool.query("UPDATE stat.project_plan SET status = 'active' WHERE id = $1", [planRow.id]);
+      const commit = await this.commitPlanWorkspace(projectId, dir, checkout);
+      const result: Row = { completed: true, planVersion: Number(planRow.version), tasks, progress, productionPending: true, commit };
+      await this.finishRun(runId, "ok", result, null, { skipPending: false });
+      await this.record("project.autopilot.plan.completed", projectId, { runId, planVersion: Number(planRow.version), commit });
+      return { advanced: 1, projectId, runId, completed: true, progress, tasks, commit };
+    }
+    const result: Row = { completed: false, blocked: true, blockTopic: outcome.blockedTopic ?? null, nextTask: outcome.nextTask ?? null, planVersion: Number(planRow.version), tasks, progress };
+    await this.finishRun(runId, "ok", result, null, { skipPending: false });
+    await this.record("project.autopilot.plan.blocked", projectId, { runId, topic: outcome.blockedTopic ?? null, nextTask: outcome.nextTask ?? null });
+    return { advanced: 1, projectId, runId, blocked: true, blockTopic: outcome.blockedTopic ?? null, nextTask: outcome.nextTask ?? null, progress, tasks };
+  }
+
+  /** 阻塞：转一条裁决（同 topic 去重）并把当前任务标 failed，结束本轮运行。 */
+  private async blockPlan(projectId: number, runId: number, dir: string, checkout: Row, planRow: Row, steps: AutopilotStep[], taskKey: string, topic: string, question: string): Promise<Row> {
+    const options = topic === "deploy_executor"
+      ? [
+        { label: "内置执行器（推荐）：rsync 制品到测试服务器，仓库含 opc-deploy.sh 时自动执行", impact: "下一轮自动推进即自动发布，无需配置" },
+        { label: "配置 OPC_TEST_DEPLOY_CMD", impact: "在服务环境配置发布命令后下一轮自动执行" },
+        { label: "人工发布", impact: "自动化止步于发布单" },
+      ]
+      : [
+        { label: "人工接手", impact: "暂停该项目自动推进，等老板处理" },
+        { label: "放宽限制后重试", impact: "下一轮自动推进重新尝试" },
+      ];
+    await this.recordDecision(projectId, {
+      topic,
+      question,
+      riskLevel: "high",
+      options,
+    }, { allowRepeat: true });
+    await this.markPlanStep(runId, taskKey, "failed", "已阻塞：" + question.slice(0, 160));
+    const fresh = await this.readPlanRun(runId);
+    const tasks = await this.planTaskStates(dir, fresh.steps);
+    return this.finishPlan(projectId, runId, dir, checkout, planRow, fresh.steps, { completed: false, blockedTopic: topic, nextTask: taskKey }, tasks);
+  }
+
+  /** 公司基础信息抬头：项目交付物、测试报告、发布记录都带公司主体（与设置页共用同一份档案）。 */
+  private async companyDocLine(): Promise<string> {
+    try {
+      const rows = await this.pool.query("SELECT name, credit_code FROM biz.company_profile ORDER BY id LIMIT 1");
+      const row = rows.rows[0] as Row | undefined;
+      if (row === undefined || typeof row.name !== "string" || row.name.trim() === "") return "";
+      const code = typeof row.credit_code === "string" && row.credit_code.trim() !== "" ? row.credit_code.trim() : "";
+      return "- 公司：" + row.name.trim() + (code === "" ? "" : "（统一社会信用代码：" + code + "）");
+    } catch {
+      return "";
+    }
+  }
+
+  private scopeDoc(project: Row, planRow: Row, content: Row, company: string): string {
+    const description = typeof content.description === "string" && content.description !== "" ? content.description : String(project.description ?? "");
+    const breakdown = asStringList(content.workBreakdown);
+    const assumptions = asStringList(content.assumptions);
+    const risks = asStringList(content.risks);
+    return [
+      "# 范围与验收（自动驾驶自动生成）",
+      "",
+      "- 项目：" + String(project.name ?? "项目") + "（#" + String(project.id) + "）",
+      company,
+      "- 计划版本：v" + String(planRow.version),
+      description === "" ? "" : "- 项目描述：" + description,
+      typeof content.weeks === "number" ? "- 计划周期：" + String(content.weeks) + " 周" : "",
+      "",
+      "## 范围",
+      ...(breakdown.length > 0 ? breakdown : ["以开发计划与检出内容为准"]).map((item) => "- " + item),
+      "",
+      "## 验收标准",
+      "- 构建与静态检查通过（以仓库既有脚本为准）",
+      "- 测试计划口径：P0/P1 全通过且无阻塞缺陷",
+      "- 测试环境发布成功并通过健康检查",
+      "- 生产发布需老板审批后执行",
+      "",
+      "## 假设与风险",
+      ...(assumptions.length > 0 ? assumptions.map((item) => "- 假设：" + item) : ["- 假设：以检出内容为准"]),
+      ...(risks.length > 0 ? risks.map((item) => "- 风险：" + item) : []),
+      "",
+    ].filter((line) => line !== "").join("\n");
+  }
+
+  private architectureDoc(project: Row, planRow: Row, content: Row, scan: Row | null, company: string): string {
+    const tech = (project.tech_stack ?? {}) as Row;
+    const modules = Array.isArray(content.modules) ? (content.modules as Row[]) : [];
+    const scripts = (content.scripts ?? null) as Record<string, string> | null;
+    const frameworks = Array.isArray(tech.frameworks) && tech.frameworks.length > 0 ? (tech.frameworks as unknown[]).map(String).join(" / ") : "-";
+    return [
+      "# 架构说明（自动驾驶自动生成）",
+      "",
+      "- 项目：" + String(project.name ?? "项目") + "（#" + String(project.id) + "）",
+      company,
+      "- 计划版本：v" + String(planRow.version),
+      "- 主语言：" + String(tech.primaryLanguage ?? "-"),
+      "- 框架：" + frameworks,
+      "- 构建脚本：" + (scripts === null || Object.keys(scripts).length === 0 ? "-" : Object.keys(scripts).join(" / ")),
+      "- 测试与 CI：" + (scan === null ? "-" : asStringList(scan.tests).length + " 个测试目录 / CI " + asStringList(scan.ci).length + " 条"),
+      "",
+      "## 模块",
+      ...(modules.length > 0 ? modules.map((item) => "- " + String(item.name) + "（" + String(item.files ?? 0) + " 文件 / 约 " + String(item.loc ?? 0) + " 行）") : ["- 以仓库现有结构为准"]),
+      "",
+      "## 接口与数据模型",
+      "- 以仓库现状为准；检出未发现 OpenAPI/DDL 时，由开发任务补齐并在测试报告登记。",
+      "",
+      "## 部署",
+      "- 测试环境按部署计划自动发布；生产目标需老板审批。",
+      "",
+    ].filter((line) => line !== "").join("\n");
+  }
+
+  private buildDoc(planRow: Row, head: string, artifact: string): string {
+    return [
+      "# 开发实现（自动驾驶 · 编码 agent）",
+      "",
+      "- 计划版本：v" + String(planRow.version),
+      "- 生成时间：" + new Date().toISOString(),
+      "- 编码 agent 结论：" + head,
+      "",
+      "## 产出摘要",
+      artifact.slice(0, 2000),
+      "",
+    ].join("\n");
+  }
+
+  private testReportDoc(project: Row, planRow: Row, pipeline: Row, company: string): string {
+    const runs = Array.isArray(pipeline.runs) ? (pipeline.runs as Row[]) : [];
+    const rows = runs.map((run) => "| " + String(run.stage ?? "-") + " | " + String(run.command ?? "-") + " | " + String(run.status ?? "-") + " | " + String(run.exit_code ?? "-") + " |");
+    return [
+      "# 测试报告（自动驾驶自动生成）",
+      "",
+      "- 项目：" + String(project.name ?? "项目") + "（#" + String(project.id) + "）",
+      company,
+      "- 计划版本：v" + String(planRow.version),
+      "- 生成时间：" + new Date().toISOString(),
+      "- 流水线结论：" + String(pipeline.status ?? "-"),
+      "",
+      "| 阶段 | 命令 | 状态 | 退出码 |",
+      "| :--- | :--- | :--- | :--- |",
+      ...(rows.length > 0 ? rows : ["| - | 未识别到可执行脚本 | skipped | - |"]),
+      "",
+      "## 说明",
+      "- 只执行仓库既有 lint/build/test 脚本，默认不安装依赖。",
+      "- 失败时由编码 agent 修复后重跑；仍失败则阻塞并等老板裁决。",
+      "",
+    ].join("\n");
+  }
+
+  private releaseDoc(project: Row, planRow: Row, deploy: Row, company: string): string {
+    return [
+      "# 发布记录（自动驾驶自动生成）",
+      "",
+      "- 项目：" + String(project.name ?? "项目") + "（#" + String(project.id) + "）",
+      company,
+      "- 计划版本：v" + String(planRow.version),
+      "- 测试环境发布状态：" + String(deploy.status ?? "-"),
+      "- 发布单：" + String(deploy.release_id ?? "-") + " · 退出码：" + String(deploy.exit_code ?? "-"),
+      deploy.healthUrl === undefined || deploy.healthUrl === null ? "" : "- 健康检查：" + String(deploy.healthUrl),
+      "",
+      "## 回滚预案",
+      "- 保留上一版本制品与配置快照；失败回滚并记录发布单。",
+      "",
+      "## 生产发布",
+      "- 待老板裁决（production_release）：测试环境通过后再执行生产发布与审批。",
+      "",
+    ].filter((line) => line !== "").join("\n");
+  }
+
+  private planAgentPrompt(project: Row, planRow: Row, content: Row, scan: Row | null, kind: "build" | "fix", dir: string, failure: string): string {
+    const modules = Array.isArray(content.modules) ? (content.modules as Row[]).map((item) => String(item.name)).slice(0, 10) : [];
+    const breakdown = asStringList(content.workBreakdown).slice(0, 10);
+    const description = String(project.description ?? content.description ?? "");
+    return [
+      "项目：" + String(project.name ?? "") + "（#" + String(project.id) + "）",
+      description === "" ? "" : "项目描述：" + description.slice(0, 300),
+      "计划版本：v" + String(planRow.version),
+      modules.length > 0 ? "计划模块：" + modules.join("、") : "计划模块：以仓库现有结构为准",
+      breakdown.length > 0 ? "工作分解：" + breakdown.join("；") : "",
+      scan === null ? "" : "仓库测试/CI：" + asStringList(scan.tests).length + " 个测试目录 / CI " + asStringList(scan.ci).length + " 条",
+      kind === "fix" ? "失败上下文（最近一次流水线）：\n" + failure.slice(0, 1500) : "当前缺口：开发实现尚未补齐（仓库可能只有骨架）。",
+      "",
+      "工作目录：" + dir + "（你的当前工作目录）",
+      "任务：按开发计划补齐欠缺的实现与测试，使仓库能构建并通过测试；修复时优先最小改动。",
+      "约束：只改当前工作目录内文件；不执行 git push / svn commit；不引入新依赖；不删除现有文件；不读凭据；不写数据库。",
+      "验证：优先运行仓库既有构建/测试命令（如 npm test / npm run build）。",
+      "交付：Markdown；第一行一句话结论；随后列改动文件与验证结果；无法完成时第一行以「未完成：」开头并说明卡点。",
+    ].filter((line) => line !== "").join("\n");
+  }
+
+  /** 推进一个项目一次（一个 tick 只做一个单元：文档/派单/流水线/发布，编码 agent 跨 tick 回收）。 */
+  async advancePlan(projectId: number, options: Row = {}): Promise<Row> {
+    await this.assertProject(projectId);
+    const project = (await this.pool.query("SELECT id, name, description, tech_stack, archived_at, progress FROM biz.project WHERE id = $1", [projectId])).rows[0] as Row | undefined;
+    if (project === undefined) throw new OpcError(ERR.AUTO_INVALID, `项目不存在：${projectId}`, 404);
+    if (project.archived_at !== null && project.archived_at !== undefined) return { advanced: 0, projectId, skipped: "archived" };
+    const planRow = (await this.pool.query("SELECT id, version, content, generated_at, status FROM stat.project_plan WHERE project_id = $1 AND plan_kind = 'dev' ORDER BY version DESC LIMIT 1", [projectId])).rows[0] as Row | undefined;
+    if (planRow === undefined) return { advanced: 0, projectId, skipped: "no_plan" };
+    const checkout = (await this.pool.query("SELECT id, workspace_path, vcs_kind FROM ref.project_checkout WHERE project_id = $1 AND status = 'ok' AND workspace_path IS NOT NULL ORDER BY id DESC LIMIT 1", [projectId])).rows[0] as Row | undefined;
+    const dirRaw = checkout?.workspace_path;
+    if (checkout === undefined || dirRaw === null || dirRaw === undefined) return { advanced: 0, projectId, skipped: "no_workspace" };
+    const dir = String(dirRaw);
+    if (!(await fileExists(dir))) return { advanced: 0, projectId, skipped: "workspace_missing" };
+    const planContent = (planRow.content ?? {}) as Row;
+    const company = await this.companyDocLine();
+
+    const optionRun = options.runId;
+    let runId: number | null = optionRun === undefined || optionRun === null ? null : Number(optionRun);
+    let resumed = false;
+    if (runId === null) {
+      const running = await this.pool.query("SELECT id FROM stat.project_autopilot_run WHERE project_id = $1 AND trigger = 'plan' AND status = 'running' AND started_at >= now() - interval '6 hours' ORDER BY id DESC LIMIT 1", [projectId]);
+      if (running.rows.length > 0) {
+        runId = Number((running.rows[0] as Row).id);
+        resumed = true;
+      } else {
+        runId = await this.startPlanRun(projectId);
+      }
+    }
+    if (planRow.status === "draft") await this.pool.query("UPDATE stat.project_plan SET status = 'active' WHERE id = $1", [planRow.id]);
+
+    let reload = await this.readPlanRun(runId);
+    const waiting = reload.steps.find((step) => step.status === "running" && step.data !== undefined && typeof (step.data as Row).agentRunId === "string");
+    if (waiting !== undefined) {
+      const polled = await this.pollPlanAgent(projectId, runId, waiting.stage, dir, checkout, planRow, waiting.data as Row);
+      if (polled.status === "waiting") return { advanced: 0, projectId, runId, waiting: true, task: waiting.stage, resumed };
+      if (polled.status === "failed" && polled.blocked !== undefined) return polled.blocked;
+      reload = await this.readPlanRun(runId);
+      const afterPoll = await this.planTaskStates(dir, reload.steps);
+      const remaining = afterPoll.find((task) => task.status !== "ok");
+      if (remaining === undefined) return this.finishPlan(projectId, runId, dir, checkout, planRow, reload.steps, { completed: true }, afterPoll);
+      return { advanced: 1, projectId, runId, task: waiting.stage, agentReclaimed: true, resumed, nextTask: remaining.key };
+    }
+
+    const tasks = await this.planTaskStates(dir, reload.steps);
+    const next = tasks.find((task) => task.status !== "ok");
+    if (next === undefined) return this.finishPlan(projectId, runId, dir, checkout, planRow, reload.steps, { completed: true }, tasks);
+
+    const taskKey = String(next.key);
+    const scan = await this.latestScan(projectId);
+    if (taskKey === "freeze") {
+      const rel = await this.writePlanArtifact(dir, "freeze", this.scopeDoc(project, planRow, planContent, company));
+      await this.markPlanStep(runId, "freeze", "ok", "已生成范围与验收：" + rel);
+    } else if (taskKey === "design") {
+      const rel = await this.writePlanArtifact(dir, "design", this.architectureDoc(project, planRow, planContent, scan, company));
+      await this.markPlanStep(runId, "design", "ok", "已生成架构说明：" + rel);
+    } else if (taskKey === "build") {
+      if (this.agents === undefined) {
+        return this.blockPlan(projectId, runId, dir, checkout, planRow, reload.steps, "build", "coding_agent", "未配置编码 agent：无法自动补齐实现。是否改人工实现或启用 dsh-super-agents？");
+      }
+      const prompt = this.planAgentPrompt(project, planRow, planContent, scan, "build", dir, "");
+      const dispatched = await this.dispatchCodingSafe(projectId, dir, prompt);
+      if (dispatched === null) {
+        return this.blockPlan(projectId, runId, dir, checkout, planRow, reload.steps, "build", "coding_agent", "编码 agent 派活失败（dsh-super-agents 不可达或员工未部署）：是否改人工实现？");
+      }
+      await this.markPlanStep(runId, "build", "running", "已派编码 agent（run " + dispatched.runId + "），等待产出", { agentRunId: dispatched.runId, agentKind: "build", agentStartedAt: new Date().toISOString() });
+      return { advanced: 0, projectId, runId, waiting: true, task: "build", agentRunId: dispatched.runId };
+    } else if (taskKey === "verify") {
+      if (scan === null) {
+        return this.blockPlan(projectId, runId, dir, checkout, planRow, reload.steps, "verify", "scan_missing", "没有扫描结果，无法生成流水线：先执行一次自动驾驶。");
+      }
+      const pipeline = await this.runPipeline(projectId, Number(checkout.id), dir, scan, {});
+      if (pipeline.status !== "ok") {
+        const failed = (pipeline.runs as Row[]).filter((run) => run.status === "failed");
+        const logTail = failed.map((run) => String(run.stage) + " " + String(run.command) + " → " + String(run.exit_code ?? "-") + "\n" + String(run.log_tail ?? "").slice(-1200)).join("\n");
+        const envMissing = /缺少 OPC_|OPC_TEST_DSN|OPC_PG_DSN|ECONNREFUSED|password authentication failed/i.test(logTail);
+        if (envMissing) {
+          return this.blockPlan(projectId, runId, dir, checkout, planRow, reload.steps, "verify", "pipeline_env", "流水线缺少运行环境（数据库连接串/环境变量）：是否在检出目录补 .env 或调整流水线？");
+        }
+        if (this.agents !== undefined) {
+          const prompt = this.planAgentPrompt(project, planRow, planContent, scan, "fix", dir, logTail);
+          const dispatched = await this.dispatchCodingSafe(projectId, dir, prompt);
+          if (dispatched !== null) {
+            await this.markPlanStep(runId, "verify", "running", "流水线未通过，已派编码 agent 修复（run " + dispatched.runId + "）", { agentRunId: dispatched.runId, agentKind: "fix", agentStartedAt: new Date().toISOString() });
+            return { advanced: 0, projectId, runId, waiting: true, task: "verify", agentRunId: dispatched.runId };
+          }
+        }
+        return this.blockPlan(projectId, runId, dir, checkout, planRow, reload.steps, "verify", "pipeline_failed", "自动流水线未通过且无编码 agent 可用：先修代码还是调整流水线？");
+      }
+      const rel = await this.writePlanArtifact(dir, "verify", this.testReportDoc(project, planRow, pipeline, company));
+      await this.markPlanStep(runId, "verify", "ok", "流水线通过，已生成测试报告：" + rel);
+    } else if (taskKey === "release") {
+      let deploy: Row;
+      try {
+        deploy = await this.deployTestEnvironment(projectId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return this.blockPlan(projectId, runId, dir, checkout, planRow, reload.steps, "release", "deploy_executor", "测试环境发布未执行：" + message.slice(0, 160));
+      }
+      if (deploy.status !== "ok") {
+        const topic = deploy.status === "pending" ? "deploy_executor" : "deploy_failed";
+        return this.blockPlan(projectId, runId, dir, checkout, planRow, reload.steps, "release", topic, deploy.status === "pending" ? "测试环境发布未配置执行命令：如何自动发布？" : "测试环境发布失败：回滚还是修复后重发？");
+      }
+      await this.recordDecision(projectId, {
+        topic: "production_release",
+        riskLevel: "high",
+        question: "测试环境已发布并通过健康检查：是否批准发布生产？",
+        options: [
+          { label: "批准生产发布", impact: "按部署计划执行生产发布与审批" },
+          { label: "先验收测试环境", impact: "生产发布暂缓" },
+        ],
+      }, { allowRepeat: true });
+      const rel = await this.writePlanArtifact(dir, "release", this.releaseDoc(project, planRow, deploy, company));
+      await this.markPlanStep(runId, "release", "ok", "测试环境已发布，已生成发布记录：" + rel);
+    }
+
+    reload = await this.readPlanRun(runId);
+    const after = await this.planTaskStates(dir, reload.steps);
+    if (after.every((task) => task.status === "ok")) return this.finishPlan(projectId, runId, dir, checkout, planRow, reload.steps, { completed: true }, after);
+    const nextTask = after.find((task) => task.status !== "ok");
+    return { advanced: 1, projectId, runId, task: taskKey, nextTask: nextTask?.key ?? null, resumed };
+  }
+
+  /** 后台定时任务的入口：先回收等待中的计划运行，再挑一个项目推进一个单元。 */
+  async autoAdvanceNext(now: Date = new Date()): Promise<Row> {
+    const running = await this.pool.query("SELECT id, project_id FROM stat.project_autopilot_run WHERE trigger = 'plan' AND status = 'running' AND started_at >= now() - interval '6 hours' ORDER BY id LIMIT 1");
+    if (running.rows.length > 0) {
+      const row = running.rows[0] as Row;
+      return this.advancePlan(Number(row.project_id), { runId: Number(row.id) });
+    }
+    const candidates = await this.pool.query<Row>(
+      `SELECT p.id,
+              (SELECT max(pl.generated_at) FROM stat.project_plan pl WHERE pl.project_id = p.id AND pl.plan_kind = 'dev') AS plan_at,
+              (SELECT max(c.checked_out_at) FROM ref.project_checkout c WHERE c.project_id = p.id AND c.status = 'ok') AS checkout_at,
+              (SELECT max(r.started_at) FROM stat.project_autopilot_run r WHERE r.project_id = p.id AND r.trigger = 'plan') AS auto_at,
+              pr.ended_at AS last_auto_ended_at, pr.result AS last_auto_result
+       FROM biz.project p
+       LEFT JOIN LATERAL (SELECT ended_at, result FROM stat.project_autopilot_run r WHERE r.project_id = p.id AND r.trigger = 'plan' AND r.status = 'ok' ORDER BY r.id DESC LIMIT 1) pr ON true
+       WHERE p.archived_at IS NULL
+         AND EXISTS (SELECT 1 FROM stat.project_plan pl WHERE pl.project_id = p.id AND pl.plan_kind = 'dev')
+         AND EXISTS (SELECT 1 FROM ref.project_checkout c WHERE c.project_id = p.id AND c.status = 'ok' AND c.workspace_path IS NOT NULL)
+         AND NOT EXISTS (SELECT 1 FROM stat.project_autopilot_run r WHERE r.project_id = p.id AND r.status = 'running')
+       ORDER BY auto_at NULLS FIRST, p.id
+       LIMIT 20`,
+    );
+    for (const row of candidates.rows) {
+      const projectId = Number(row.id);
+      const last = (row.last_auto_result ?? null) as Row | null;
+      const endedRaw = row.last_auto_ended_at;
+      const endedAt = endedRaw === null || endedRaw === undefined ? null : Date.parse(String(endedRaw));
+      const planAt = row.plan_at === null || row.plan_at === undefined ? 0 : Date.parse(String(row.plan_at));
+      const checkoutAt = row.checkout_at === null || row.checkout_at === undefined ? 0 : Date.parse(String(row.checkout_at));
+      if (last !== null && last.completed === true && endedAt !== null && endedAt >= planAt && endedAt >= checkoutAt) continue;
+      if (last !== null && last.blocked === true && endedAt !== null && now.getTime() - endedAt < 30 * 60 * 1000) continue;
+      if (last !== null && last.blocked === true && typeof last.blockTopic === "string") {
+        const pending = await this.pool.query("SELECT 1 FROM stat.project_decision WHERE project_id = $1 AND topic = $2 AND status = 'pending' LIMIT 1", [projectId, last.blockTopic]);
+        if (pending.rows.length > 0) continue;
+      }
+      const attempted = await this.advancePlan(projectId);
+      // 工作副本已被清理（/tmp 清理、磁盘迁移）时继续尝试下一个项目，避免卡在同一个失效项目上
+      if (attempted.skipped === "workspace_missing" || attempted.skipped === "no_workspace") continue;
+      return attempted;
+    }
+    return { advanced: 0, reason: "no_candidate" };
+  }
+
 
   // ---------------------------------------------------------------- 对外入口
 
@@ -1593,6 +2340,7 @@ export class ProjectAutopilotService {
     const currentRunRow = runRows.find((row) => row.status === "running") ?? null;
     const latestRunRow = runRows.length > 0 ? runRows[0] : null;
     const status = this.projectRowStatus(projectRow, currentRunRow, latestRunRow, pendingDecisions, plans.rows.length);
+    const planRunRow = runRows.find((row) => row.trigger === "plan") ?? null;
     return {
       projectId,
       project: projectRow.id === undefined ? null : {
@@ -1621,16 +2369,21 @@ export class ProjectAutopilotService {
       deploy: deploy.rows,
       runs: runRows.map(mapRunRow),
       currentRun: currentRunRow === null ? null : mapRunRow(currentRunRow),
+      planExecution: planRunRow === null ? null : planExecutionOf(planRunRow),
       roadmap: this.buildRoadmap(plans.rows, milestones.rows),
       milestones: milestones.rows,
     };
   }
 
   /** 供其他服务登记单条裁决（如创意项目缺版本库）。同项目同 topic 只登记一次。 */
-  async recordDecision(projectId: number, input: { topic: string; question: string; options?: Array<{ label: string; impact: string }>; riskLevel?: string; payload?: Row }): Promise<Row> {
+  async recordDecision(projectId: number, input: { topic: string; question: string; options?: Array<{ label: string; impact: string }>; riskLevel?: string; payload?: Row }, options: { allowRepeat?: boolean } = {}): Promise<Row> {
     await this.assertProject(projectId);
-    const existing = await this.pool.query("SELECT * FROM stat.project_decision WHERE project_id = $1 AND topic = $2 LIMIT 1", [projectId, input.topic]);
-    if (existing.rows.length > 0) return existing.rows[0] as Row;
+    // 计划自动推进的阻塞是「新事件」：allowRepeat 时每次阻塞都新起一条 pending 裁决，
+    // 不复用历史上已裁决的同 topic（否则老板看不到新的失败，也不会再有 pending 可判）。
+    if (options.allowRepeat !== true) {
+      const existing = await this.pool.query("SELECT * FROM stat.project_decision WHERE project_id = $1 AND topic = $2 LIMIT 1", [projectId, input.topic]);
+      if (existing.rows.length > 0) return existing.rows[0] as Row;
+    }
     const result = await this.pool.query(
       `INSERT INTO stat.project_decision (project_id, topic, question, options, risk_level, status, payload)
        VALUES ($1,$2,$3,$4::jsonb,$5,'pending',$6::jsonb) RETURNING *`,

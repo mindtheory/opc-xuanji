@@ -140,6 +140,8 @@ updated: 2026-11-14
 | REQ-PRJ-037 | 自动驾驶控制台（状态/当前执行/执行记录/路线图/归档） | UC-024、UC-025 | TC-AUTO-013、014、015、016 | listAutopilotProjects / archiveProject / unarchiveProject / getProjectAutopilot | `domains/project/autopilot.ts`、`domains/admin/service.ts`、`client.js` | `autopilot.test.ts` |
 | REQ-PRJ-038 | 项目描述从版本库抽取（人工优先） | UC-025 | TC-AUTO-012 | getProjectAutopilot / updateAdminProject | `domains/project/autopilot.ts` | `autopilot.test.ts` |
 | REQ-PRJ-039 | 基于项目内容的计划生成 | UC-025 | TC-AUTO-012、014 | getProjectAutopilot / listProjectPlans | `domains/project/autopilot.ts` | `autopilot.test.ts` |
+| REQ-PRJ-040 | 按计划自动推进项目并补齐交付物 | UC-032 | TC-AUTO-017、018、019 | project_plan_auto（定时任务）/ getProjectAutopilot | `domains/project/autopilot.ts`、`scheduler/tasks/index.ts`、`agents/service.ts` | `autopilot.test.ts`、`scheduler.test.ts` |
+| REQ-ADM-013 | 公司基础信息维护与跨模块共用 | UC-033 | TC-ADM-001、002、003 | getCompanyProfile / updateCompanyProfile | `domains/admin/service.ts`、`platform/views.ts`、`domains/project/autopilot.ts`、`client.js` | `company-profile.test.ts`、`client-render.test.ts` |
 | REQ-OPS-004 | 裁决与简报微信推送 | UC-031 | TC-WECHAT-001..005 | getWechatStatus / pushWechatText / syncWechatOutbox | `notify/wechat.ts` | `wechat.test.ts` |
 | REQ-EMP-001 | 员工插件清单与 manifest | — | TC-EMP-001 | listEmployees / opc_employee_list | `employees/catalog.ts` | `employees.test.ts`、`unit/employees.test.ts` |
 | REQ-EMP-002 | 安装、启用、停用与卸载 | — | TC-EMP-002 | toggleEmployee / opc_employee_toggle | `employees/index.ts` | `employees.test.ts` |

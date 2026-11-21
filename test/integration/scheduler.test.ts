@@ -56,6 +56,7 @@ test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲
     "keyword_radar_scan",
     "monthly_archive",
     "plugin_radar_scan",
+    "project_plan_auto",
     "tax_reminder",
     "usage_insight",
     "wechat_push",
@@ -64,6 +65,13 @@ test("默认任务集已按配置落库（晨报/税务/合同/审计/缺票/冲
   assert.equal(report?.cron, "30 8 * * 1-5");
   assert.equal(report?.timezone, "Asia/Shanghai");
   assert.ok(report?.nextRunAt instanceof Date);
+});
+
+test("项目计划自动推进：无候选项目时跳过且不报错", async () => {
+  const result = await scheduler.run("project_plan_auto");
+  assert.equal(result.status, "ok");
+  assert.equal(result.result?.advanced, 0);
+  assert.equal(result.result?.reason, "no_candidate");
 });
 
 test("配置校验：非法 cron 与未注册任务类型拒绝", async () => {

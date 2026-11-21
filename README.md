@@ -7,7 +7,7 @@
 运行在 **DeepSeek Harness（DSH ≥ 0.2.1）** 上的 Bundle 插件：以「中枢调度 + 专业员工矩阵 + 三级沉淀 + TS 流程固化」补全一人公司在财税、法务、行政、战略、项目、情报、客户、车务、进销存上的职能短板，并把**公司日常经营中需要定期执行的事**做成配置驱动的自动化任务。
 
 - 上游设计：《OPC-玄机 · 一人公司中枢-产品设计.md》v2.12、《OPC-玄机 · 技术选型与系统架构.md》v2.12（与本仓库同目录）、《OPC-SDD-003 Super Agent 应用层设计》（应用层定位）
-- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（42 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（117 个 operation）+ PostgreSQL 17 / pgvector 数据层
+- 交付形态：TypeScript 服务层（Node ≥ 24.9，原生类型擦除直接运行 `.ts`）+ DSH cordis 插件入口（42 个 `opc_*` 工具）+ HTTP `/api/v1` 契约（119 个 operation）+ PostgreSQL 17 / pgvector 数据层
 - 应用层依赖：**[mindtheory/dsh-super-agents](https://github.com/mindtheory/dsh-super-agents)**（软依赖，同 profile 安装即得员工超级智能体：部署/派活/回流/健康；未装则 agent 类工具降级，其余功能不受影响）
 - 当前阶段：**v0.1.0 已发布**。CI 在 Node 24.9/24/26 上单元与门禁全绿；PostgreSQL 17 + pgvector 集成 **68/68** 通过。本地跑集成仍需 `OPC_TEST_DSN`。
 
@@ -34,7 +34,7 @@ opc-xuanji/
 │   ├── plugin/      # DSH cordis 插件入口（42 个工具）
 │   └── db/          # 连接池与迁移执行器
 ├── scripts/         # gen-spec / migrate / serve
-├── test/            # 单元 44 + 集成 92（共 136 例；新增 Web/员工用例需测试库）
+├── test/            # 单元 45 + 集成 99（共 144 例；新增 Web/员工用例需测试库）
 ├── docs/员工需求/   # 11 个员工需求分册（一人一份）
 ├── docs/            # 软件工程文档（SRS/IRS/SDD/DBDD/SDP/SCMP/SQAP/RMP/RTM/SVD/STP/STD/STR + UML + PA）
 ├── AGENTS.md        # 主会话 Agent 运行章程（幕僚长/COO 行为约定）
@@ -91,27 +91,32 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | 中枢（Service） | `src/platform`、`src/workflow` | 视图级授权（8 个视图）、一次性令牌（≤5 分钟、单次）、冲突冻结与裁决、审计哈希链、Registry 六项准入守卫、风险硬规则、Verifier 封装、诊断 |
 | 员工（Subagent / 函数） | `ref.employee_plugin` + 工具注册 | 员工不直连库：读经视图、写经中枢、审计统一入口；`write_targets` 决定风险等级 |
 | 项目自动驾驶 | `src/domains/project/autopilot.ts` | 建项目填版本库 → 检出（Git 浅克隆 / SVN checkout）→ 只读静态扫描（跳 `.svn`/`.hg`）→ 回填 `tech_stack/software_profile`（含 vcs/revision）→ 生成开发/测试/部署计划 → 仅裁决项入队；Git/SVN 双协议：`svn://`、`svn+ssh://` 自动识别、`branch` 支持主干/分支路径、`revision` 支持 HEAD|数字、SVN URL 允许空格/中文，svn 客户端缺失降级 502 + 裁决；未填凭据引用时仅对 `OPC_SVN_TRUSTED_HOSTS` 白名单主机自动使用服务环境 `OPC_SVN_PASSWORD`；检出上限 2000 文件、不执行仓库代码、生产仍需人工审批 |
-| 自动化生产 | `src/domains/project/autopilot.ts` + `client.js` | 只补缺失骨架并提交本地分支（不推远端）、识别并执行 lint/build/test（300s 超时、默认不装依赖）、自动发测试环境（无命令转裁决）；管理面「自动驾驶」页签一键触发与就地裁决；**已建项目**可在同一页签选中执行，重复执行只递增计划版本、复用资源 |
+| 自动化生产 | `src/domains/project/autopilot.ts` + `client.js` | 只补缺失骨架并提交本地分支（不推远端）、识别并执行 lint/build/test（300s 超时、默认不装依赖）、自动发测试环境（无命令转裁决）；管理面「新建项目」页签一键触发；**已建项目**在「自动驾驶」页签顶部「执行操作」卡选中执行，重复执行只递增计划版本、复用资源；v2.25 起后台定时按计划自动推进并补齐交付物 |
 | 运维反馈 | `src/ops/feedback.ts` | 5xx 运行错误按指纹去重并自动开 GitHub Issue；HTTP 埋点只记动作/状态/耗时，按天聚合后规则 + 可选 AI 产出体验/需求/流程 Issue 草稿（单轮5/单日20、正文脱敏、未配置 token 只攒草稿） |
-| 创意转项目 | `src/domains/project/idea.ts` + `src/platform/documents.ts` | 创意文本或多文档（txt/md/docx/xlsx/pdf，多文件）→ AI 解析项目档案（失败规则兜底）→ 自动建项目并进自动驾驶；无仓库转 repository 裁决 |
+| 计划自动推进（v2.25） | `src/domains/project/autopilot.ts` + `src/agents/service.ts` + `src/scheduler/tasks/index.ts` | 定时任务每 15 分钟推进一个项目一步：生成范围/架构/测试/发布文档、派「OPC 项目开发·<id>」编码 agent（cwd=检出目录，跨 tick 回收）、跑既有 lint/build/test、发布测试环境；五类交付物齐备即完成并回写里程碑与项目进度，阻塞项转裁决，生产发布永不自动执行 |
+| 创意转项目 | `src/domains/project/idea.ts` + `src/platform/documents.ts` | 创意文本或多文档（txt/md/docx/xlsx/pdf，多文件）→ AI 解析项目档案（失败规则兜底）→ 自动建项目并进自动驾驶；无仓库转 repository 裁决；管理面「新建项目」页签的「创意 / 文档解析」承载建项目与解析预览 |
 | 微信推送 | `src/notify/wechat.ts` | 裁决/每日简报 → `stat.wechat_push` 队列 → dsh-im（BotHarness）主动投递端点推微信；失败退避 5 次；未绑定只排队；老板在微信里可直接使用 `opc_*` 工具 |
+| 公司基础信息（v2.26） | `src/domains/admin` + `client.js` | 设置页维护公司单行档案（工商/地址联系/开票银行/经营范围）；项目自动驾驶交付物抬头、员工 `view_company_profile`、财税/法务/行政共用；银行账号等敏感值只存库、审计只记字段名 |
 | 基础资源（公司共享） | `src/domains/admin` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记在 `ref.shared_resource`；公司默认口径 Debian + SSH、默认账号 `canetwork` 存 `ref.shared_setting`；新建项目默认按 `is_default` 选型绑定到 `ref.project_shared_resource`；口令只以 `env:OPC_DEFAULT_SSH_PASSWORD` 引用登记，不入库不入仓 |
 | 流程（TS 固化） | `ref.workflow_registry` + `audit.workflow_*` | 版本不可变、代码哈希与测试哈希一致、幂等键 `instance_id + node_id`、三关测试与影子运行在 Phase 2 接 `dsh-workflow-ptc` |
 | 数据（共享层） | `biz/ref/audit/stat/vec` | 92 张表（37 基线 + 8 Web + 9 员工线 + 12 项目研发 + 10 情报日报 + 3 基础资源 + 4 项目自动驾驶 + 3 自动化生产 + 3 运维反馈 + 1 创意转项目 + 1 微信推送 + 1 自动驾驶控制台）；审计 `(id, created_at)` 复合主键为分区预留；pgvector HNSW `m=16, ef_construction=64` |
 
 ### HTTP 契约（`/api/v1`）
 
-`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`，管理面 `admin/projects*`、`admin/shared-resources*`、`admin/projects/{id}/autopilot`、`admin/autopilot/projects`、`admin/projects/{id}/archive`、`admin/projects/{id}/unarchive`、`admin/projects/{id}/deploy-test`、`admin/usage/*`、`admin/issues*`、`admin/ideas/*`、`admin/projects/from-idea`、`admin/wechat/*` 等共 117 个 operation。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
+`health`、`views/{viewId}/query`、`tokens`、`tokens/{id}/consume`、`conflicts`、`conflicts/{id}/resolve`、`workflows`、`workflows/{id}/instances`、`instances/{id}/nodes/{nodeId}/complete`、`instances/{id}/nodes/{nodeId}/verdict`、`audits`、`audits/export`、`tasks`、`tasks/{id}`、`tasks/{id}/run`、`reports/daily`，Web 表现层 `web/manifest`、`web/dashboard`、`web/inbox`、`web/ingest`、`web/ingest/{id}/confirm`、`web/sessions/{id}/grant`、`web/sessions/{id}/context`、`web/memory/search`、`web/memory/propose`、`web/memory/proposals/{id}/confirm`、`web/radar`，员工 `employees`、`employees/{id}`、`employees/{id}/toggle`、`employees/{id}/export`、`employees/import`，Super Agent `agents/health`、`agents/deploy`、`agents/dispatch`、`agents/pause`，管理面 `admin/projects*`、`admin/shared-resources*`、`admin/projects/{id}/autopilot`、`admin/autopilot/projects`、`admin/projects/{id}/archive`、`admin/projects/{id}/unarchive`、`admin/projects/{id}/deploy-test`、`admin/usage/*`、`admin/issues*`、`admin/ideas/*`、`admin/projects/from-idea`、`admin/wechat/*`、`admin/company-profile` 等共 119 个 operation。完整定义见 [spec/opc-xuanji/api.yaml](spec/opc-xuanji/api.yaml)。
 
 ### Web 界面（DSH 插件栏「OPC驾驶舱」）
 
-浏览器半 `client.js` 向宿主注册左栏入口 **OPC驾驶舱**（`sidebar.panellist`，order 27，紧邻「超级智能体」）与主面板（`main`），是**全功能控制台**（类似传统管理软件，11 个模块页签）：
+浏览器半 `client.js` 向宿主注册左栏入口 **OPC驾驶舱**（`sidebar.panellist`，order 27，紧邻「超级智能体」）与主面板（`main`），是**全功能控制台**（类似传统管理软件，16 个模块页签，按「概览 / 经营 / 治理 / 知识 / 系统」分组）：
 
 | 页签 | 能做什么 |
 | :--- | :--- |
 | 驾驶舱 | 健康条（PG/pgvector/调度/员工智能体）、今日/7天/30天/90天快照指标、冻结脚注、晨报 |
-| 员工 | 11 个员工目录、安装/重装、启用停用、部署角色卡、派活、员工包导出/导入、运行记录 |
 | 业务域 | 9 个经营域 + 平台域聚合指标、授权视图清单 |
+| 员工矩阵 | 11 个员工目录、安装/重装、启用停用、部署角色卡、派活、员工包导出/导入、运行记录 |
+| 项目管理 | 项目档案与里程碑/版本库/制品库/环境/发布/测试计划/用例/批次/缺陷/工时 CRUD、发布审批 |
+| 自动驾驶 | 项目状态总览（KPI/过滤/归档恢复）、执行操作（版本库字段 + 骨架/流水线/测试环境开关 + 执行/发布）、当前执行、计划路线图、执行记录、待裁决、检出与扫描 |
+| 新建项目 | 独立页：分段切换「版本库直建 / 创意·文档解析」；左侧表单（版本库信息、选项与动作）+ 右侧流程说明；创建后原地显示结果卡并可跳转自动驾驶（自动选中新项目） |
 | 流程 | 注册（六项准入守卫）、版本列表、实例列表、启动实例、实例详情/节点、完成节点、Verifier 评判 |
 | 任务 | 列表、立即执行、启用停用、下次触发、晨报 |
 | 审计 | 动作过滤查询、JSONL 导出（SHA-256 + 链头） |
@@ -120,7 +125,8 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | 记忆 | 按 scope 检索、记忆提案、确认提案 |
 | 记忆同步 | Hindsight 记忆导入（JSON/文本）、推送 OPC 记忆卡、拉取为记忆提案、双向同步、远端记忆列表（默认服务 `192.168.1.12:8888`，bank `coding-agent::workspace`） |
 | 雷达 | 插件/关键词雷达列表 |
-| 设置 | 智能体健康与全局暂停、manifest |
+| 情报管理 | 情报空间/数据源/绑定/主题/标签、条目状态处理、日报详情与五阶段流水线手动触发 |
+| 设置 | 公司基础信息（工商/地址联系/开票银行/经营范围，跨项目/财税/法务/行政共用）、智能体健康与全局暂停、manifest |
 
 面板数据全部来自宿主侧 `/api/v1/*`；写操作一律走既有中枢入口（流程/令牌/审计/视图），面板不写业务表。注册模式与 dsh-super-agents 一致（`window.__ModuleLoader__.load` + `ctx.slots.inject/register`）；`/api/v1` 除精确路由外还注册**前缀路由**，保证动态路径（员工启停、实例节点等）在浏览器端可达。
 
@@ -159,13 +165,14 @@ curl -s http://127.0.0.1:3082/api/v1/health | head
 | `dashboard_refresh` | `*/15 * * * *` | 驾驶舱读模型刷新；失败保留上次快照并标注陈旧 |
 | `plugin_radar_scan` | `0 6 * * 1` | 检索适用 DSH 插件并写雷达；只推荐不自动安装 |
 | `keyword_radar_scan` | `0 7 * * *` | 公司发展关键词检索；未配置检索源时标注“本次未检索” |
+| `project_plan_auto` | `*/15 * * * *` | 计划自动推进：挑一个未完成项目推进一个单元（文档/编码 agent/流水线/测试环境发布），阻塞转裁决 |
 
 执行幂等：`(task_id, scheduled_at)` 唯一；`force=true` 以毫秒级新计划时间重跑且保留历史。失败写 `task_run.status=failed` + 即时告警通知 + 审计。
 
 ## 测试与门禁
 
 ```bash
-npm test          # 136 用例：单元 44 + 集成 92（本地需 OPC_TEST_DSN；CI 已全绿）
+npm test          # 144 用例：单元 45 + 集成 99（本地需 OPC_TEST_DSN；CI 已全绿）
 npm run typecheck # tsc --noEmit，0 错误
 npm run spec:check# check-spec：PASS（ERROR 0）
 npm run docs:check# check-docs：frontmatter/文末两节/编号

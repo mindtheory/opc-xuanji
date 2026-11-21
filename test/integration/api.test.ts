@@ -112,7 +112,7 @@ test("health：返回 PG 与 pgvector 状态", async () => {
   assert.equal(json.code, 0);
   assert.equal(json.data.pg, true);
   assert.equal(json.data.pgvector, true);
-  assert.equal(json.data.scheduler.registered, 18);
+  assert.equal(json.data.scheduler.registered, 19);
 });
 
 test("views：授权查询 200，未授权 403 且带错误码", async () => {
@@ -218,7 +218,7 @@ test("audits：查询 200 与导出 201", async () => {
 test("tasks：列表 18 项 / 配置 200 / 立即执行 200 / 晨报可查", async () => {
   const tasks = await call("GET", "/api/v1/tasks");
   assert.equal(tasks.status, 200);
-  assert.equal(tasks.json.data.tasks.length, 18);
+  assert.equal(tasks.json.data.tasks.length, 19);
 
   const saved = await call("PUT", "/api/v1/tasks/daily_report", { cron: "45 8 * * 1-5", timezone: "Asia/Shanghai", enabled: true, config: {} });
   assert.equal(saved.status, 200);

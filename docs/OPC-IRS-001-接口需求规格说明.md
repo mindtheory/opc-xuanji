@@ -158,7 +158,7 @@ updated: 2026-11-14
 
 ## 2. 接口清单（117 个 /api/v1 operation）
 
-> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P104 管理面（项目/情报 Web 控制台、公司基础资源、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P106 管理面（项目/情报 Web 控制台、公司基础资源、公司基础信息、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -839,7 +839,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
-### 7.6 管理面接口（P50–P104，Web 控制台）
+### 7.6 管理面接口（P50–P106，Web 控制台）
 
 管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
 
@@ -852,6 +852,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | 情报资源 | `GET/POST/PUT/DELETE /admin/intel/{resource}` | `resource ∈ {scopes,sources,bindings,topics,tags}`；项目隔离由 `projectId` 强制 |
 | 情报条目/日报/流水线 | `GET /admin/intel/items`、`PUT /admin/intel/items/{itemId}`、`GET /admin/intel/briefs[/{briefId}]`、`GET /admin/intel/runs`、`POST /admin/intel/run/{stage}`、`GET /admin/intel/summary` | 条目状态、日报详情、运行记录、手动触发 analyze/aggregate/brief/push 与 KPI |
 | 公司基础资源 | `GET/POST /admin/shared-resources`、`GET /admin/shared-resources/defaults`、`PUT/DELETE /admin/shared-resources/{resourceId}`、`GET/POST /admin/projects/{projectId}/shared-resources`、`DELETE /admin/projects/{projectId}/shared-resources/{resourceId}` | 六类共享资源（版本库/制品库/测试服务器/NAS/公网服务器/域名）登记与默认口径（debian/ssh/canetwork）；新建项目默认选型绑定；明文凭据 400 `ERR-RES-002`，被绑定删除 409 `ERR-RES-004` |
+| 公司基础信息 | `GET/PUT /admin/company-profile` | 公司唯一主体档案（工商/地址联系/开票银行/经营范围）与默认口径；单行 upsert，逐字段校验，写审计；项目交付物抬头与 `view_company_profile` 共用；参数非法 400 `ERR-RES-001`（复用） |
 | 项目自动驾驶 | `POST/GET /admin/projects/{projectId}/autopilot`、`GET /admin/projects/{projectId}/plans`、`GET /admin/projects/{projectId}/decisions`、`POST /admin/projects/{projectId}/decisions/{decisionId}/decide` | 建项目填版本库即检出（Git 浅克隆 / SVN checkout）→ 静态扫描 → 回填档案 → 生成开发/测试/部署计划 → 仅裁决项入队；svn 客户端缺失或检出失败 502 `ERR-AUTO-002`，裁决重复 404 `ERR-AUTO-004` |
 | 自动驾驶控制台 | `GET /admin/autopilot/projects`、`POST /admin/projects/{projectId}/archive`、`POST /admin/projects/{projectId}/unarchive` | 项目列表按 6 态（未接入/运行中/待裁决/执行失败/计划就绪/已归档）展示状态、当前执行与最近执行、计划与待裁决计数；归档/恢复只改 `archived_at`/`archive_reason` 标记（不删检出/计划/执行记录/裁决），默认列表隐藏归档；同项目并发执行 409 `ERR-AUTO-001` |
 | 自动化生产 | `POST /admin/projects/{projectId}/deploy-test` | 自动发布测试环境：建发布单 → 执行 `OPC_TEST_DEPLOY_CMD` 或显式命令 → 健康检查；无命令 202 转裁决，执行失败 502 `ERR-AUTO-005` |
@@ -885,9 +886,19 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P103 归档 | `POST /admin/projects/{projectId}/archive`，body `{reason?: string}`（≤200 字，超长截断）；只写 `archived_at`/`archive_reason`，返回 `{id,archivedAt,archiveReason}`；审计 `project.autopilot.archive` |
 | P104 恢复 | `POST /admin/projects/{projectId}/unarchive`，返回 `{id,archivedAt:null,archiveReason:null}`；审计 `project.autopilot.unarchive` |
 | 描述字段 | `PUT /admin/projects/{projectId}` 接受 `description`（人工编辑优先，自动驾驶只填空描述）；`GET .../autopilot` 返回 `description`/`descriptionSource` |
-| 汇总扩展 | `GET /admin/projects/{projectId}/autopilot` 增 `status`/`statusLabel`、`description`/`descriptionSource`、`archivedAt`/`archiveReason`、`project`、`currentRun`、`runs`（≤10，最新在前）、`roadmap{weeks,startDate,endDate,milestones,phases,plans[{planKind,version,title,status,generatedAt,content}]}`、`milestones`；`plans[]` 带 `content` |
-| 执行记录 | 每次 `bootstrap` 追加 `stat.project_autopilot_run`（`trigger=manual\|idea\|api`、`status=running\|ok\|failed`、`stage`、`stage_label`、10 阶段 `steps[{stage,label,status,startedAt,endedAt,durationMs,detail}]`）；同项目已有 `running` 时 409 `ERR-AUTO-001` |
+| 汇总扩展 | `GET /admin/projects/{projectId}/autopilot` 增 `status`/`statusLabel`、`description`/`descriptionSource`、`archivedAt`/`archiveReason`、`project`、`currentRun`、`runs`（≤10，最新在前）、`roadmap{weeks,startDate,endDate,milestones,phases,plans[{planKind,version,title,status,generatedAt,content}]}`、`milestones`、`planExecution{id,status,startedAt,endedAt,completed,blocked,blockTopic,nextTask,percent,tasks[{key,title,status,detail}]}`；`plans[]` 带 `content` |
+| 执行记录 | 每次 `bootstrap` 或计划自动推进追加 `stat.project_autopilot_run`（`trigger=manual\|idea\|api\|plan`、`status=running\|ok\|failed`、`stage`、`stage_label`；bootstrap 10 阶段、计划推进 5 任务，`steps[{stage,label,status,startedAt,endedAt,durationMs,detail,data?}]`）；同项目已有 `running` 时 409 `ERR-AUTO-001` |
+| 计划自动推进 | 无新增 HTTP operation；由定时任务 `project_plan_auto`（默认 `*/15 * * * *`）驱动，每次推进一个项目的一个单元；结果摘要写入 `planExecution`，裁决 topic 复用 `pipeline_failed`/`deploy_executor`/`deploy_failed` 并新增 `coding_agent`/`pipeline_env`/`production_release`（每次阻塞新起一条 pending，不复用已裁决同 topic）；流水线失败保留 stderr 摘要供修复 agent 与老板定位 |
 | 失败 | 无新增错误码：并发/参数 400 或 409 `ERR-AUTO-001`，检出 502 `ERR-AUTO-002`，凭据 400 `ERR-AUTO-003`，裁决 404 `ERR-AUTO-004` |
+
+**P105–P106 公司基础信息契约细节（v2.26 增补）**：
+
+| 项 | 内容 |
+| :--- | :--- |
+| P105 读取 | `GET /admin/company-profile` → `{profile\|null, defaults{defaultOs,defaultRemoteMethod,defaultAccount,defaultSshPort,settings,resources}, updatedAt}`；无档案时 `profile=null`、默认口径照常返回 |
+| P106 更新 | `PUT /admin/company-profile`，body 为公司字段（`name` 必填，`entityType ∈ 服务型/贸易型/混合型`，`creditCode` 18 位，`email`/`website`/`postcode` 格式校验；`taxTypes`/`bankAccounts`/`ownerPreferences`/`extra` 接受 JSON）；单行 upsert，返回同 P105；审计 `company.profile.update` 只记字段名 |
+| 共用 | 项目自动驾驶交付物抬头取 `name`/`credit_code`；`view_company_profile` 扩展 `short_name/credit_code/industry/employee_count/website`，不出口银行账号与联系方式明细 |
+| 失败 | 参数/格式非法 400 `ERR-RES-001`（复用；公司基础信息不新增错误码） |
 
 ## 8. DSH 工具契约（工具即接口）
 

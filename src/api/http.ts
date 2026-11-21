@@ -1163,6 +1163,23 @@ export const ROUTES: Route[] = [
       return { status: 200, data: await requireAdmin(ctx).removeSharedResource(requireId(params, "resourceId")) };
     },
   },
+  // ---------------- 公司基础信息（跨模块共用） ----------------
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/admin\/company-profile$/,
+    keys: [],
+    async handler(ctx) {
+      return { status: 200, data: await requireAdmin(ctx).companyProfile() };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: /^\/api\/v1\/admin\/company-profile$/,
+    keys: [],
+    async handler(ctx, _params, body) {
+      return { status: 200, data: await requireAdmin(ctx).updateCompanyProfile(body) };
+    },
+  },
   // ---------------- 项目自动驾驶（检出 → 扫描 → 计划 → 裁决） ----------------
   {
     method: "POST",

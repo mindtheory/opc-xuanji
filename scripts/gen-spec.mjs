@@ -22,7 +22,7 @@ const attr = (name, type) => [name, type];
 const ENTITIES = [
   // ---------------- platform ----------------
   ["CompanyProfile", "biz.company_profile", "platform", "entity",
-    [S("name", "varchar(128)", false), S("entity_type", "varchar(32)", false), S("tax_types", "jsonb"), S("bank_accounts", "jsonb"), S("owner_preferences", "jsonb"), S("updated_at", "timestamptz")],
+    [S("name", "varchar(128)", false), S("short_name", "varchar(64)"), S("english_name", "varchar(128)"), S("credit_code", "varchar(32)"), S("legal_person", "varchar(64)"), S("established_date", "date"), S("registered_capital", "varchar(64)"), S("company_type", "varchar(64)"), S("industry", "varchar(64)"), S("business_scope", "text"), S("employee_count", "integer"), S("website", "varchar(200)"), S("reg_address", "text"), S("office_address", "text"), S("postcode", "varchar(16)"), S("phone", "varchar(64)"), S("email", "varchar(128)"), S("contact_name", "varchar(64)"), S("contact_title", "varchar(64)"), S("tax_number", "varchar(64)"), S("invoice_title", "varchar(128)"), S("taxpayer_type", "varchar(32)"), S("bank_name", "varchar(128)"), S("bank_account", "varchar(64)"), S("invoice_note", "varchar(200)"), S("entity_type", "varchar(32)", false), S("tax_types", "jsonb"), S("bank_accounts", "jsonb"), S("owner_preferences", "jsonb"), S("extra", "jsonb"), S("updated_by", "varchar(64)"), S("updated_at", "timestamptz")],
     [["employees", "EmployeePlugin", "1:N"]]],
   ["ViewGrant", "ref.view_grant", "platform", "code-table",
     [S("view_id", "varchar(64)", false), S("plugin_id", "varchar(64)", false), S("granted_by", "varchar(64)"), S("granted_at", "timestamptz"), S("status", "varchar(16)", false)], []],
