@@ -764,6 +764,20 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 
 **结论口径**：本章为 v2.26 增量；`company-profile.test.ts` 新增 3 例；渲染冒烟新增 `CompanyProfileCard` 两态（不增用例数）。
 
+### 4.37 TC-SALES-001 … TC-SALES-005 · 虚拟销售自动经营（v2.27 增量）
+
+**追溯**：REQ-SALES-001 / UC-034；`test/integration/sales.test.ts`；实体 SalesConfig、SalesLead、SalesProduct、SalesOrder、SalesRun。
+
+| TC | 场景 | 断言要点 |
+| :--- | :--- | :--- |
+| TC-SALES-001 | 配置与风控护栏 | 默认 `enabled=false`（急停）；价格区间倒挂、品类全非法均拒绝；`takeAction` 两次后第三次返回 false 且自动急停并写 `pause_reason` |
+| TC-SALES-002 | 线索去重与拍板转商品 | 同标题去重、非法品类忽略；promote 生成 `ready` 商品（AI 关闭走规则兜底素材含「服务范围」）；重复拍板 409；run 摘要记 `newLeads=1` |
+| TC-SALES-003 | 商品状态机 | 未确认直接标 listed 拒绝；confirm-listing→listing；manual-listed→listed 且 `listed_at` 非空；pause→paused |
+| TC-SALES-004 | 订单闭环 | 平台订单号幂等；无交付物 confirm-ship 拒绝；generate 落盘 `交付说明.md`（含品类与「修改说明」）；confirm-ship→shipping；markSettled→settled 且金额可查 |
+| TC-SALES-005 | HTTP 契约 | config GET/PUT（非法 400 `ERR-SALES-001`）；线索 decide→ready 商品；confirm-listing→listing；products/orders/runs 列表 200 |
+
+**结论口径**：本章为 v2.27 增量；`sales.test.ts` 新增 5 例（全量 146→151）；RPA 真实浏览器路径不进 CI（登录态依赖老板扫码），以规则兜底与服务层状态机覆盖。
+
 ## 5. TC ↔ 测试文件 ↔ 断言要点总表
 
 | TC | 所属 UC / 需求 | 主要测试文件 | 断言要点 |
@@ -824,6 +838,11 @@ UC（9）──tests──▶ TC（16）──主用例/辅助用例──▶ �
 | TC-ADM-001 | UC-033 / REQ-ADM-013 | `test/integration/company-profile.test.ts` | 公司档案读取/校验/保存/审计（不落银行账号） |
 | TC-ADM-002 | UC-033 / REQ-ADM-013 | `test/integration/company-profile.test.ts` | 员工只读视图扩展字段，不出口银行账号 |
 | TC-ADM-003 | UC-033 / REQ-ADM-013 | `test/integration/company-profile.test.ts` | 项目自动驾驶交付物抬头带公司主体 |
+| TC-SALES-001 | UC-034 / REQ-SALES-001 | `test/integration/sales.test.ts` | 配置校验与风控额度超限自动急停 |
+| TC-SALES-002 | UC-034 / REQ-SALES-001 | `test/integration/sales.test.ts` | 线索去重、拍板转商品（素材兜底）、run 留痕 |
+| TC-SALES-003 | UC-034 / REQ-SALES-001 | `test/integration/sales.test.ts` | 商品状态机（确认上架/人工发布/暂停） |
+| TC-SALES-004 | UC-034 / REQ-SALES-001 | `test/integration/sales.test.ts` | 订单幂等、交付物落盘、确认发货、收款记账 |
+| TC-SALES-005 | UC-034 / REQ-SALES-001 | `test/integration/sales.test.ts` | /admin/sales/* HTTP 契约 |
 | TC-IDEA-001 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 文本创意 AI 解析 |
 | TC-IDEA-002 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | txt/docx/xlsx/pdf 多文件解析 |
 | TC-IDEA-003 | UC-030 / REQ-PRJ-035 | `test/integration/idea.test.ts` | 建项目并进自动驾驶 |

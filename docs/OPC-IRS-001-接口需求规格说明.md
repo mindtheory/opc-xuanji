@@ -158,7 +158,7 @@ updated: 2026-11-14
 
 ## 2. 接口清单（117 个 /api/v1 operation）
 
-> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P106 管理面（项目/情报 Web 控制台、公司基础资源、公司基础信息、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
+> 本表详列 P1–P49（平台/流程/调度/Web/员工/项目研发）。P50–P119 管理面（项目/情报 Web 控制台、公司基础资源、公司基础信息、项目自动驾驶与自动化生产、运维反馈、创意转项目、微信推送、虚拟销售）见 §7.6；完整 operationId、路径与方法以 `spec/opc-xuanji/api.yaml` 为准。
 
 | # | 方法 | 路径 | operationId | 用途 | 主要调用方 | 成功码 | 错误码 | 对应 REQ |
 | :--- | :--- | :------------------------------------------ | :--------------- | :-------------------------------- | :----------------- | :----- | :----------------------- | :--------------------- |
@@ -839,7 +839,7 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 
 **项目研发安全口径**：`authRef` 只接受 `env:`、`secret:`、`vault:`、`ssh-agent:` 前缀；接口不返回明文凭据；生产环境强制 `approvalPolicy=manual`；本层不执行 SSH 命令、Git/SVN 同步与制品推送，执行器在 Phase 2 接入并单独审计。
 
-### 7.6 管理面接口（P50–P106，Web 控制台）
+### 7.6 管理面接口（P50–P119，Web 控制台）
 
 管理面是 Web 控制台的 BFF，统一挂在 `/api/v1/admin` 下；资源型 CRUD 通过 `resource` 路径白名单复用同一组路由，避免为每张表重复定义协议。
 
@@ -899,6 +899,17 @@ Web 接口与 DSH 工具共用同一批服务实例（`createHub` 装配一次�
 | P106 更新 | `PUT /admin/company-profile`，body 为公司字段（`name` 必填，`entityType ∈ 服务型/贸易型/混合型`，`creditCode` 18 位，`email`/`website`/`postcode` 格式校验；`taxTypes`/`bankAccounts`/`ownerPreferences`/`extra` 接受 JSON）；单行 upsert，返回同 P105；审计 `company.profile.update` 只记字段名 |
 | 共用 | 项目自动驾驶交付物抬头取 `name`/`credit_code`；`view_company_profile` 扩展 `short_name/credit_code/industry/employee_count/website`，不出口银行账号与联系方式明细 |
 | 失败 | 参数/格式非法 400 `ERR-RES-001`（复用；公司基础信息不新增错误码） |
+
+**P107–P119 虚拟销售契约细节（v2.27 增补）**：
+
+| 项 | 内容 |
+| :--- | :--- |
+| P107–P108 配置 | `GET/PUT /admin/sales/config`：单行配置（`enabled` 全局急停、`categories`、`keywords`、`priceFloor/priceCap`、`dailyActionCap`、`actionsToday`、`pauseReason`）；PUT 校验价格区间与品类，非法 400 `ERR-SALES-001` |
+| P109–P110 线索 | `GET /admin/sales/leads?status=&limit=`（按 `ai_score` 降序）；`POST /admin/sales/leads/{leadId}/decide` body `{action: promote|reject, price?, decidedBy?}`，promote 生成 `ready` 商品（AI 素材，失败走规则兜底），已处理 409 |
+| P111–P114 商品 | `GET /admin/sales/products?status=&limit=`；`POST .../confirm-listing`（ready→listing）；`POST .../manual-listed`（listing→listed，人工发布兜底）；`POST .../pause`（→paused）；状态不符 409 `ERR-SALES-001` |
+| P115–P117 订单 | `GET /admin/sales/orders?status=&limit=`；`POST .../generate`（AI 生产交付物落盘 `OPC_SALES_ROOT/orders/<id>/`）；`POST .../confirm-ship`（generated→shipping，平台发货由值守执行，收款走平台担保仅记账） |
+| P118–P119 运行 | `GET /admin/sales/runs?limit=`（radar/list/listen 留痕）；`POST /admin/sales/radar/run` 立即执行一次雷达，RPA 失败 502 `ERR-SALES-002` |
+| 风控 | 全部写操作写审计（`sales.*`）；`enabled=false` 时任务空转；当日动作超限自动急停；系统不做任何资金操作 |
 
 ## 8. DSH 工具契约（工具即接口）
 
