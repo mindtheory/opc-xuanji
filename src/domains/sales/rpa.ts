@@ -7,7 +7,7 @@
  * - 不做任何资金操作；上架/发货由 SalesService 的老板确认卡点驱动；
  * - 选择器集中在本文件顶部，闲鱼改版只改这里。
  */
-import { chromium, type BrowserContext } from "playwright";
+import { chromium, type BrowserContext, type Frame, type Page } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { OpcError, ERR } from "../../platform/errors.ts";
@@ -19,11 +19,13 @@ const PROFILE_DIR = process.env.OPC_SALES_PROFILE?.trim() || join(process.env.HO
 const QR_PATH = process.env.OPC_SALES_QR_PATH?.trim() || join(process.env.HOME ?? "/tmp", "opc-sales", "login-qr.png");
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const SELECTORS = {
-  searchResultItem: '[class*="search-item"], [class*="item-card"], a[href*="item?id"]',
-  loginQr: '[class*="qrcode"] img, img[alt*="二维码"], #qrcode-img',
-  loginAvatar: '[class*="avatar"], [class*="user-info"], a[href*="space"]',
+  // 真实商品卡是 a[href*="item?id"]；页面顶部热搜词标签也带 search-item 类名，不能用作商品选择器
+  searchResultItem: 'a[href*="item?id"]',
+  // 登录二维码在 passport.goofish.com/mini_login iframe 内，且是 canvas 渲染（不是 img）
+  loginQr: 'canvas, [class*="qrcode"] img, img[alt*="二维码"], #qrcode-img',
   orderRow: '[class*="order-item"], [class*="sold-item"], tr[class*="order"]',
 };
+const LOGIN_FRAME_URL_HINT = "mini_login";
 
 export class GoofishRpa {
   private context: BrowserContext | null = null;
@@ -50,20 +52,35 @@ export class GoofishRpa {
     if (this.context !== null) { await this.context.close().catch(() => undefined); this.context = null; }
   }
 
-  /** 登录态探测：能打开个人页即视为已登录；未登录时抓登录 QR 存盘供推送。 */
+  /** 登录弹窗在 passport iframe（mini_login）里；本构建无 page.waitForFrame，轮询 frames()。 */
+  private async loginFrame(page: Page): Promise<Frame | null> {
+    for (let i = 0; i < 20; i += 1) {
+      const frame = page.frames().find((f) => f.url().includes(LOGIN_FRAME_URL_HINT));
+      if (frame !== undefined) return frame;
+      await page.waitForTimeout(1000);
+    }
+    return null;
+  }
+
+  /** 登录态探测：页面存在可见「登录」入口即未登录；未登录时点开弹窗、进 iframe 抓 QR canvas 存盘供推送。 */
   async ensureLogin(): Promise<{ loggedIn: boolean; qrPath: string | null }> {
     const context = await this.launch();
     const page = await context.newPage();
     try {
       await page.goto("https://www.goofish.com/", { waitUntil: "domcontentloaded", timeout: 45_000 });
-      await page.waitForTimeout(2500);
-      const avatar = await page.$(SELECTORS.loginAvatar);
-      if (avatar !== null) return { loggedIn: true, qrPath: null };
-      // 未登录：打开登录页取二维码图片
-      const qr = await page.$(SELECTORS.loginQr);
+      await page.waitForTimeout(3000);
+      // 未登录时页面有可见「登录」入口；已登录则被头像/昵称取代
+      const entry = await page.$('text="登录"');
+      if (entry === null) return { loggedIn: true, qrPath: null };
+      // 未登录：点开登录弹窗，等 passport iframe 出现后在 iframe 内截二维码
+      await entry.click().catch(() => undefined);
+      const frame = await this.loginFrame(page);
+      if (frame === null) return { loggedIn: false, qrPath: null };
+      await page.waitForTimeout(3000);
+      const qr = await frame.$(SELECTORS.loginQr);
       if (qr !== null) {
         await mkdir(join(QR_PATH, ".."), { recursive: true });
-        await qr.screenshot({ path: QR_PATH });
+        await qr.screenshot({ path: QR_PATH }).catch(() => undefined);
         return { loggedIn: false, qrPath: QR_PATH };
       }
       return { loggedIn: false, qrPath: null };
@@ -81,12 +98,14 @@ export class GoofishRpa {
       for (const keyword of keywords) {
         try {
           await page.goto(`https://www.goofish.com/search?q=${encodeURIComponent(keyword)}`, { waitUntil: "domcontentloaded", timeout: 45_000 });
-          await page.waitForTimeout(3500);
+          // 商品卡是异步渲染：等真实 item 链接出现再抓，否则只会抓到热搜词标签
+          await page.waitForSelector(SELECTORS.searchResultItem, { timeout: 15_000 });
+          await page.waitForTimeout(1500);
           const cards = await page.$$(SELECTORS.searchResultItem);
           for (const card of cards.slice(0, perKeyword)) {
             const text = (await card.evaluate((el) => el.innerText.slice(0, 300))).replace(/\s+/g, " ").trim();
             if (text.length < 8) continue;
-            const priceMatch = text.match(/([0-9]+(?:\.[0-9]{1,2})?)/);
+            const priceMatch = text.match(/¥\s?([0-9]+(?:\.[0-9]{1,2})?)/) ?? text.match(/([0-9]+(?:\.[0-9]{1,2})?)/);
             items.push({ keyword, text: text.slice(0, 260), price: priceMatch ? Number(priceMatch[1]) : null });
           }
         } catch { /* 单关键词失败不影响整体 */ }
