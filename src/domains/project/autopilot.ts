@@ -2107,8 +2107,28 @@ export class ProjectAutopilotService {
     return `计划开工 ${startRaw}，按时间表推进，到期自动继续`;
   }
 
+  /**
+   * 回收僵尸运行：进程重启/崩溃后，running 标记可能永久残留。
+   * 超过续跑窗口（6 小时）的运行既不会被 advancePlan 续跑，又会命中候选查询的
+   * 「存在 running 即排除」，导致所有项目永久 no_candidate。这里统一判 failed 放行。
+   */
+  private async reapStaleRuns(): Promise<number[]> {
+    const stale = await this.pool.query(
+      "SELECT id, project_id FROM stat.project_autopilot_run WHERE status = 'running' AND started_at < now() - interval '6 hours' ORDER BY id",
+    );
+    const reaped: number[] = [];
+    for (const row of stale.rows as Row[]) {
+      const runId = Number(row.id);
+      await this.finishRun(runId, "failed", null, "运行超过 6 小时仍处于 running（进程重启/崩溃残留），自动回收");
+      await this.record("project.autopilot.run.reaped", Number(row.project_id), { runId });
+      reaped.push(runId);
+    }
+    return reaped;
+  }
+
   /** 后台定时任务的入口：先回收等待中的计划运行，再按并发数挑项目推进。 */
   async autoAdvanceNext(now: Date = new Date()): Promise<Row> {
+    await this.reapStaleRuns();
     const settings = await this.getSettings();
     const running = await this.pool.query("SELECT id, project_id FROM stat.project_autopilot_run WHERE trigger = 'plan' AND status = 'running' AND started_at >= now() - interval '6 hours' ORDER BY id LIMIT 1");
     if (running.rows.length > 0) {

@@ -949,3 +949,37 @@ test("TC-AUTO-025 裁决备选方案：详情与列表接口都返回 options", 
   assert.ok(detailPending.length > 0);
   assert.ok(detailPending.every((d) => Array.isArray(d.options) && d.options.length >= 2), "详情接口也必须返回备选方案");
 });
+
+test("TC-AUTO-026 僵尸运行回收：崩溃残留的 running 计划不再阻塞调度", async () => {
+  const created = await call("POST", "/api/v1/admin/projects", {
+    name: "僵尸回收项目",
+    stage: "planning",
+    repository: { url: `file://${fixtureRepo}` },
+    autopilotOptions: { scaffold: false, pipeline: false, deployTest: false },
+  });
+  const projectId = created.json.data.id;
+  const audit = new AuditService(pool, { schemaVersion: "1" });
+  const autopilot = new ProjectAutopilotService(pool, audit);
+  // 模拟进程崩溃残留：一条已 running 七小时的计划运行（超过 6 小时续跑窗口，永远不会被续跑）
+  await pool.query(
+    "INSERT INTO stat.project_autopilot_run (project_id, trigger, status, stage, stage_label, steps, started_at) VALUES ($1,'plan','running','plan','按计划自动推进','[]'::jsonb, now() - interval '7 hours')",
+    [projectId],
+  );
+  const result = await autopilot.autoAdvanceNext();
+  assert.notEqual(result.reason, "no_candidate", "僵尸运行回收后项目应恢复推进");
+  assert.equal(result.projectId, Number(projectId));
+  // 全速模式一轮连推 freeze → design → build：无编码 agent，最终停在 build 阻塞
+  assert.equal(result.blocked, true);
+  assert.equal(result.blockTopic, "coding_agent");
+  const stale = await pool.query(
+    "SELECT status, error FROM stat.project_autopilot_run WHERE project_id = $1 AND started_at < now() - interval '6 hours'",
+    [projectId],
+  );
+  assert.equal(stale.rows[0].status, "failed");
+  assert.match(String(stale.rows[0].error), /自动回收/);
+  const auditRow = await pool.query(
+    "SELECT 1 FROM audit.audit_log WHERE action = 'project.autopilot.run.reaped' AND object_id = $1 LIMIT 1",
+    [String(projectId)],
+  );
+  assert.equal(auditRow.rows.length, 1, "回收动作必须写审计");
+});
